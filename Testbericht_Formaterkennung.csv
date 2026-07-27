@@ -1,0 +1,75 @@
+# LabelCheck 4.0 – Etikettenvergleich
+
+Dieses Paket wurde vollständig aus den 12 bereitgestellten Etikettenformaten und den 48 Referenzfotos neu aufgebaut.
+
+## Inhalt
+
+- `index.html` – Benutzeroberfläche
+- `app.js` – Formaterkennung, Ausrichtung, OCR, Vergleich und CSV-Export
+- `styles.css` – Darstellung für Smartphone und Desktop
+- `etiketten-config.json` – Formate, Felder, Regex-Regeln und Codebereiche
+- `assets/templates/` – 12 gültige, entzerrte Mustervorlagen
+- `Testbericht_Formaterkennung.csv` – automatischer Test der 48 Referenzfotos
+
+## Funktionsprinzip
+
+1. Das Produktlabel wird ausschließlich gegen `Format_001` geprüft.
+2. Das Vergleichslabel wird gegen `Format_002` bis `Format_012` geprüft.
+3. Zuerst arbeitet immer der konfigurationsbasierte ORB-Musterabgleich auf dem vollständigen Foto.
+4. Die variablen OCR- und Codefelder sind bei der Formaterkennung ausgeblendet. Geänderte Batchnummern, Lieferscheine und Barcodes sollen die Formatwahl daher möglichst wenig beeinflussen.
+5. Die Homografie des besten Mustertreffers wird direkt für die perspektivische Ausrichtung verwendet.
+6. Nur wenn der Musterabgleich nicht ausreicht, wird die helle Etikettenfläche gegenüber dem Hintergrund als Suchhilfe verwendet. Diese Helligkeitslogik bestimmt niemals selbst das Format.
+7. Wenn auch das nicht sicher ist, kann der Bediener das Format auswählen und vier Ecken markieren.
+8. Regex-konforme und ausreichend sichere OCR-Werte werden grün angezeigt. Der beste unsichere Wert wird trotzdem übernommen und orange dargestellt.
+
+## GitHub Pages
+
+Alle Dateien und den Ordner `assets` unverändert in das veröffentlichte GitHub-Verzeichnis hochladen:
+
+```text
+Repository/
+├── index.html
+├── app.js
+├── styles.css
+├── etiketten-config.json
+└── assets/
+    └── templates/
+        ├── Format_001.jpg
+        ├── ...
+        └── Format_012.jpg
+```
+
+Danach die Seite zum ersten Test mit einem neuen Cache-Parameter öffnen:
+
+```text
+https://alper6192.github.io/?v=400
+```
+
+Beim späteren Austausch einer Datei den Parameter ändern, beispielsweise auf `?v=401`.
+
+## CSV und OneDrive
+
+`CSV speichern/teilen` verwendet zuerst das native Teilen-Menü des Smartphones. Dort kann die OneDrive-App ausgewählt werden. Ein fester OneDrive-Ordner darf von einer normalen Webseite nicht ohne Microsoft-Anmeldung und Graph-Berechtigung automatisch ausgewählt werden.
+
+Der Dateiname wird sekundengenau erzeugt:
+
+```text
+Labelcheck_2026-07-27_14-35-08.csv
+```
+
+## Testergebnis
+
+Die automatische Formaterkennung wurde mit allen 48 mitgelieferten Referenzfotos geprüft:
+
+```text
+48 von 48 Referenzfotos korrekt erkannt
+kleinster Vorsprung vor dem zweitbesten Format: 169,47 Punkte
+```
+
+Die gelieferten Referenzfotos zeigen die Etiketten auf einer flachen dunklen Oberfläche. Eine endgültige Produktionsfreigabe für stark gekrümmte Fässer erfordert zusätzlich reale Fotos der aufgeklebten Etiketten am Fass. Bei moderater Krümmung arbeitet die Homografie näherungsweise; starke Wölbung kann eine manuelle Vier-Ecken-Ausrichtung oder eine spätere zylindrische Entzerrung erfordern.
+
+## Auffälligkeit in den Ausgangsdaten
+
+Beim Mercedes-Format zeigt das Etikett als IDH/Sachnummer `2527583`, während die bereitgestellte Excel-Liste `257583` nennt. Die Anwendung liest den sichtbaren Etikettenwert und erzwingt keinen festen Musterwert.
+
+Beim Format `Intern2` besitzt die Batchnummer sieben Ziffern nach dem `D` (`D5618922`). Für dieses Format ist deshalb gezielt eine siebenstellige Batch konfiguriert; die übrigen bereitgestellten Formate verwenden neun Ziffern.
