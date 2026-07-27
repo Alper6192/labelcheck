@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Etiketten-Konfigurationseditor – Phase 3.4</title>
+<style>
+:root{
+  --bg:#07111f;--panel:#0e1d31;--panel2:#12243a;--text:#eef5ff;--muted:#9baec5;
+  --border:#2b405b;--blue:#25a7ef;--green:#39c879;--orange:#f3a93b;--red:#ef6671;
+}
+*{box-sizing:border-box} body{margin:0;background:linear-gradient(160deg,#06101d,#0a1728 55%,#07111f);
+color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+button,input,select,textarea{font:inherit} button,.filebtn{border:1px solid var(--border);background:#162b45;
+color:var(--text);border-radius:10px;padding:9px 12px;min-height:40px;cursor:pointer}
+button:hover,.filebtn:hover{border-color:#4c6c91} button.primary,.filebtn.primary{background:#0d6ca7;border-color:#278bc4}
+button.good{background:#17643d;border-color:#2a9f62} button.danger{background:#64232c;border-color:#a33e4b}
+button:disabled{opacity:.45;cursor:not-allowed}.filebtn input{display:none}
+header{padding:18px 20px 13px;border-bottom:1px solid var(--border);background:rgba(5,14,25,.88);position:sticky;top:0;z-index:20}
+header h1{margin:0;font-size:1.35rem}header p{margin:5px 0 0;color:var(--muted);font-size:.9rem}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:11px 18px;border-bottom:1px solid var(--border);background:#0b192a;position:sticky;top:76px;z-index:19}
+.status{margin-left:auto;padding:8px 10px;border-radius:9px;background:#0a1626;color:var(--muted);max-width:520px}
+.status.ok{color:#8ff0b7;border:1px solid #347e56}.status.warn{color:#ffd992;border:1px solid #8c6d2a}.status.bad{color:#ff9ca5;border:1px solid #93414b}
+.layout{display:grid;grid-template-columns:260px minmax(480px,1fr) 340px;gap:12px;padding:12px;min-height:calc(100vh - 150px)}
+.panel{background:rgba(14,29,49,.96);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.panel h2{font-size:1rem;margin:0}.panel-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)}
+.panel-body{padding:12px}.format-list{display:flex;flex-direction:column;gap:7px;max-height:calc(100vh - 250px);overflow:auto}
+.format-item{width:100%;text-align:left;background:#102139}.format-item.active{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+.format-id{font-weight:800}.format-sub{font-size:.78rem;color:var(--muted);margin-top:2px}
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.meta-grid .wide{grid-column:1/-1}
+label.field{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:.78rem}
+input,select,textarea{width:100%;border:1px solid var(--border);background:#071426;color:var(--text);border-radius:9px;padding:8px}
+textarea{min-height:100px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.78rem}
+.canvas-tools{display:flex;gap:7px;flex-wrap:wrap;padding:10px;border-bottom:1px solid var(--border)}
+.canvas-wrap{padding:10px;height:690px;display:flex;align-items:center;justify-content:center;background:#050d17}
+canvas{width:100%;height:100%;touch-action:none;background:#091524;border-radius:10px}
+.hint{padding:9px 12px;border-top:1px solid var(--border);color:var(--muted);font-size:.82rem}
+.region-list{display:flex;flex-direction:column;gap:7px;margin:10px 0}
+.region-item{display:flex;gap:7px;align-items:center;padding:8px;border:1px solid var(--border);border-radius:9px;background:#0b1a2c;cursor:pointer}
+.region-item.active{border-color:var(--blue)}.dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+.small{font-size:.77rem;color:var(--muted)}.hidden{display:none!important}
+.parser-result{white-space:pre-wrap;background:#06101d;border:1px solid var(--border);border-radius:9px;padding:9px;min-height:54px;color:#b9e9ff;font-family:ui-monospace,monospace;font-size:.78rem}
+.warnbox{padding:9px;border:1px solid #80672d;background:#33270e;color:#ffe2a0;border-radius:9px;font-size:.8rem}
+@media(max-width:1050px){header,.toolbar{position:static}.layout{grid-template-columns:1fr}.canvas-wrap{height:520px}.format-list{max-height:260px}}
+.ocr-test-preview{display:none;width:100%;max-height:150px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:9px;margin-top:8px}
+.ocr-test-preview.visible{display:block}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>Etiketten-Konfigurationseditor <small style="color:var(--muted)">Phase 3.4</small></h1>
+  <p>Etikettenordner laden, Bereiche markieren und die fertige Konfiguration als JSON exportieren.</p>
+</header>
+
+<div class="toolbar">
+  <label class="filebtn primary">Etikettenordner laden<input id="folderInput" type="file" accept="image/*" multiple webkitdirectory directory></label>
+  <label class="filebtn">Konfiguration importieren<input id="configInput" type="file" accept=".json,application/json"></label>
+  <button id="newConfigButton">Neue Konfiguration</button>
+  <button id="newFormatButton">Neues Format</button>
+  <button id="duplicateFormatButton" disabled>Format duplizieren</button>
+  <button id="deleteFormatButton" class="danger" disabled>Format löschen</button>
+  <button id="exportButton" class="good" disabled>etiketten-config.json exportieren</button>
+  <div id="status" class="status">Bitte eine Konfiguration importieren oder neu beginnen.</div>
+</div>
+
+<main class="layout">
+  <aside class="panel">
+    <div class="panel-head"><h2>Formate</h2><span id="formatCount">0</span></div>
+    <div class="panel-body">
+      <input id="searchInput" type="search" placeholder="Format suchen …">
+      <div id="formatList" class="format-list" style="margin-top:10px"></div>
+    </div>
+  </aside>
+
+  <section class="panel">
+    <div class="panel-head"><h2 id="canvasTitle">Kein Format ausgewählt</h2><span id="viewLabel">—</span></div>
+    <div class="canvas-tools">
+      <label class="filebtn">Masterbild laden/ersetzen<input id="masterInput" type="file" accept="image/*"></label>
+      <button id="sourceViewButton" disabled>Original</button>
+      <button id="markR0Button" disabled>4 Ecken markieren</button>
+      <button id="normalizeButton" disabled>Entzerren</button>
+      <button id="drawFieldButton" disabled>OCR-Feld zeichnen</button>
+      <button id="drawQrButton" disabled>QR-Bereich zeichnen</button>
+      <button id="deleteRegionButton" class="danger" disabled>Bereich löschen</button>
+      <button id="previousFormatButton" disabled>← Vorheriges Etikett</button>
+      <button id="nextFormatButton" disabled>Nächstes Etikett →</button>
+    </div>
+    <div id="canvasWrap" class="canvas-wrap"><canvas id="canvas"></canvas></div>
+    <div id="hint" class="hint">Konfiguration importieren und ein Format auswählen.</div>
+  </section>
+
+  <aside class="panel">
+    <div class="panel-head"><h2>Eigenschaften</h2><span id="dirtyBadge" class="small">gespeichert</span></div>
+    <div class="panel-body">
+      <div class="meta-grid">
+        <label class="field wide">Konfigurationsversion<input id="configVersion" value="3.0.0"></label>
+        <label class="field">Format-ID<input id="formatId" disabled></label>
+        <label class="field">Rolle<select id="labelRole"><option value="product">Produktlabel</option><option value="vda">VDA-/Vergleichslabel</option></select></label>
+        <label class="field wide">Formatname<input id="formatName"></label>
+        <label class="field wide" style="flex-direction:row;align-items:center"><input id="activeFormat" type="checkbox" style="width:auto"> Format aktiv</label>
+      </div>
+
+      <hr style="border:0;border-top:1px solid var(--border);margin:14px 0">
+      <div style="display:flex;justify-content:space-between;align-items:center"><strong>Markierte Bereiche</strong><span id="regionCount" class="small">0</span></div>
+      <div id="regionList" class="region-list"></div>
+
+      <div id="regionEditor" class="hidden">
+        <label class="field">Bereichsname<input id="regionName"></label>
+        <label class="field" style="margin-top:8px">Bereichstyp<input id="regionKind" disabled></label>
+
+        <div id="ocrEditor" style="margin-top:8px">
+          <label class="field">Datenfeld<select id="semantic">
+            <option value="batch_and_drum">Batch + Fass</option><option value="batch">Batch</option>
+            <option value="drum">Fassnummer</option><option value="idh">IDH</option>
+            <option value="weight">Gewicht / Menge</option><option value="delivery_note">Lieferscheinnummer</option>
+            <option value="custom">Benutzerdefiniert</option><option value="format_anchor">Formatanker</option>
+            <option value="ignore">Ignorierbereich</option>
+          </select></label>
+          <label class="field" style="margin-top:8px">OCR-Modus<select id="ocrMode">
+            <option value="line">Zeile</option><option value="word">Wort</option><option value="none">Keine OCR</option>
+          </select></label>
+          <label class="field" style="margin-top:8px">Regulärer Ausdruck<input id="regexInput"></label>
+          <button id="testOcrButton" style="margin-top:8px">Ausgewähltes OCR-Feld testen</button>
+          <img id="ocrTestPreview" class="ocr-test-preview" alt="Vorschau des getesteten OCR-Ausschnitts">
+          <div id="ocrTestResult" class="parser-result" style="margin-top:8px">Noch nicht getestet.</div>
+        </div>
+
+        <div id="qrEditor" class="hidden" style="margin-top:8px">
+          <label class="field">Parser-Vorlage<select id="parserPreset">
+            <option value="tesla_vda">Tesla VDA – Batch, Lieferschein, Menge</option>
+            <option value="custom">Benutzerdefinierter Parser</option>
+          </select></label>
+          <label class="field" style="margin-top:8px">Parser als JSON<textarea id="parserJson"></textarea></label>
+          <label class="field" style="margin-top:8px">Beispiel-Zeichenfolge<textarea id="parserSample" placeholder="[)>+06:..."></textarea></label>
+          <button id="testParserButton" style="margin-top:8px">Parser testen</button>
+          <div id="parserResult" class="parser-result" style="margin-top:8px">Noch nicht getestet.</div>
+        </div>
+
+        <label class="field" style="margin-top:9px;flex-direction:row;align-items:center"><input id="requiredInput" type="checkbox" style="width:auto"> Pflichtfeld/-bereich</label>
+      </div>
+
+      <div id="noRegion" class="warnbox">Einen Bereich in der Liste auswählen oder auf dem normalisierten Etikett neu zeichnen.</div>
+    </div>
+  </aside>
+</main>
+
+<script>
+"use strict";
+
+const TESLA_PARSER = {
+  type:"delimited_prefix",
+  separators:[":","\\u001d","\\r","\\n"],
+  outputs:[
+    {key:"batch",semantic:"batch",pattern:"^1T(D[0-9]+)$",group:1},
+    {key:"delivery_note",semantic:"delivery_note",pattern:"^99Z([0-9]+)$",group:1},
+    {key:"quantity",pattern:"^Q([0-9]+(?:[.,][0-9]+)?)$",group:1,replaceComma:true},
+    {key:"unit",pattern:"^3Q([A-Z]+)$",group:1,uppercase:true}
+  ],
+  combinations:[{semantic:"weight",parts:["quantity","unit"],separator:" "}]
+};
+
+const FIELD_DEFAULTS = {
+  batch_and_drum:{name:"Batch + Fass",ocrMode:"line",regex:"^(D[0-9]+)\\s*/\\s*([0-9]+)$"},
+  batch:{name:"Batch",ocrMode:"line",regex:"^D[0-9]+$"},
+  drum:{name:"Fassnummer",ocrMode:"word",regex:"^[0-9]+$"},
+  idh:{name:"IDH",ocrMode:"word",regex:"^[0-9]{6,8}$"},
+  weight:{name:"Gewicht / Menge",ocrMode:"line",regex:"^[0-9]+(?:[.,][0-9]+)?\\s*(?:KG|LTR|L|G)?$"},
+  delivery_note:{name:"Lieferscheinnummer",ocrMode:"word",regex:"^[0-9]+$"},
+  custom:{name:"Benutzerdefiniert",ocrMode:"line",regex:""},
+  format_anchor:{name:"Formatanker",ocrMode:"none",regex:""},
+  ignore:{name:"Ignorierbereich",ocrMode:"none",regex:""}
+};
+
+const COLORS={batch:"#3ed17d",batch_and_drum:"#3ed17d",drum:"#69d7aa",idh:"#ff8b6b",weight:"#35b9f1",delivery_note:"#e7cc43",custom:"#b989ff",format_anchor:"#f0ad3d",ignore:"#8c9aab",qr:"#ff5db8"};
+
+const state={
+  config:{schema:"etiketten-config",schemaVersion:3,configVersion:"3.0.0",formats:{}},
+  selectedId:"",
+  selectedRegionKey:"",
+  sourceCanvas:null,
+  normalizedCanvas:null,
+  sourceImageData:"",
+  r0:[],
+  view:"normalized",
+  mode:"none",
+  dragStart:null,
+  dragCurrent:null,
+  viewTransform:null,
+  dirty:false
+};
+
+const el={};
+for(const id of ["folderInput","configInput","newConfigButton","newFormatButton","duplicateFormatButton","deleteFormatButton","exportButton","status","formatCount","searchInput","formatList","masterInput","sourceViewButton","markR0Button","normalizeButton","drawFieldButton","drawQrButton","deleteRegionButton","previousFormatButton","nextFormatButton","canvasWrap","canvas","canvasTitle","viewLabel","hint","dirtyBadge","configVersion","formatId","labelRole","formatName","activeFormat","regionCount","regionList","regionEditor","noRegion","regionName","regionKind","ocrEditor","semantic","ocrMode","regexInput","testOcrButton","ocrTestPreview","ocrTestResult","qrEditor","parserPreset","parserJson","parserSample","testParserButton","parserResult","requiredInput"]) el[id]=document.getElementById(id);
+
+function uid(prefix="id"){return prefix+"_"+crypto.getRandomValues(new Uint32Array(2)).join("_");}
+function clone(value){return JSON.parse(JSON.stringify(value));}
+function current(){return state.config.formats[state.selectedId]||null;}
+function allRegions(format=current()){
+  if(!format)return[];
+  return [
+    ...(format.fields||[]).map(item=>({kind:"field",key:"field:"+item.id,item})),
+    ...(format.codeRegions||[]).map(item=>({kind:"code",key:"code:"+item.id,item}))
+  ];
+}
+function selectedRegion(){
+  return allRegions().find(region=>region.key===state.selectedRegionKey)||null;
+}
+function setStatus(text,type=""){
+  el.status.textContent=text;el.status.className="status"+(type?" "+type:"");
+}
+function markDirty(){
+  state.dirty=true;el.dirtyBadge.textContent="geändert";el.dirtyBadge.style.color="#ffd27f";
+}
+function markSaved(){
+  state.dirty=false;el.dirtyBadge.textContent="gespeichert";el.dirtyBadge.style.color="";
+}
+function escapeHtml(value){
+  return String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+
+
+function normalizeRegexText(value){
+  return String(value||"").replace(/\\\\([sSdDwWbB/])/g,"\\$1");
+}
+
+function normalizeConfig(raw){
+  const incoming=raw&&typeof raw==="object"?raw:{};
+  const sourceFormats=incoming.formats||incoming.templates||{};
+  const formats={};
+  for(const [key,value] of Object.entries(sourceFormats)){
+    if(!value||typeof value!=="object")continue;
+    const id=value.formatId||key;
+    formats[id]={
+      formatId:id,
+      formatName:value.formatName||value.name||id,
+      labelRole:value.labelRole||value.role||(id==="Format_001"?"product":"vda"),
+      active:value.active!==false,
+      normalizedSize:value.normalizedSize||{width:1000,height:700},
+      templateImage:value.templateImage||value.image||"",
+      fields:Array.isArray(value.fields)?clone(value.fields).map(field=>({...field,regex:normalizeRegexText(field.regex)})):[],
+      codeRegions:Array.isArray(value.codeRegions)?clone(value.codeRegions):[]
+    };
+  }
+  return {
+    schema:"etiketten-config",
+    schemaVersion:3,
+    configVersion:String(incoming.configVersion||incoming.version||"3.0.0"),
+    exportedAt:incoming.exportedAt||new Date().toISOString(),
+    description:incoming.description||"Gemeinsame Konfiguration für Editor und Etikettenvergleich",
+    formats
+  };
+}
+
+function formatNameFromFile(file){
+  const path=file.webkitRelativePath||file.name||"Etikett";
+  const filename=path.split(/[\\/]/).pop().replace(/\.[^.]+$/,"");
+  return filename
+    .replace(/^\s*(?:format[_ -]?)?\d{1,3}[\s._-]*/i,"")
+    .replace(/[_-]+/g," ")
+    .replace(/\s+/g," ")
+    .trim()||filename;
+}
+
+function isProductLabelFile(file){
+  const value=`${file.webkitRelativePath||""} ${file.name||""}`.toLowerCase();
+  return /(?:produkt|product|format[_ -]?0*1|(?:^|[\\/_ -])0*1(?:[._ -]|$))/.test(value);
+}
+
+function isImageFile(file){
+  return Boolean(file&&((file.type||"").startsWith("image/")||/\.(?:jpe?g|png|webp|bmp|gif)$/i.test(file.name||"")));
+}
+
+async function importLabelFolder(fileList){
+  let files=[...fileList].filter(isImageFile);
+  if(!files.length){setStatus("Im ausgewählten Ordner wurden keine Bilddateien gefunden.","bad");return;}
+  files.sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name,"de",{numeric:true,sensitivity:"base"}));
+  const productIndex=files.findIndex(isProductLabelFile);
+  if(productIndex>0){const [product]=files.splice(productIndex,1);files.unshift(product);}
+  if(state.dirty&&Object.keys(state.config.formats).length&&!confirm("Die aktuelle Konfiguration wird durch den Etikettenordner ersetzt. Fortfahren?"))return;
+
+  const formats={},errors=[];
+  el.folderInput.disabled=true;el.exportButton.disabled=true;
+  try{
+    for(let index=0;index<files.length;index++){
+      const file=files[index],id=`Format_${String(index+1).padStart(3,"0")}`;
+      setStatus(`Etikettenbild ${index+1} von ${files.length} wird geladen: ${file.name}`);
+      try{
+        const image=await loadImage(URL.createObjectURL(file),true);
+        const canvas=imageToCanvas(image,1000);
+        formats[id]={
+          formatId:id,
+          formatName:formatNameFromFile(file),
+          labelRole:index===0?"product":"vda",
+          active:true,
+          normalizedSize:{width:canvas.width,height:canvas.height},
+          templateImage:canvas.toDataURL("image/jpeg",0.88),
+          fields:[],
+          codeRegions:[]
+        };
+      }catch(error){errors.push(`${file.name}: ${error.message||error}`);}
+    }
+    if(!Object.keys(formats).length)throw new Error("Keines der Bilder konnte geladen werden.");
+    state.config=normalizeConfig({configVersion:"3.7.0",formats});
+    el.configVersion.value="3.5.0";
+    el.searchInput.value="";
+    renderFormatList();
+    const first=Object.keys(formats)[0];
+    await selectFormat(first);
+    el.exportButton.disabled=false;
+    markDirty();
+    const suffix=errors.length?` ${errors.length} Bild(er) konnten nicht geladen werden.`:"";
+    setStatus(`${Object.keys(formats).length} Etikettenbilder übernommen. Das erste Bild ist das Produktlabel. Jetzt nur noch die Bereiche markieren.${suffix}`,errors.length?"":"ok");
+    if(errors.length)console.warn("Fehler beim Ordnerimport",errors);
+  }catch(error){console.error(error);setStatus(error.message||String(error),"bad");}
+  finally{el.folderInput.disabled=false;el.folderInput.value="";el.exportButton.disabled=!Object.keys(state.config.formats).length;}
+}
+
+async function importConfigFile(file){
+  try{
+    const parsed=JSON.parse(await file.text());
+    state.config=normalizeConfig(parsed);
+    el.configVersion.value=state.config.configVersion;
+    const first=Object.keys(state.config.formats)[0]||"";
+    renderFormatList();
+    if(first)await selectFormat(first);else clearSelection();
+    el.exportButton.disabled=false;
+    markSaved();
+    setStatus(`${Object.keys(state.config.formats).length} Formate importiert.`,"ok");
+  }catch(error){console.error(error);setStatus(error.message||String(error),"bad");}
+}
+
+function clearSelection(){
+  state.selectedId="";state.selectedRegionKey="";state.sourceCanvas=null;state.normalizedCanvas=null;state.r0=[];
+  el.canvasTitle.textContent="Kein Format ausgewählt";renderAll();updateControls();
+}
+
+function renderFormatList(){
+  const query=el.searchInput.value.trim().toLowerCase();
+  el.formatList.innerHTML="";
+  const entries=Object.values(state.config.formats).filter(format=>
+    !query||`${format.formatId} ${format.formatName}`.toLowerCase().includes(query)
+  );
+  for(const format of entries){
+    const button=document.createElement("button");
+    button.className="format-item"+(format.formatId===state.selectedId?" active":"");
+    button.innerHTML=`<div class="format-id">${escapeHtml(format.formatId)}</div><div class="format-sub">${escapeHtml(format.formatName)} · ${format.labelRole==="product"?"Produkt":"VDA"}${format.active===false?" · inaktiv":""}</div>`;
+    button.addEventListener("click",()=>selectFormat(format.formatId));
+    el.formatList.appendChild(button);
+  }
+  el.formatCount.textContent=String(Object.keys(state.config.formats).length);
+}
+
+async function selectFormat(id){
+  const format=state.config.formats[id];if(!format)return;
+  state.selectedId=id;state.selectedRegionKey="";state.r0=[];state.sourceCanvas=null;state.normalizedCanvas=null;
+  el.formatId.value=id;el.formatName.value=format.formatName||"";el.labelRole.value=format.labelRole||"vda";el.activeFormat.checked=format.active!==false;
+  el.canvasTitle.textContent=`${id} – ${format.formatName}`;
+  if(format.templateImage){
+    const image=await loadImage(format.templateImage);
+    const canvas=imageToCanvas(image,1600);
+    state.sourceCanvas=canvas;
+    state.normalizedCanvas=copyCanvas(canvas);
+    state.r0=[{x:0,y:0},{x:canvas.width,y:0},{x:canvas.width,y:canvas.height},{x:0,y:canvas.height}];
+    state.view="normalized";
+  }
+  renderAll();updateControls();renderFormatList();
+}
+
+function updateFormatMeta(){
+  const format=current();if(!format)return;
+  format.formatName=el.formatName.value.trim()||format.formatId;
+  format.labelRole=el.labelRole.value;
+  format.active=el.activeFormat.checked;
+  el.canvasTitle.textContent=`${format.formatId} – ${format.formatName}`;
+  markDirty();renderFormatList();
+}
+
+function createNewFormat(){
+  let suggested=1;
+  const ids=Object.keys(state.config.formats);
+  while(ids.includes(`Format_${String(suggested).padStart(3,"0")}`))suggested++;
+  const id=(prompt("Neue eindeutige Format-ID:",`Format_${String(suggested).padStart(3,"0")}`)||"").trim();
+  if(!id)return;
+  if(state.config.formats[id]){setStatus("Diese Format-ID existiert bereits.","bad");return;}
+  const name=(prompt("Bezeichnung des Formats:","Neues VDA-Format")||id).trim();
+  state.config.formats[id]={formatId:id,formatName:name,labelRole:"vda",active:true,normalizedSize:{width:1000,height:700},templateImage:"",fields:[],codeRegions:[]};
+  el.exportButton.disabled=false;markDirty();renderFormatList();selectFormat(id);setStatus("Neues Format angelegt. Jetzt das Masterbild laden.","ok");
+}
+
+function duplicateFormat(){
+  const source=current();if(!source)return;
+  const id=(prompt("ID der Kopie:",source.formatId+"_Kopie")||"").trim();if(!id)return;
+  if(state.config.formats[id]){setStatus("Diese Format-ID existiert bereits.","bad");return;}
+  const copy=clone(source);copy.formatId=id;copy.formatName=source.formatName+" Kopie";
+  for(const field of copy.fields||[])field.id=uid("field");
+  for(const region of copy.codeRegions||[])region.id=uid("code");
+  state.config.formats[id]=copy;markDirty();renderFormatList();selectFormat(id);
+}
+
+function deleteFormat(){
+  const format=current();if(!format)return;
+  if(!confirm(`${format.formatId} wirklich aus der Konfiguration löschen?`))return;
+  delete state.config.formats[format.formatId];markDirty();
+  const next=Object.keys(state.config.formats)[0]||"";renderFormatList();
+  if(next)selectFormat(next);else clearSelection();
+}
+
+async function loadMaster(file){
+  const format=current();if(!format)return;
+  const image=await loadImage(URL.createObjectURL(file),true);
+  const canvas=imageToCanvas(image,1000);
+  state.sourceCanvas=canvas;state.normalizedCanvas=copyCanvas(canvas);
+  state.r0=[{x:0,y:0},{x:canvas.width,y:0},{x:canvas.width,y:canvas.height},{x:0,y:canvas.height}];
+  state.view="source";state.mode="none";
+  saveNormalizedImageToFormat();markDirty();renderAll();updateControls();
+  setStatus(`${format.formatId}: Masterbild geladen. Ecken bei Bedarf markieren und entzerren.`,"ok");
+}
+
+function saveNormalizedImageToFormat(){
+  const format=current();if(!format||!state.normalizedCanvas)return;
+  format.normalizedSize={width:state.normalizedCanvas.width,height:state.normalizedCanvas.height};
+  format.templateImage=state.normalizedCanvas.toDataURL("image/jpeg",0.88);
+}
+
+function renderAll(){renderCanvas();renderRegions();renderRegionEditor();updateControls();}
+function updateControls(){
+  const has=Boolean(current()),hasImage=Boolean(state.sourceCanvas),hasNorm=Boolean(state.normalizedCanvas);
+  const ids=Object.keys(state.config.formats),position=ids.indexOf(state.selectedId);
+  for(const button of [el.duplicateFormatButton,el.deleteFormatButton])button.disabled=!has;
+  el.previousFormatButton.disabled=position<=0;el.nextFormatButton.disabled=position<0||position>=ids.length-1;
+  el.sourceViewButton.disabled=!hasImage;el.markR0Button.disabled=!hasImage;el.normalizeButton.disabled=!hasImage||state.r0.length!==4;
+  el.drawFieldButton.disabled=!hasNorm;el.drawQrButton.disabled=!hasNorm;el.deleteRegionButton.disabled=!selectedRegion();
+  for(const input of [el.formatName,el.labelRole,el.activeFormat,el.masterInput])input.disabled=!has;
+  el.viewLabel.textContent=hasImage?(state.view==="source"?"Originalbild":"Normalisierte Vorlage"):"—";
+  el.hint.textContent=state.mode==="mark-r0"?"Vier äußere Etikettenecken nacheinander antippen."
+    :state.mode==="draw-field"?"Auf der normalisierten Vorlage ein Rechteck für das OCR-Feld ziehen."
+    :state.mode==="draw-code"?"Den QR-Code eng mit einem Rechteck markieren."
+    :hasNorm?"Bereich auswählen oder neue Bereiche zeichnen.":"Masterbild laden.";
+}
+
+function renderCanvas(){
+  const canvas=el.canvas,wrap=el.canvasWrap;
+  canvas.width=Math.max(500,wrap.clientWidth-20);canvas.height=Math.max(430,wrap.clientHeight-20);
+  const ctx=canvas.getContext("2d");ctx.fillStyle="#07111f";ctx.fillRect(0,0,canvas.width,canvas.height);
+  const imageCanvas=state.view==="source"?state.sourceCanvas:state.normalizedCanvas;
+  if(!imageCanvas){ctx.fillStyle="#9baec5";ctx.textAlign="center";ctx.font="18px system-ui";ctx.fillText("Kein Masterbild geladen",canvas.width/2,canvas.height/2);state.viewTransform=null;return;}
+  const pad=18,scale=Math.min((canvas.width-pad*2)/imageCanvas.width,(canvas.height-pad*2)/imageCanvas.height);
+  const width=imageCanvas.width*scale,height=imageCanvas.height*scale,x=(canvas.width-width)/2,y=(canvas.height-height)/2;
+  state.viewTransform={x,y,scale,width,height,imageWidth:imageCanvas.width,imageHeight:imageCanvas.height};
+  ctx.drawImage(imageCanvas,x,y,width,height);
+  if(state.view==="source"&&state.r0.length){
+    ctx.strokeStyle="#f4b540";ctx.fillStyle="#f4b540";ctx.lineWidth=2;
+    ctx.beginPath();state.r0.forEach((point,index)=>{const p=imageToScreen(point);index?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)});if(state.r0.length===4)ctx.closePath();ctx.stroke();
+    for(const point of state.r0){const p=imageToScreen(point);ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();}
+  }
+  if(state.view==="normalized"){
+    for(const region of allRegions()){
+      const item=region.item,color=region.kind==="code"?COLORS.qr:(COLORS[item.semantic]||COLORS.custom);
+      const rx=x+item.x*width,ry=y+item.y*height,rw=item.width*width,rh=item.height*height;
+      ctx.strokeStyle=color;ctx.lineWidth=region.key===state.selectedRegionKey?4:2;ctx.strokeRect(rx,ry,rw,rh);
+      ctx.fillStyle=color;ctx.font="12px system-ui";ctx.fillText(region.kind==="code"?"QR":item.name||item.semantic,rx+3,Math.max(12,ry-4));
+    }
+  }
+  if(state.dragStart&&state.dragCurrent){
+    ctx.strokeStyle=state.mode==="draw-code"?COLORS.qr:COLORS.custom;ctx.lineWidth=2;ctx.setLineDash([6,4]);
+    ctx.strokeRect(state.dragStart.x,state.dragStart.y,state.dragCurrent.x-state.dragStart.x,state.dragCurrent.y-state.dragStart.y);ctx.setLineDash([]);
+  }
+}
+
+function renderRegions(){
+  el.regionList.innerHTML="";const regions=allRegions();el.regionCount.textContent=String(regions.length);
+  for(const region of regions){
+    const button=document.createElement("div");button.className="region-item"+(region.key===state.selectedRegionKey?" active":"");
+    const color=region.kind==="code"?COLORS.qr:(COLORS[region.item.semantic]||COLORS.custom);
+    button.innerHTML=`<span class="dot" style="background:${color}"></span><div><strong>${escapeHtml(region.item.name||region.item.semantic||"Bereich")}</strong><div class="small">${region.kind==="code"?"QR-Code":escapeHtml(region.item.semantic)}</div></div>`;
+    button.addEventListener("click",()=>{state.selectedRegionKey=region.key;renderAll();});
+    el.regionList.appendChild(button);
+  }
+}
+
+function renderRegionEditor(){
+  const region=selectedRegion();
+  el.regionEditor.classList.toggle("hidden",!region);el.noRegion.classList.toggle("hidden",Boolean(region));
+  if(!region)return;
+  const item=region.item;el.regionName.value=item.name||"";el.regionKind.value=region.kind==="code"?"QR-/2D-Code":"OCR-Feld";el.requiredInput.checked=item.required!==false;
+  el.ocrEditor.classList.toggle("hidden",region.kind!=="field");el.qrEditor.classList.toggle("hidden",region.kind!=="code");
+  if(region.kind==="field"){
+    el.semantic.value=item.semantic||"custom";el.ocrMode.value=item.ocrMode||"line";el.regexInput.value=item.regex||"";
+    el.testOcrButton.disabled=item.ocrMode==="none"||!state.normalizedCanvas;
+    el.ocrTestResult.textContent="Noch nicht getestet.";
+    el.ocrTestPreview.classList.remove("visible");
+    el.ocrTestPreview.removeAttribute("src");
+  }
+  else{
+    el.parserPreset.value=item.parserPreset||"custom";
+    el.parserJson.value=JSON.stringify(item.parser||TESLA_PARSER,null,2);
+  }
+}
+
+function updateRegionFromForm(){
+  const region=selectedRegion();if(!region)return;const item=region.item;
+  item.name=el.regionName.value.trim()||item.name;item.required=el.requiredInput.checked;
+  if(region.kind==="field"){
+    item.semantic=el.semantic.value;item.ocrMode=el.ocrMode.value;item.regex=normalizeRegexText(el.regexInput.value);el.regexInput.value=item.regex;
+  }else{
+    item.parserPreset=el.parserPreset.value;
+    try{item.parser=JSON.parse(el.parserJson.value);el.parserJson.style.borderColor="";}catch{el.parserJson.style.borderColor="#ef6671";}
+  }
+  markDirty();renderRegions();renderCanvas();
+}
+
+function addRegion(kind,rect){
+  const format=current();if(!format)return;
+  if(kind==="field"){
+    const semantic="batch",defaults=FIELD_DEFAULTS[semantic];
+    const field={id:uid("field"),semantic,name:defaults.name,x:rect.x,y:rect.y,width:rect.width,height:rect.height,required:true,ocrMode:defaults.ocrMode,regex:defaults.regex};
+    format.fields.push(field);state.selectedRegionKey="field:"+field.id;
+  }else{
+    const region={id:uid("code"),name:"QR-Code",codeType:"qr",x:rect.x,y:rect.y,width:rect.width,height:rect.height,required:true,parserPreset:"tesla_vda",parser:clone(TESLA_PARSER)};
+    format.codeRegions.push(region);state.selectedRegionKey="code:"+region.id;
+  }
+  markDirty();renderAll();
+}
+
+function deleteSelectedRegion(){
+  const format=current(),region=selectedRegion();if(!format||!region)return;
+  if(region.kind==="field")format.fields=format.fields.filter(item=>"field:"+item.id!==region.key);
+  else format.codeRegions=format.codeRegions.filter(item=>"code:"+item.id!==region.key);
+  state.selectedRegionKey="";markDirty();renderAll();
+}
+
+function canvasPoint(event){
+  const rect=el.canvas.getBoundingClientRect();
+  return {x:(event.clientX-rect.left)*el.canvas.width/rect.width,y:(event.clientY-rect.top)*el.canvas.height/rect.height};
+}
+function screenToImage(point){
+  const view=state.viewTransform;if(!view)return null;
+  const x=(point.x-view.x)/view.scale,y=(point.y-view.y)/view.scale;
+  if(x<0||y<0||x>view.imageWidth||y>view.imageHeight)return null;
+  return{x,y};
+}
+function imageToScreen(point){const v=state.viewTransform;return{x:v.x+point.x*v.scale,y:v.y+point.y*v.scale};}
+
+el.canvas.addEventListener("pointerdown",event=>{
+  const point=canvasPoint(event);
+  if(state.mode==="mark-r0"){
+    const image=screenToImage(point);if(!image)return;
+    if(state.r0.length>=4)state.r0=[];state.r0.push(image);if(state.r0.length===4){state.r0=orderPoints(state.r0);state.mode="none";}markDirty();renderAll();return;
+  }
+  if(["draw-field","draw-code"].includes(state.mode)&&state.view==="normalized"){
+    if(!screenToImage(point))return;state.dragStart=point;state.dragCurrent=point;el.canvas.setPointerCapture(event.pointerId);renderCanvas();
+  }
+});
+el.canvas.addEventListener("pointermove",event=>{if(!state.dragStart)return;state.dragCurrent=canvasPoint(event);renderCanvas();});
+el.canvas.addEventListener("pointerup",event=>{
+  if(!state.dragStart)return;
+  const end=canvasPoint(event),start=state.dragStart;state.dragStart=null;state.dragCurrent=null;
+  const a=screenToImage(start),b=screenToImage(end);if(!a||!b){renderCanvas();return;}
+  const canvas=state.normalizedCanvas;const x=Math.min(a.x,b.x)/canvas.width,y=Math.min(a.y,b.y)/canvas.height,width=Math.abs(b.x-a.x)/canvas.width,height=Math.abs(b.y-a.y)/canvas.height;
+  if(width>.01&&height>.01)addRegion(state.mode==="draw-code"?"code":"field",{x,y,width,height});
+  state.mode="none";renderAll();
+});
+
+function normalizeCurrent(){
+  if(!state.sourceCanvas||state.r0.length!==4)return;
+  try{
+    state.normalizedCanvas=warpQuadrilateral(state.sourceCanvas,orderPoints(state.r0));
+    state.view="normalized";state.mode="none";saveNormalizedImageToFormat();markDirty();renderAll();
+    setStatus(`${current().formatId}: Vorlage entzerrt und in der Konfiguration aktualisiert.`,"ok");
+  }catch(error){setStatus(error.message||String(error),"bad");}
+}
+
+function validateConfig(){
+  const problems=[],formats=Object.values(state.config.formats);
+  const products=formats.filter(item=>item.active!==false&&item.labelRole==="product");
+  const vdas=formats.filter(item=>item.active!==false&&item.labelRole==="vda");
+  if(products.length!==1)problems.push(`Genau ein aktives Produktlabel erforderlich; aktuell ${products.length}.`);
+  if(!vdas.length)problems.push("Mindestens ein aktives VDA-/Vergleichsformat erforderlich.");
+  for(const format of formats){
+    if(!format.templateImage)problems.push(`${format.formatId}: kein Masterbild.`);
+    const hasBatch=(format.fields||[]).some(field=>["batch","batch_and_drum"].includes(field.semantic))||
+      (format.codeRegions||[]).some(region=>(region.parser?.outputs||[]).some(output=>output.semantic==="batch"));
+    if(!hasBatch)problems.push(`${format.formatId}: keine Batch-Datenquelle.`);
+    for(const region of format.codeRegions||[]){if(!region.parser)problems.push(`${format.formatId}/${region.name}: kein Parser.`);}
+  }
+  return problems;
+}
+
+function exportConfig(){
+  updateRegionFromForm();
+  state.config.configVersion=el.configVersion.value.trim()||"3.0.0";
+  state.config.exportedAt=new Date().toISOString();
+  for(const format of Object.values(state.config.formats)){for(const field of format.fields||[]){field.regex=normalizeRegexText(field.regex);}}
+  const problems=validateConfig();
+  if(problems.length&&!confirm("Die Konfiguration hat Hinweise:\\n\\n"+problems.join("\\n")+"\\n\\nTrotzdem exportieren?"))return;
+  const blob=new Blob([JSON.stringify(state.config,null,2)],{type:"application/json"});
+  const anchor=document.createElement("a");anchor.href=URL.createObjectURL(blob);anchor.download="etiketten-config.json";document.body.appendChild(anchor);anchor.click();anchor.remove();
+  setTimeout(()=>URL.revokeObjectURL(anchor.href),1000);markSaved();setStatus("etiketten-config.json exportiert.","ok");
+}
+
+
+function cropOcrFieldForTest(sourceCanvas,field){
+  const padding=0.008;
+  const left=Math.max(0,(Number(field.x)-padding)*sourceCanvas.width);
+  const top=Math.max(0,(Number(field.y)-padding)*sourceCanvas.height);
+  const right=Math.min(sourceCanvas.width,(Number(field.x)+Number(field.width)+padding)*sourceCanvas.width);
+  const bottom=Math.min(sourceCanvas.height,(Number(field.y)+Number(field.height)+padding)*sourceCanvas.height);
+  const width=Math.max(1,right-left),height=Math.max(1,bottom-top);
+  const scale=Math.max(2,Math.min(5,1200/Math.max(width,height)));
+  const canvas=document.createElement("canvas");
+  canvas.width=Math.max(1,Math.round(width*scale));
+  canvas.height=Math.max(1,Math.round(height*scale));
+  const context=canvas.getContext("2d",{willReadFrequently:true});
+  context.fillStyle="white";context.fillRect(0,0,canvas.width,canvas.height);
+  context.imageSmoothingEnabled=true;context.imageSmoothingQuality="high";
+  context.drawImage(sourceCanvas,left,top,width,height,0,0,canvas.width,canvas.height);
+  const image=context.getImageData(0,0,canvas.width,canvas.height);
+  for(let index=0;index<image.data.length;index+=4){
+    const gray=image.data[index]*.299+image.data[index+1]*.587+image.data[index+2]*.114;
+    const value=Math.max(0,Math.min(255,(gray-128)*1.45+128));
+    image.data[index]=value;image.data[index+1]=value;image.data[index+2]=value;
+  }
+  context.putImageData(image,0,0);
+  return canvas;
+}
+
+function ocrCandidates(text){
+  const raw=String(text||"").trim();
+  const lines=raw.split(/[\r\n]+/).map(value=>value.trim()).filter(Boolean);
+  const normalized=raw.replace(/\s+/g," ").trim();
+  const compact=raw.replace(/\s+/g,"");
+  return [...new Set([raw,normalized,compact,...lines].filter(Boolean))];
+}
+
+async function testSelectedOcrField(){
+  const region=selectedRegion();
+  if(!region||region.kind!=="field"||!state.normalizedCanvas)return;
+  updateRegionFromForm();
+  if(region.item.ocrMode==="none"){
+    el.ocrTestResult.textContent="Für dieses Feld ist ‚Keine OCR‘ eingestellt.";
+    return;
+  }
+  if(!window.Tesseract?.recognize){
+    el.ocrTestResult.textContent="Tesseract konnte nicht geladen werden. Bitte Internetverbindung prüfen und den Editor neu öffnen.";
+    return;
+  }
+  const crop=cropOcrFieldForTest(state.normalizedCanvas,region.item);
+  el.ocrTestPreview.src=crop.toDataURL("image/png");
+  el.ocrTestPreview.classList.add("visible");
+  el.testOcrButton.disabled=true;
+  el.ocrTestResult.textContent="OCR wird ausgeführt … 0 %";
+  try{
+    const result=await Tesseract.recognize(crop,"eng",{
+      logger:message=>{
+        if(message.status==="recognizing text")el.ocrTestResult.textContent=`OCR wird ausgeführt … ${Math.round((message.progress||0)*100)} %`;
+      }
+    });
+    const rawText=String(result?.data?.text||"").trim();
+    const candidates=ocrCandidates(rawText);
+    const pattern=normalizeRegexText(region.item.regex||"").trim();region.item.regex=pattern;el.regexInput.value=pattern;
+    let regexStatus="Kein regulärer Ausdruck eingetragen.";
+    let matched="";
+    if(pattern){
+      try{
+        const regex=new RegExp(pattern,"i");
+        matched=candidates.find(value=>regex.test(value))||"";
+        regexStatus=matched?`PASST: ${matched}`:"PASST NICHT";
+      }catch(error){regexStatus=`UNGÜLTIGER REGEX: ${error.message||error}`;}
+    }
+    const confidence=Number(result?.data?.confidence||0);
+    el.ocrTestResult.textContent=[
+      `OCR-Rohtext: ${rawText||"(leer)"}`,
+      `Bereinigt: ${candidates[1]||candidates[0]||"(leer)"}`,
+      `Konfidenz: ${confidence.toFixed(1)} %`,
+      `RegEx: ${regexStatus}`,
+      pattern.includes("\\\\")?"Hinweis: Im Editor einfache Backslashes verwenden, z. B. \\s. Die JSON-Datei erzeugt die doppelten Backslashes beim Export automatisch.":""
+    ].filter(Boolean).join("\n");
+  }catch(error){
+    console.error(error);
+    el.ocrTestResult.textContent=`OCR-Test fehlgeschlagen: ${error.message||error}`;
+  }finally{
+    el.testOcrButton.disabled=region.item.ocrMode==="none"||!state.normalizedCanvas;
+  }
+}
+
+function parsePayload(raw,parser){
+  let cleaned=String(raw||"");
+  for(const configured of parser.separators||[":","\\u001d","\\r","\\n"]){
+    const separator=configured==="\\u001d"?"\u001d":configured==="\\r"?"\r":configured==="\\n"?"\n":configured;
+    if(separator&&separator!==":")cleaned=cleaned.split(separator).join(":");
+  }
+  cleaned=cleaned.replace(/[\u001d\r\n]+/g,":").replace(/::+/g,":");
+  const tokens=cleaned.split(":").map(token=>token.trim()).filter(Boolean),values={};
+  for(const output of parser.outputs||[]){
+    const regex=new RegExp(output.pattern,output.flags||"i");
+    for(const token of tokens){
+      const match=token.match(regex);if(!match)continue;
+      let value=match[Number(output.group||0)]??match[0];
+      if(output.replaceComma)value=String(value).replace(",",".");
+      if(output.uppercase)value=String(value).toUpperCase();
+      values[output.key||output.semantic]=String(value);if(output.semantic)values[output.semantic]=String(value);break;
+    }
+  }
+  for(const combo of parser.combinations||[]){
+    const parts=(combo.parts||[]).map(key=>values[key]).filter(Boolean);
+    if(parts.length===(combo.parts||[]).length)values[combo.semantic]=parts.join(combo.separator??" ");
+  }
+  return values;
+}
+
+function testParser(){
+  const region=selectedRegion();if(!region||region.kind!=="code")return;
+  try{
+    const parser=JSON.parse(el.parserJson.value);const values=parsePayload(el.parserSample.value,parser);
+    el.parserResult.textContent=Object.keys(values).length?JSON.stringify(values,null,2):"Keine passenden Werte gefunden.";
+  }catch(error){el.parserResult.textContent="Fehler: "+(error.message||String(error));}
+}
+
+function loadImage(source,revoke=false){
+  return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{if(revoke)URL.revokeObjectURL(source);resolve(image)};image.onerror=()=>{if(revoke)URL.revokeObjectURL(source);reject(new Error("Bild konnte nicht geladen werden."))};image.src=source;});
+}
+function imageToCanvas(image,maxSide){
+  const scale=Math.min(1,maxSide/Math.max(image.naturalWidth,image.naturalHeight));const canvas=document.createElement("canvas");
+  canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});ctx.fillStyle="white";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);return canvas;
+}
+function copyCanvas(source){const canvas=document.createElement("canvas");canvas.width=source.width;canvas.height=source.height;canvas.getContext("2d").drawImage(source,0,0);return canvas;}
+function distance(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function orderPoints(input){
+  const points=input.map(p=>({x:+p.x,y:+p.y}));const sums=[...points].sort((a,b)=>(a.x+a.y)-(b.x+b.y)),tl=sums[0],br=sums[3];
+  const rest=points.filter(p=>p!==tl&&p!==br);const tr=rest[0].x-rest[0].y>rest[1].x-rest[1].y?rest[0]:rest[1],bl=rest[0]===tr?rest[1]:rest[0];return[tl,tr,br,bl];
+}
+function warpQuadrilateral(source,points){
+  const [tl,tr,br,bl]=points;
+  let width=Math.round(Math.max(distance(tl,tr),distance(bl,br))),height=Math.round(Math.max(distance(tl,bl),distance(tr,br)));
+  const scale=Math.min(1,1400/Math.max(width,height));width=Math.max(100,Math.round(width*scale));height=Math.max(100,Math.round(height*scale));
+  const destination=[{x:0,y:0},{x:width-1,y:0},{x:width-1,y:height-1},{x:0,y:height-1}];
+  const h=solveHomography(destination,points),out=document.createElement("canvas");out.width=width;out.height=height;
+  const src=source.getContext("2d",{willReadFrequently:true}).getImageData(0,0,source.width,source.height),dst=out.getContext("2d").createImageData(width,height);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+    const d=h[6]*x+h[7]*y+1,sx=(h[0]*x+h[1]*y+h[2])/d,sy=(h[3]*x+h[4]*y+h[5])/d,di=(y*width+x)*4;
+    if(sx>=0&&sy>=0&&sx<source.width-1&&sy<source.height-1){
+      const x0=Math.floor(sx),y0=Math.floor(sy),fx=sx-x0,fy=sy-y0;
+      for(let c=0;c<4;c++){const p00=src.data[(y0*source.width+x0)*4+c],p10=src.data[(y0*source.width+x0+1)*4+c],p01=src.data[((y0+1)*source.width+x0)*4+c],p11=src.data[((y0+1)*source.width+x0+1)*4+c];dst.data[di+c]=(p00*(1-fx)+p10*fx)*(1-fy)+(p01*(1-fx)+p11*fx)*fy;}
+    }else{dst.data[di]=dst.data[di+1]=dst.data[di+2]=255;dst.data[di+3]=255;}
+  }
+  out.getContext("2d").putImageData(dst,0,0);return out;
+}
+function solveHomography(from,to){
+  const A=[],b=[];for(let i=0;i<4;i++){const x=from[i].x,y=from[i].y,u=to[i].x,v=to[i].y;A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v);}
+  return gaussianSolve(A,b);
+}
+function gaussianSolve(A,b){
+  const n=b.length,M=A.map((row,i)=>[...row,b[i]]);
+  for(let col=0;col<n;col++){let pivot=col;for(let row=col+1;row<n;row++)if(Math.abs(M[row][col])>Math.abs(M[pivot][col]))pivot=row;if(Math.abs(M[pivot][col])<1e-10)throw new Error("Die vier Ecken ergeben keine gültige Perspektive.");[M[col],M[pivot]]=[M[pivot],M[col]];const d=M[col][col];for(let j=col;j<=n;j++)M[col][j]/=d;for(let row=0;row<n;row++){if(row===col)continue;const f=M[row][col];for(let j=col;j<=n;j++)M[row][j]-=f*M[col][j];}}
+  return M.map(row=>row[n]);
+}
+
+el.folderInput.addEventListener("change",async()=>{const files=el.folderInput.files;if(files?.length)await importLabelFolder(files);else el.folderInput.value="";});
+el.configInput.addEventListener("change",()=>{const file=el.configInput.files?.[0];if(file)importConfigFile(file);el.configInput.value="";});
+el.newConfigButton.addEventListener("click",()=>{if(state.dirty&&!confirm("Nicht exportierte Änderungen verwerfen?"))return;state.config=normalizeConfig({formats:{}});el.configVersion.value="3.0.0";clearSelection();renderFormatList();el.exportButton.disabled=false;markDirty();setStatus("Neue leere Konfiguration angelegt.","ok");});
+el.newFormatButton.addEventListener("click",createNewFormat);el.duplicateFormatButton.addEventListener("click",duplicateFormat);el.deleteFormatButton.addEventListener("click",deleteFormat);el.exportButton.addEventListener("click",exportConfig);
+el.searchInput.addEventListener("input",renderFormatList);el.masterInput.addEventListener("change",async()=>{const file=el.masterInput.files?.[0];if(file)await loadMaster(file);el.masterInput.value="";});
+el.sourceViewButton.addEventListener("click",()=>{state.view="source";state.mode="none";renderAll();});
+el.markR0Button.addEventListener("click",()=>{state.view="source";state.r0=[];state.mode="mark-r0";renderAll();});
+el.normalizeButton.addEventListener("click",normalizeCurrent);
+el.drawFieldButton.addEventListener("click",()=>{state.view="normalized";state.mode="draw-field";renderAll();});
+el.drawQrButton.addEventListener("click",()=>{state.view="normalized";state.mode="draw-code";renderAll();});
+el.deleteRegionButton.addEventListener("click",deleteSelectedRegion);
+el.previousFormatButton.addEventListener("click",()=>{const ids=Object.keys(state.config.formats),index=ids.indexOf(state.selectedId);if(index>0)selectFormat(ids[index-1]);});
+el.nextFormatButton.addEventListener("click",()=>{const ids=Object.keys(state.config.formats),index=ids.indexOf(state.selectedId);if(index>=0&&index<ids.length-1)selectFormat(ids[index+1]);});
+for(const input of [el.formatName,el.labelRole,el.activeFormat]){input.addEventListener("input",updateFormatMeta);input.addEventListener("change",updateFormatMeta);}
+el.configVersion.addEventListener("input",()=>{state.config.configVersion=el.configVersion.value;markDirty();});
+for(const input of [el.regionName,el.semantic,el.ocrMode,el.regexInput,el.requiredInput,el.parserJson]){input.addEventListener("input",updateRegionFromForm);input.addEventListener("change",updateRegionFromForm);}
+el.semantic.addEventListener("change",()=>{const region=selectedRegion();if(!region||region.kind!=="field")return;const defaults=FIELD_DEFAULTS[el.semantic.value];region.item.name=defaults.name;region.item.ocrMode=defaults.ocrMode;region.item.regex=defaults.regex;renderRegionEditor();updateRegionFromForm();});
+el.parserPreset.addEventListener("change",()=>{if(el.parserPreset.value==="tesla_vda")el.parserJson.value=JSON.stringify(TESLA_PARSER,null,2);updateRegionFromForm();});
+el.testOcrButton.addEventListener("click",testSelectedOcrField);
+el.testParserButton.addEventListener("click",testParser);
+window.addEventListener("resize",renderCanvas);
+window.addEventListener("beforeunload",event=>{if(state.dirty){event.preventDefault();event.returnValue="";}});
+
+renderAll();
+</script>
+</body>
+</html>
