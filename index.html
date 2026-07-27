@@ -6,10 +6,7 @@
   <meta name="theme-color" content="#071426">
   <title>Etikettenvergleich – Konfiguration Phase 3.13</title>
 
-  <!--
-    Die Bibliotheken werden lediglich als Programmdateien geladen.
-    Fotos und OCR-Ergebnisse werden nicht hochgeladen.
-  -->
+  <!-- Bibliotheken lokal im Browser-Arbeitsspeicher -->
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
@@ -129,7 +126,7 @@
     .data-input-label { color:var(--muted); font-size:.72rem; font-weight:700; }
     .data-input {
       width:100%; min-width:125px; min-height:40px; padding:8px 9px;
-      border-radius:9px; border:2px solid var(--border); background:#0a1728;
+      border-radius:99px; border:2px solid var(--border); background:#0a1728;
       color:var(--text); font:700 .9rem ui-monospace,SFMono-Regular,Consolas,monospace;
     }
     .data-input.safe { border-color:#397f5a; background:#102d22; }
@@ -884,16 +881,22 @@ async function getTemplateFeatures(formatId) {
   const gray = new cv.Mat();
   cv.cvtColor(color, gray, cv.COLOR_RGBA2GRAY);
 
+  // ORB-Feature-Erzeugung im Kopfbereich des Musterbilds
+  const headerHeight = Math.round(gray.rows * 0.35);
+  const roiMask = cv.Mat.zeros(gray.rows, gray.cols, cv.CV_8UC1);
+  const roiRect = new cv.Rect(0, 0, gray.cols, headerHeight);
+  roiMask.submat(roiRect).setTo(new cv.Scalar(255));
+
   const orb = new cv.ORB(800);
   const keypoints = new cv.KeyPointVector();
   const descriptors = new cv.Mat();
-  const mask = new cv.Mat();
-  orb.detectAndCompute(gray, mask, keypoints, descriptors);
+  orb.detectAndCompute(gray, roiMask, keypoints, descriptors);
+  roiMask.delete();
 
   const item = { image, canvas, keypoints, descriptors };
   templateCache.set(formatId, item);
 
-  cleanupCv([color,gray,mask,orb]);
+  cleanupCv([color,gray,orb]);
   return item;
 }
 
@@ -1794,7 +1797,7 @@ document.getElementById("retryScanA")?.addEventListener("click", () => p22RetryS
 document.getElementById("retryScanB")?.addEventListener("click", () => p22RetrySlot("b"));
 `,
 
-    // Chunk 4: Phase 2.3 Formaterkennung mit ROI (Kopfbereich 35%)
+    // Chunk 4: Phase 2.3 Formaterkennung mit Top-35% ROI Maske
     `
 "use strict";
 
@@ -1833,7 +1836,7 @@ async function recognizeTemplate(sourceCanvas, slotKey) {
   );
   cv.cvtColor(query, queryGray, cv.COLOR_RGBA2GRAY);
 
-  // OPTIMIERUNG: ORB-Suche auf das obere Drittel (Top 35%) beschränken
+  // OPTIMIERUNG: ORB-Suche nur im Kopfbereich (Top 35%) ausführen
   const headerHeight = Math.round(queryGray.rows * 0.35);
   const roiMask = cv.Mat.zeros(queryGray.rows, queryGray.cols, cv.CV_8UC1);
   const roiRect = new cv.Rect(0, 0, queryGray.cols, headerHeight);
@@ -3488,7 +3491,7 @@ p37Style.textContent = \`
 document.head.appendChild(p37Style);
 `,
 
-    // Chunk 8: Phase 3.13 Robuste Randerkennung & Layout-Abgleich
+    // Chunk 8: Phase 3.13 Robuste Randerkennung & Morphological Close
     `
 "use strict";
 
@@ -3562,7 +3565,7 @@ function p313FindOuterQuad(sourceCanvas) {
     cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0, 0);
 
     // Weißes Etikett isolieren
-    cv.threshold(gray, binary, 170, 255, cv.THRESH_BINARY);
+    cv.threshold(gray, binary, 165, 255, cv.THRESH_BINARY);
 
     // Barcodes & Trennlinien verschmelzen
     cv.morphologyEx(binary, closed, cv.MORPH_CLOSE, closeKernel);
