@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071426">
+  <title>LabelCheck – Etikettenvergleich</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+</head>
+<body>
+<header>
+  <h1>LabelCheck <small id="versionLabel">4.0</small></h1>
+  <p>Zwei Etiketten fotografieren, automatisch ausrichten und die Batchnummern vergleichen.</p>
+  <div class="privacy">Die Fotos werden ausschließlich im Arbeitsspeicher des Browsers verarbeitet und nicht hochgeladen oder dauerhaft gespeichert.</div>
+</header>
+<main>
+  <div class="system-status">
+    <span id="cvStatus" class="badge wait">OpenCV wird geladen …</span>
+    <span id="ocrStatus" class="badge wait">OCR wird vorbereitet …</span>
+    <span id="configStatus" class="badge wait">Konfiguration wird geladen …</span>
+    <button id="retryOcrButton" type="button">OCR neu laden</button>
+  </div>
+
+  <section class="scan-grid">
+    <article class="card">
+      <div class="card-head"><h2>Etikett 1 – Produktlabel</h2><span id="formatA">Format_001</span></div>
+      <div class="card-body">
+        <label class="capture primary">Foto aufnehmen / auswählen<input id="fileA" type="file" accept="image/*" capture="environment"></label>
+        <div id="previewA" class="preview"><div class="placeholder">Noch kein Bild</div></div>
+        <div id="statusA" class="scan-status">Bereit.</div>
+        <div class="format-rule">Zulässig: ausschließlich Format_001 – Produktlabel</div>
+        <div class="slot-actions"><button id="manualA">Manuell ausrichten</button><button id="retryA">OCR erneut starten</button></div>
+        <table><thead><tr><th>Feld</th><th>Erkannt</th><th>Sicherheit</th></tr></thead><tbody id="valuesA"></tbody></table>
+        <div id="diagA" class="diagnostics hidden"></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>Etikett 2 – Vergleichslabel</h2><span id="formatB">automatisch</span></div>
+      <div class="card-body">
+        <label class="capture primary">Foto aufnehmen / auswählen<input id="fileB" type="file" accept="image/*" capture="environment"></label>
+        <div id="previewB" class="preview"><div class="placeholder">Noch kein Bild</div></div>
+        <div id="statusB" class="scan-status">Bereit.</div>
+        <div class="format-rule">Zulässig: Format_002 bis Format_012. Die Formatwahl erfolgt zuerst über die konfigurierte Mustervorlage.</div>
+        <div class="slot-actions"><button id="manualB">Format / Ecken manuell</button><button id="retryB">OCR erneut starten</button></div>
+        <table><thead><tr><th>Feld</th><th>Erkannt</th><th>Sicherheit</th></tr></thead><tbody id="valuesB"></tbody></table>
+        <div id="diagB" class="diagnostics hidden"></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="card result-card">
+    <div class="card-head"><h2>Vergleich</h2></div>
+    <div class="card-body">
+      <div id="overall" class="overall warn">Bitte beide Etiketten aufnehmen.</div>
+      <table><thead><tr><th>Prüfung</th><th>Produktlabel</th><th>Vergleichslabel</th><th>Ergebnis</th></tr></thead><tbody id="comparisonBody"></tbody></table>
+      <div id="editorSection" class="extracted-section hidden">
+        <h3>Erkannte Werte prüfen und bei Bedarf korrigieren</h3>
+        <div id="dataGrid" class="data-grid"></div>
+      </div>
+      <div id="editorMessage" class="editor-message hidden"></div>
+      <div class="actions">
+        <button id="confirmButton" disabled>Orange Werte bestätigen</button>
+        <button id="saveButton" class="good" disabled>Datensatz übernehmen</button>
+        <button id="compareButton" disabled>Batch erneut prüfen</button>
+        <button id="resetButton" class="danger">Alles zurücksetzen</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card result-card">
+    <div class="card-head"><h2>Lokales Scanprotokoll</h2><span id="logCount">0 Datensätze</span></div>
+    <div class="card-body">
+      <p class="log-note">Die Einträge bleiben lokal in diesem Browser. „CSV speichern/teilen“ öffnet zuerst das System-Teilen-Menü, über das OneDrive ausgewählt werden kann.</p>
+      <div class="actions"><button id="exportButton" disabled>CSV speichern/teilen</button><button id="clearLogButton" class="danger" disabled>Protokoll leeren</button></div>
+      <div class="log-table-wrap"><table class="log-table"><thead><tr><th>Zeit</th><th>Format</th><th>Batch</th><th>IDH Produkt</th><th>IDH Vergleich</th><th>Gewicht Produkt</th><th>Gewicht Vergleich</th><th>Fass</th><th>Lieferschein</th><th>Ergebnis</th></tr></thead><tbody id="logBody"></tbody></table></div>
+    </div>
+  </section>
+</main>
+
+<div id="manualModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-head"><strong>Etikett manuell ausrichten</strong><button id="manualClose">Schließen</button></div>
+    <div class="modal-body">
+      <div class="manual-controls"><select id="manualFormat"></select><button id="manualReset">Punkte zurücksetzen</button></div>
+      <div class="manual-help">Markiere die vier äußeren Ecken des vollständigen Etiketts. Die Reihenfolge ist egal.</div>
+      <div class="manual-canvas"><canvas id="manualCanvas"></canvas></div>
+      <div class="actions"><button id="manualApply" class="good" disabled>Entzerren und OCR starten</button></div>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
