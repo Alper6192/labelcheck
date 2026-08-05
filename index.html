@@ -4,13 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#071426">
-<title>LabelCheck Vision AI</title>
+<title>LabelCheck Vision AI (Florence-2)</title>
 
-<!-- In-Browser Vision KI (Transformers.js v3) -->
+<!-- In-Browser Vision KI (Transformers.js v3 - Direkte Florence-2 Klassen) -->
 <script type="module">
-  import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0';
+  import {
+    Florence2ForConditionalGeneration,
+    AutoProcessor,
+    RawImage,
+    env
+  } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0';
+
   env.allowLocalModels = false;
-  window.transformersPipeline = pipeline;
+  window.Florence2 = Florence2ForConditionalGeneration;
+  window.AutoProcessor = AutoProcessor;
+  window.RawImage = RawImage;
 </script>
 
 <style>
@@ -80,14 +88,14 @@ th{color:var(--muted)}
 <body>
 
 <header>
-  <h1>LabelCheck <small style="color:var(--muted);font-size:.55em">7.2 · Vision AI</small></h1>
-  <p>Fassetiketten per Handykamera aufnehmen – Daten werden automatisch per Vision AI erkannt und verglichen.</p>
+  <h1>LabelCheck <small style="color:var(--muted);font-size:.55em">7.3 · Florence-2 Vision AI</small></h1>
+  <p>Fassetiketten per Handykamera aufnehmen – Daten werden automatisch per Microsoft Florence-2 erkannt und verglichen.</p>
   <div class="privacy">100 % Datenschutz: Fotos &amp; KI-Verarbeitung verbleiben lokal im Arbeitsspeicher Ihres Smartphones.</div>
 </header>
 
 <main class="wrap">
 <div class="statusbar">
-  <span id="configBadge" class="badge ok">Vision AI Aktiv</span>
+  <span id="configBadge" class="badge ok">Florence-2 Aktiv</span>
   <span id="ocrBadge" class="badge warn">KI wird bei Bedarf geladen</span>
 </div>
 
@@ -208,10 +216,11 @@ th{color:var(--muted)}
 "use strict";
 const $=id=>document.getElementById(id);
 const slots={a:emptySlot("a"),b:emptySlot("b")};
-const LOG_KEY="labelcheck_scan_log_v72";
+const LOG_KEY="labelcheck_scan_log_v73";
 let scanLog=loadScanLog();
 
-let visionPipeline=null;
+let florenceModel=null;
+let florenceProcessor=null;
 let isModelLoading=false;
 
 function emptySlot(key){
@@ -223,33 +232,29 @@ function setStatus(key,text,kind=""){const el=$("status"+key.toUpperCase());if(e
 function setProgress(key,value){const el=$("progress"+key.toUpperCase());if(el)el.style.width=Math.max(0,Math.min(100,value))+"%"}
 function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
 
-// Vision AI Pipeline initialisieren (Nativ unterstütztes Donut-Modell)
-async function getVisionPipeline(){
-  if(visionPipeline) return visionPipeline;
+// Florence-2 direkt laden
+async function getFlorence2(){
+  if(florenceModel && florenceProcessor) return { model: florenceModel, processor: florenceProcessor };
   if(isModelLoading){
     while(isModelLoading) await new Promise(r=>setTimeout(r,100));
-    if(visionPipeline) return visionPipeline;
+    if(florenceModel && florenceProcessor) return { model: florenceModel, processor: florenceProcessor };
   }
   isModelLoading=true;
-  setBadge($("ocrBadge"),"KI-Modell wird geladen …","warn");
+  setBadge($("ocrBadge"),"Florence-2 wird geladen …","warn");
   
+  const model_id = 'onnx-community/Florence-2-base-ft';
   try {
     const device = navigator.gpu ? 'webgpu' : 'wasm';
-    visionPipeline = await window.transformersPipeline(
-      'image-to-text',
-      'Xenova/donut-base',
-      { device }
-    );
-    setBadge($("ocrBadge"),`KI bereit (${device.toUpperCase()})`,"ok");
+    florenceModel = await window.Florence2.from_pretrained(model_id, { device });
+    florenceProcessor = await window.AutoProcessor.from_pretrained(model_id);
+    setBadge($("ocrBadge"),`Florence-2 bereit (${device.toUpperCase()})`,"ok");
   } catch(e) {
     console.warn("WebGPU Fallback auf WASM...", e);
     try {
-      visionPipeline = await window.transformersPipeline(
-        'image-to-text',
-        'Xenova/donut-base',
-        { device: 'wasm' }
-      );
-      setBadge($("ocrBadge"),"KI bereit (WASM)","ok");
+      const fallback_id = 'onnx-community/Florence-2-base';
+      florenceModel = await window.Florence2.from_pretrained(fallback_id, { device: 'wasm' });
+      florenceProcessor = await window.AutoProcessor.from_pretrained(fallback_id);
+      setBadge($("ocrBadge"),"Florence-2 bereit (WASM)","ok");
     } catch(err2) {
       setBadge($("ocrBadge"),"KI-Ladefehler","bad");
       throw err2;
@@ -257,7 +262,7 @@ async function getVisionPipeline(){
   } finally {
     isModelLoading=false;
   }
-  return visionPipeline;
+  return { model: florenceModel, processor: florenceProcessor };
 }
 
 // Bild laden
@@ -329,7 +334,7 @@ function parseLabelFields(text){
   return {fields, values};
 }
 
-// Hauptprozessierung
+// Hauptprozessierung mit Florence-2
 async function processSlot(key){
   const s=slots[key];
   if(!s.sourceCanvas){
@@ -339,24 +344,25 @@ async function processSlot(key){
   if(s.busy) return;
   s.busy=true;
 
-  setBadge($("slotBadge"+key.toUpperCase()),"KI analysiert …","warn");
-  setStatus(key,"Vision AI liest gebogenes Etikett …");
+  setBadge($("slotBadge"+key.toUpperCase()),"Florence-2 analysiert …","warn");
+  setStatus(key,"Florence-2 liest gebogenes Etikett …");
   setProgress(key,25);
 
   try {
-    const ai = await getVisionPipeline();
+    const { model, processor } = await getFlorence2();
     setProgress(key,50);
 
-    const dataUrl = s.sourceCanvas.toDataURL("image/jpeg", 0.9);
+    // Bild für Florence-2 verarbeiten
+    const image = await window.RawImage.fromCanvas(s.sourceCanvas);
+    const prompt = '<OCR>';
+    const inputs = await processor(image, prompt);
 
-    const output = await ai(dataUrl);
-
-    const rawText = Array.isArray(output) && output[0]?.generated_text 
-      ? output[0].generated_text 
-      : (typeof output === 'string' ? output : JSON.stringify(output));
+    setProgress(key, 75);
+    const generated_ids = await model.generate({ ...inputs, max_new_tokens: 256 });
+    const rawText = processor.batch_decode(generated_ids, { skip_special_tokens: false })[0];
 
     s.rawText = rawText;
-    setProgress(key, 80);
+    setProgress(key, 90);
 
     const {fields, values} = parseLabelFields(rawText);
     s.fields = fields;
@@ -366,7 +372,7 @@ async function processSlot(key){
     setProgress(key, 100);
 
     const hasData = Object.values(values).some(v => v !== "");
-    setStatus(key, hasData ? "Etikett per Vision AI gelesen." : "Text gelesen, bitte Werte prüfen.", hasData ? "ok" : "warn");
+    setStatus(key, hasData ? "Etikett per Florence-2 gelesen." : "Text gelesen, bitte Werte prüfen.", hasData ? "ok" : "warn");
     setBadge($("slotBadge"+key.toUpperCase()), hasData ? "erkannt" : "unsicher", hasData ? "ok" : "warn");
 
     compareSlots();
@@ -395,7 +401,7 @@ function renderSlot(key){
 
   if(s.rawText){
     $("meta"+key.toUpperCase()).classList.remove("hidden");
-    $("layout"+key.toUpperCase()).textContent="Donut Vision AI";
+    $("layout"+key.toUpperCase()).textContent="Florence-2 Base";
     $("customer"+key.toUpperCase()).textContent="Automatisch";
   }
 }
