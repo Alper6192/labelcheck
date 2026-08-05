@@ -1,5 +1,5 @@
 import { createWriteStream } from "node:fs";
-import { access, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { finished } from "node:stream/promises";
@@ -46,6 +46,15 @@ for (const file of files) {
   await finished(Readable.fromWeb(response.body).pipe(createWriteStream(temporary)));
   await rename(temporary, target);
 }
+
+// Florence nutzt einen BART-Tokenizer. Einige ältere Hub-Snapshots enthalten
+// diese Metadaten nicht vollständig; für den lokalen Browserbetrieb ergänzen
+// wir sie deterministisch.
+const tokenizerConfigPath = resolve(targetRoot, "tokenizer_config.json");
+const tokenizerConfig = JSON.parse(await readFile(tokenizerConfigPath, "utf8"));
+tokenizerConfig.tokenizer_class ||= "BartTokenizer";
+tokenizerConfig.processor_class ||= "Florence2Processor";
+await writeFile(tokenizerConfigPath, JSON.stringify(tokenizerConfig, null, 2));
 
 await writeFile(resolve(targetRoot, "MODEL_SOURCE.json"), JSON.stringify({ modelId: MODEL_ID, revision: REVISION, downloadedAt: new Date().toISOString(), license: "MIT" }, null, 2));
 console.log("Florence-Modell vollständig vorbereitet.");

@@ -1,5 +1,6 @@
 import {
   AutoProcessor,
+  AutoTokenizer,
   Florence2ForConditionalGeneration,
   env,
   load_image,
@@ -18,11 +19,13 @@ if (env.backends?.onnx?.wasm) env.backends.onnx.wasm.wasmPaths = new URL("ort/",
 class FlorenceSingleton {
   static model;
   static processor;
+  static tokenizer;
   static fp16;
 
   static async getInstance(progressCallback) {
     this.fp16 ??= await supportsFp16();
     this.processor ??= AutoProcessor.from_pretrained(MODEL_ID, { progress_callback: progressCallback });
+    this.tokenizer ??= AutoTokenizer.from_pretrained(MODEL_ID, { progress_callback: progressCallback });
     this.model ??= Florence2ForConditionalGeneration.from_pretrained(MODEL_ID, {
       device: "webgpu",
       dtype: this.fp16
@@ -30,7 +33,7 @@ class FlorenceSingleton {
         : { embed_tokens: "q4", vision_encoder: "q4", encoder_model: "q4", decoder_model_merged: "q4" },
       progress_callback: progressCallback,
     });
-    return Promise.all([this.model, this.processor]);
+    return Promise.all([this.model, this.processor, this.tokenizer]);
   }
 }
 
@@ -54,19 +57,21 @@ self.addEventListener("message", async (event) => {
     }
 
     if (type === "analyze") {
-      const [model, processor] = await FlorenceSingleton.getInstance((progress) => self.postMessage({ id, type: "progress", progress }));
+      const [model, processor, tokenizer] = await FlorenceSingleton.getInstance((progress) => self.postMessage({ id, type: "progress", progress }));
       postStatus(id, `${payload.role === "product" ? "Produktlabel" : "VDA-Label"} wird mit Florence-2 gelesen …`);
       const started = performance.now();
       const image = await load_image(payload.dataUrl);
       const prompts = processor.construct_prompts(FLORENCE_TASK);
-      const inputs = await processor(image, prompts);
+      const visionInputs = await processor(image);
+      const textInputs = tokenizer(prompts);
       const generatedIds = await model.generate({
-        ...inputs,
+        ...textInputs,
+        ...visionInputs,
         max_new_tokens: 768,
         num_beams: 1,
         do_sample: false,
       });
-      const generatedText = processor.batch_decode(generatedIds, { skip_special_tokens: false })[0];
+      const generatedText = tokenizer.batch_decode(generatedIds, { skip_special_tokens: false })[0];
       const result = processor.post_process_generation(generatedText, FLORENCE_TASK, image.size);
       self.postMessage({
         id,

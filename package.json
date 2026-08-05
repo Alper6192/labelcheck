@@ -1,7 +1,7 @@
 {
   "name": "label-check-florence",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -14,7 +14,7 @@
     "check": "node --check src/main.js && node --check src/florence-worker.js && node --check src/ocr-parser.js && node --check src/comparison.js"
   },
   "dependencies": {
-    "@huggingface/transformers": "4.2.0",
+    "@huggingface/transformers": "3.8.1",
     "xlsx": "0.18.5"
   },
   "devDependencies": {
