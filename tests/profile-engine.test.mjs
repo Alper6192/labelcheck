@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseFlorenceEntries } from "../src/ocr-entries.js";
-import { resolveLabelProfile, mapWithProfile, solveHomography, applyHomography } from "../src/profile-engine.js";
+import { resolveLabelProfile, mapWithProfile, solveHomography, applyHomography, homographyFromAnchor, transformRect } from "../src/profile-engine.js";
 import { compareLabels } from "../src/comparison.js";
 
 const quad = (x, y, w, h) => [x,y,x+w,y,x+w,y+h,x,y+h];
@@ -26,6 +26,27 @@ test("berechnet eine Homographie aus der Kundenname-Textbox", () => {
   const p=applyHomography(h,[50,15]);
   assert.ok(Math.abs(p[0]-150)<1e-6);
   assert.ok(Math.abs(p[1]-100)<1e-6);
+});
+
+
+
+test("ein einzelner Anker erzeugt keine kollabierende Projektivtransformation", () => {
+  const profile = {
+    master:{width:1000,height:966},
+    anchor:{masterQuad:[.715,.795,.96,.795,.96,.92,.715,.92]},
+  };
+  const liveAnchor={box:quad(1090,1180,285,72)};
+  const matrix=homographyFromAnchor(profile,liveAnchor,[1600,1500]);
+  assert.ok(matrix);
+  assert.equal(matrix[6],0);
+  assert.equal(matrix[7],0);
+  const fieldQuad=transformRect({x:.63,y:.376,width:.354,height:.054},profile.master,matrix);
+  const xs=[fieldQuad[0],fieldQuad[2],fieldQuad[4],fieldQuad[6]];
+  const ys=[fieldQuad[1],fieldQuad[3],fieldQuad[5],fieldQuad[7]];
+  assert.ok(Math.max(...xs)-Math.min(...xs)>150);
+  assert.ok(Math.max(...ys)-Math.min(...ys)>20);
+  assert.ok(Math.min(...xs)>600);
+  assert.ok(Math.min(...ys)<1000);
 });
 
 test("ordnet Werte ausschließlich über Kundenanker und Profilpositionen zu", () => {

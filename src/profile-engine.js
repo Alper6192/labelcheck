@@ -180,17 +180,92 @@ export function transformRect(rect, master, matrix) {
   return points.flat();
 }
 
-export function homographyFromAnchor(profile, targetEntry) {
+export function homographyFromAnchor(profile, targetEntry, imageSize = null) {
   const master = profile?.master || {};
   const sourceNormalized = profile?.anchor?.masterQuad;
   if (!Array.isArray(sourceNormalized) || sourceNormalized.length !== 8 || !Array.isArray(targetEntry?.box)) return null;
+
   const source = [];
   for (let index = 0; index < 8; index += 2) {
-    source.push([sourceNormalized[index] * Number(master.width || 1), sourceNormalized[index + 1] * Number(master.height || 1)]);
+    source.push([
+      sourceNormalized[index] * Number(master.width || 1),
+      sourceNormalized[index + 1] * Number(master.height || 1),
+    ]);
   }
   const target = [];
   for (let index = 0; index < 8; index += 2) target.push([targetEntry.box[index], targetEntry.box[index + 1]]);
-  return solveHomography(source, target);
+
+  /*
+   * Ein einzelner OCR-Anker darf keine Projektivtransformation bestimmen.
+   * Die vier OCR-Ecken entsprechen nie exakt denselben physischen Ecken wie
+   * im Masterbild. Eine Homographie extrapoliert diesen kleinen Fehler über
+   * das gesamte Label und kann entfernte Felder in eine Ecke zusammenziehen.
+   *
+   * Deshalb verwenden wir aus genau einem Anker nur die stabil bestimmbaren
+   * Freiheitsgrade: Mittelpunkt, Drehung und eine einheitliche Skalierung.
+   * Eine spätere anonyme Geometrie-Feinjustierung darf daraus bei genügend
+   * Treffern noch eine affine Korrektur ableiten.
+   */
+  const sourceFrame = quadFrame(source);
+  const targetFrame = quadFrame(target);
+  if (!sourceFrame || !targetFrame) return null;
+
+  const widthScale = targetFrame.width / Math.max(1, sourceFrame.width);
+  const heightScale = targetFrame.height / Math.max(1, sourceFrame.height);
+  const fitScale = imageSize
+    ? Math.min(
+        Number(imageSize?.[0] || 1) / Math.max(1, Number(master.width || 1)),
+        Number(imageSize?.[1] || 1) / Math.max(1, Number(master.height || 1)),
+      )
+    : widthScale;
+
+  let scale = widthScale;
+  const ratio = widthScale / Math.max(1e-9, heightScale);
+  if (ratio >= 0.62 && ratio <= 1.62) scale = Math.sqrt(widthScale * heightScale);
+  if (!Number.isFinite(scale) || scale <= 0) scale = fitScale;
+  scale = clamp(scale, Math.max(0.04, fitScale * 0.18), Math.max(0.08, fitScale * 4.5));
+
+  const angle = targetFrame.angle - sourceFrame.angle;
+  const cosine = Math.cos(angle) * scale;
+  const sine = Math.sin(angle) * scale;
+  const tx = targetFrame.center[0] - cosine * sourceFrame.center[0] + sine * sourceFrame.center[1];
+  const ty = targetFrame.center[1] - sine * sourceFrame.center[0] - cosine * sourceFrame.center[1];
+  const matrix = [cosine, -sine, tx, sine, cosine, ty, 0, 0, 1];
+
+  return anchorTransformIsSane(matrix, master, imageSize) ? matrix : null;
+}
+
+function quadFrame(points) {
+  if (!Array.isArray(points) || points.length !== 4) return null;
+  const center = [
+    points.reduce((sum, point) => sum + Number(point[0] || 0), 0) / 4,
+    points.reduce((sum, point) => sum + Number(point[1] || 0), 0) / 4,
+  ];
+  const top = [points[1][0] - points[0][0], points[1][1] - points[0][1]];
+  const bottom = [points[2][0] - points[3][0], points[2][1] - points[3][1]];
+  const left = [points[3][0] - points[0][0], points[3][1] - points[0][1]];
+  const right = [points[2][0] - points[1][0], points[2][1] - points[1][1]];
+  const horizontal = [(top[0] + bottom[0]) / 2, (top[1] + bottom[1]) / 2];
+  const width = (Math.hypot(...top) + Math.hypot(...bottom)) / 2;
+  const height = (Math.hypot(...left) + Math.hypot(...right)) / 2;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 2 || height < 2) return null;
+  return { center, width, height, angle: Math.atan2(horizontal[1], horizontal[0]) };
+}
+
+function anchorTransformIsSane(matrix, master, imageSize) {
+  if (!Array.isArray(matrix) || matrix.length !== 9 || matrix.some((value) => !Number.isFinite(value))) return false;
+  if (!imageSize) return true;
+  const width = Number(master?.width || 1);
+  const height = Number(master?.height || 1);
+  const projected = [[0, 0], [width, 0], [width, height], [0, height]].map((point) => applyHomography(matrix, point));
+  const bounds = quadBounds(projected.flat());
+  const imageWidth = Number(imageSize?.[0] || 1);
+  const imageHeight = Number(imageSize?.[1] || 1);
+  if (bounds.width < imageWidth * 0.12 || bounds.height < imageHeight * 0.12) return false;
+  if (bounds.width > imageWidth * 4 || bounds.height > imageHeight * 4) return false;
+  if (bounds.centerX < -imageWidth * 1.5 || bounds.centerX > imageWidth * 2.5) return false;
+  if (bounds.centerY < -imageHeight * 1.5 || bounds.centerY > imageHeight * 2.5) return false;
+  return true;
 }
 
 export function solveHomography(source, target) {
@@ -418,6 +493,7 @@ function rectIntersection(a, b) {
   return Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
 }
 function pointDistance(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); }
+function clamp(value, minimum, maximum) { return Math.min(maximum, Math.max(minimum, value)); }
 function uniqueByValue(items) { const seen = new Set(); return items.filter((item) => !seen.has(item.value) && seen.add(item.value)); }
 function emptyField(source = "nicht erkannt") { return { value: "", raw: "", score: 0, source, valid: false, manual: false }; }
 function emptyFields() { return Object.fromEntries(FIELD_KEYS.map((key) => [key, emptyField()])); }

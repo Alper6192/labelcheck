@@ -1,4 +1,4 @@
-# Update auf Version 0.2.0
+# Update auf Version 0.2.2
 
 ## 1. ZIP entpacken
 
@@ -27,7 +27,7 @@ Den gesamten Inhalt des entpackten Projektordners in den geöffneten Repository-
 
 In GitHub Desktop:
 
-1. Summary: `Ankerbasierte Florence Profile Version 0.2.0`
+1. Summary: `Ankerbasierte Florence Profile Version 0.2.2`
 2. `Commit to main`
 3. `Push origin`
 
@@ -39,9 +39,9 @@ Auf GitHub unter `Actions → GitHub Pages veröffentlichen` warten, bis Build u
 
 Beispiel:
 
-`https://alper6192.github.io/labelcheck/?v=020`
+`https://alper6192.github.io/labelcheck/?v=022`
 
-Oben muss `v0.2.0` stehen. Bei einer alten Version einen Inkognito-Tab verwenden oder die Websitedaten löschen.
+Oben muss `v0.2.2` stehen. Bei einer alten Version einen Inkognito-Tab verwenden oder die Websitedaten löschen.
 
 ## 7. Zuerst mit den gezeigten Etiketten testen
 

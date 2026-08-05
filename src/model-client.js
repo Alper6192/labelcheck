@@ -13,8 +13,15 @@ export class FlorenceClient extends EventTarget {
     return this.#request("load", {});
   }
 
-  analyze(dataUrl, role) {
-    return this.#request("analyze", { dataUrl, role });
+  analyze(dataUrl, role, options = {}) {
+    return this.#request("analyze", { dataUrl, role, ...options });
+  }
+
+  terminate(reason = "Florence-Worker beendet.") {
+    const error = new Error(reason);
+    try { this.worker?.terminate(); } catch {}
+    this.#rejectAll(error);
+    this.loaded = false;
   }
 
   #request(type, payload) {

@@ -1,4 +1,7 @@
-# LabelCheck Florence 0.2.0
+# LabelCheck Florence 0.2.2
+
+> **0.2.2:** Der Editor bleibt während Florence sichtbar, kann Analysen abbrechen und erlaubt das Verschieben sowie Vergrößern vorhandener Zuordnungen.
+> **0.2.1:** Behebt das Zusammenziehen aller erwarteten Feldboxen an den Kundenanker.
 
 Smartphone-Web-App zum lokalen Vergleich eines Produktlabels mit einem VDA-/Kundenlabel.
 
