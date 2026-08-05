@@ -35,7 +35,7 @@ jobs:
           path: |
             public/models
             public/ort
-          key: florence2-e88a44e-transformers-3.8.1-v2
+          key: florence2-e88a44e-transformers-3.8.1-v3
 
       - name: Florence-2 und ONNX Runtime vorbereiten
         run: npm run prepare:assets

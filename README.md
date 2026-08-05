@@ -1,76 +1,71 @@
-# LabelCheck Florence
+# LabelCheck Florence 0.2.0
 
-Smartphone-Web-App zum lokalen Vergleich eines Produktlabels mit einem VDA-Label. Microsoft Florence-2 läuft vollständig im Browser über WebGPU. Bilder werden nicht hochgeladen. Ergebnisse bleiben in IndexedDB und können als `.xlsx` gespeichert oder über den Android-Teilen-Dialog an OneDrive, SharePoint, Teams oder andere Ziele übergeben werden.
+Smartphone-Web-App zum lokalen Vergleich eines Produktlabels mit einem VDA-/Kundenlabel.
 
-## Was Version 0.1 bereits enthält
+## Neue Architektur
 
-- Smartphone-Kamera für Produkt- und VDA-Label
-- lokale Bildverkleinerung und einfache Qualitätswarnungen
-- Florence-2 `<OCR_WITH_REGION>` im Web Worker
-- Parser für Batch, IDH, Gewicht, Fass- und Lieferscheinnummer
-- deterministischer Vergleich von Batch, IDH und Gewicht
-- manuelle Korrektur erkannter Werte
-- lokales Scanprotokoll in IndexedDB
-- Excel-Export als `.xlsx`
-- PWA-Grundgerüst
-- automatisches GitHub-Pages-Deployment
+- genau ein Florence-2-Durchlauf pro Etikett mit `<OCR_WITH_REGION>`
+- keine Erkennung der Etikettenränder
+- kein automatischer Bildzuschnitt
+- keine Zuordnung über Texte wie „Batch“, „IDH“ oder „Gewicht“
+- Kundenname beziehungsweise Henkel dient als geometrischer Profilanker
+- Wertboxen werden ausschließlich über ihre hinterlegte Position im jeweiligen Profil zugeordnet
+- optional wird die Transformation über die anonyme Verteilung der Florence-Textboxen verfeinert
+- Format kann nach der OCR manuell gewechselt werden, ohne Florence erneut auszuführen
+- lokales Scanprotokoll und Excel-Export
 
-## Wichtige Architektur
+Florence-2 unterstützt OCR mit Regionen; Transformers.js führt das Modell über WebGPU direkt im Browser aus.
 
-GitHub Pages ist statisches Hosting. Florence läuft deshalb nicht als GitHub-Serverprozess, sondern auf der GPU des Smartphones. Beim ersten Deployment lädt GitHub Actions die fest angehefteten Modelldateien von Hugging Face in das Pages-Artefakt. Beim späteren Betrieb lädt das Smartphone App und Modell ausschließlich von deiner GitHub-Pages-Domain.
+## Seiten
 
-## GitHub-Einrichtung
+- `index.html`: Smartphone-Scanner
+- `editor.html`: Profileditor
 
-1. Neues leeres GitHub-Repository erstellen, zum Beispiel `label-check-florence`.
-2. Den Inhalt dieses Projekts in das Repository hochladen und nach `main` pushen.
-3. Unter **Settings → Pages → Build and deployment** als Quelle **GitHub Actions** auswählen.
-4. Den Workflow **GitHub Pages veröffentlichen** starten oder auf den ersten Push warten.
-5. Der erste Build lädt rund 600 MB Modelldateien. Spätere Builds verwenden den Actions-Cache.
-6. Die veröffentlichte Adresse lautet typischerweise `https://BENUTZERNAME.github.io/REPOSITORY/`.
+## Profilkonfiguration
 
-## Lokale Entwicklung
+Die mitgelieferte Datei `public/config/label-profiles.json` enthält die zwölf Formate aus der bisherigen Konfiguration. Feldpositionen und Masterbilder wurden übernommen. Für die automatische Profilauswahl sind unter anderem folgende Kundenanker voreingetragen:
 
-Voraussetzungen: Node.js 22 und ein Chromium-Browser mit WebGPU.
+- Henkel für das Produktlabel
+- BMW
+- ICS Aerosols
+- Jaguar Land Rover
+- Mercedes-Benz
+- Scania
+- Škoda
+- Stellantis
+- Volkswagen
+- Tesla
+
+Zwei Formate ohne stabilen Kundennamen sind als manuelle Formate gekennzeichnet. Das zusätzliche SEGRO-Layout ist im Editor enthalten, aber bewusst noch nicht fachlich freigeschaltet, weil seine IDH-Zuordnung aus den Bildern allein nicht zweifelsfrei ableitbar ist.
+
+## Editor benutzen
+
+1. `editor.html` öffnen.
+2. Profil auswählen.
+3. „Florence auf Masterbild“ drücken.
+4. Die erkannte Kundenname-Textbox anklicken und „Auswahl = Kundenanker“ drücken.
+5. Die reinen Wertboxen anklicken und Batch, IDH, Gewicht usw. zuweisen.
+6. Bei Bedarf mit „Bereich zeichnen“ einen Bereich frei markieren.
+7. `label-profiles.json` exportieren.
+8. Exportdatei nach `public/config/label-profiles.json` kopieren.
+9. Commit und Push ausführen.
+
+Der Editor speichert zusätzlich einen anonymen geometrischen Fingerabdruck der Textboxen. Die Inhalte dieser Boxen werden nicht zur Feldbedeutung benutzt.
+
+## Datenschutz
+
+Bei der Nutzung der GitHub-Pages-App werden Fotos nicht hochgeladen. Das Modell, die OCR, die Profilzuordnung und der Excel-Export laufen im Browser. Beim GitHub-Actions-Build werden die fest angehefteten Modell- und Runtime-Dateien in das Pages-Artefakt aufgenommen.
+
+## Entwicklung
 
 ```bash
 npm install
-npm run prepare:assets
 npm test
+npm run check
+npm run prepare:assets
 npm run dev
 ```
 
-`prepare:assets` lädt die lokal zu hostenden Florence-Dateien. Für reine Oberflächenentwicklung ohne lokalen Modelldownload kann vorübergehend das Remote-Modell verwendet werden:
+## Prüfstatus
 
-```bash
-VITE_MODEL_SOURCE=remote npm run dev
-```
-
-In PowerShell:
-
-```powershell
-$env:VITE_MODEL_SOURCE="remote"
-npm run dev
-```
-
-Der Produktionsworkflow verwendet standardmäßig immer lokale Modelldateien und blockiert Remote-Modellzugriffe.
-
-## Vergleichsregeln
-
-In `src/config.js` sind Batch, IDH und Gewicht zunächst als Pflichtvergleiche definiert. Fehlende oder abweichende Werte verhindern eine Freigabe. Diese Regeln müssen vor Produktion fachlich bestätigt werden.
-
-## Noch vor Produktion erforderlich
-
-- Erkennung anhand realer Ground-Truth-Daten messen
-- Parser an alle tatsächlichen Labelbegriffe und Nummernformate anpassen
-- QR-/DataMatrix-Decoder ergänzen
-- Versions- und Freigabeprozess festlegen
-- mindestens Positiv-, Negativ-, Unschärfe-, Reflexions- und Falschpaar-Tests durchführen
-- klären, ob manuell korrigierte Datensätze freigegeben werden dürfen
-
-## Modell und Lizenzen
-
-- Microsoft / ONNX Community: `onnx-community/Florence-2-base-ft`, MIT-Lizenz
-- Transformers.js: Apache-2.0
-- SheetJS Community Edition: Apache-2.0
-
-Die verwendete Florence-Revision ist in `src/config.js` und `scripts/download-model.mjs` fest angeheftet.
+Die reine JavaScript-Syntax und die positionsbasierte Profilengine sind automatisiert getestet. Ein vollständiger lokaler Vite-/WebGPU-Build konnte in der Erstellungsumgebung nicht ausgeführt werden, weil das dortige npm-Registry das Transformers.js-Paket nicht bereitstellte. Der enthaltene GitHub-Actions-Workflow verwendet die öffentliche npm- und Hugging-Face-Infrastruktur.

@@ -67,7 +67,7 @@ self.addEventListener("message", async (event) => {
       const generatedIds = await model.generate({
         ...textInputs,
         ...visionInputs,
-        max_new_tokens: 768,
+        max_new_tokens: payload.role === "product" ? 384 : 576,
         num_beams: 1,
         do_sample: false,
       });

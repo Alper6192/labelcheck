@@ -1,61 +1,56 @@
-# Start hier – Veröffentlichung auf GitHub Pages
+# Update auf Version 0.2.0
 
-## 1. Repository anlegen
+## 1. ZIP entpacken
 
-1. Auf GitHub **New repository** wählen.
-2. Name: `label-check-florence`.
-3. Für einen einfachen Start **Public** wählen.
-4. Keine README und keine `.gitignore` automatisch erzeugen.
-5. **Create repository** anklicken.
+Die ZIP-Datei vollständig entpacken. Im inneren Projektordner liegen unter anderem:
 
-## 2. Dateien hochladen
+- `.github`
+- `public`
+- `scripts`
+- `src`
+- `tests`
+- `editor.html`
+- `index.html`
+- `package.json`
 
-Den vollständigen Inhalt dieses Projektordners hochladen. Wichtig: Auch der versteckte Ordner `.github/workflows` muss enthalten sein. Am zuverlässigsten funktioniert das mit Git:
+## 2. Lokales Repository öffnen
 
-```bash
-git init
-git add .
-git commit -m "Florence LabelCheck Prototyp"
-git branch -M main
-git remote add origin https://github.com/DEIN-NAME/label-check-florence.git
-git push -u origin main
-```
+In GitHub Desktop:
 
-## 3. GitHub Pages aktivieren
+`Repository → Show in Explorer`
 
-1. Repository öffnen.
-2. **Settings → Pages**.
-3. Unter **Build and deployment** die Quelle **GitHub Actions** auswählen.
-4. Zum Reiter **Actions** wechseln.
-5. Den Workflow **GitHub Pages veröffentlichen** öffnen.
-6. Falls er nicht automatisch läuft: **Run workflow** anklicken.
+## 3. Dateien ersetzen
 
-## 4. Erster Build
+Den gesamten Inhalt des entpackten Projektordners in den geöffneten Repository-Ordner kopieren und vorhandene Dateien ersetzen. Den versteckten Ordner `.git` nicht löschen.
 
-Der erste Build lädt die angehefteten Florence-Modelldateien und kann wegen rund 600 MB länger als gewöhnliche Pages-Builds dauern. Das Modell wird danach im GitHub-Actions-Cache gehalten.
+## 4. Commit und Push
 
-Nach erfolgreichem Deployment zeigt GitHub die Adresse an, typischerweise:
+In GitHub Desktop:
 
-```text
-https://DEIN-NAME.github.io/label-check-florence/
-```
+1. Summary: `Ankerbasierte Florence Profile Version 0.2.0`
+2. `Commit to main`
+3. `Push origin`
 
-## 5. Smartphone-Test
+## 5. GitHub Actions abwarten
 
-1. Adresse mit aktuellem Chrome oder Edge auf Android öffnen.
-2. Prüfen, ob **WebGPU verfügbar** angezeigt wird.
-3. Zunächst **Demo-Daten laden** drücken.
-4. Datensatz übernehmen.
-5. **Excel speichern / teilen** testen.
-6. Danach zwei echte Etiketten fotografieren und Florence analysieren lassen.
+Auf GitHub unter `Actions → GitHub Pages veröffentlichen` warten, bis Build und Deploy grün sind.
 
-## 6. Erwartung für den ersten Test
+## 6. Neue Version öffnen
 
-Der Prototyp beweist zunächst:
+Beispiel:
 
-- Florence lädt auf dem Smartphone.
-- OCR mit Positionen läuft.
-- Die App erzeugt strukturierte Kandidaten.
-- Vergleich und Excel-Export funktionieren.
+`https://alper6192.github.io/labelcheck/?v=020`
 
-Die fachliche Erkennungsqualität ist noch nicht validiert. Dafür werden echte Bilder mit bekannten Sollwerten als Ground Truth benötigt.
+Oben muss `v0.2.0` stehen. Bei einer alten Version einen Inkognito-Tab verwenden oder die Websitedaten löschen.
+
+## 7. Zuerst mit den gezeigten Etiketten testen
+
+Die App sollte beim Mercedes-Label automatisch `Format_007` beziehungsweise Mercedes erkennen. Die blauen Profilrahmen zeigen die erwarteten Wertpositionen. Die orangefarbenen Rahmen sind die einmalig von Florence erkannten Textboxen. Der grüne Rahmen ist der Kundenanker.
+
+## 8. Profile kalibrieren
+
+Editor öffnen:
+
+`https://alper6192.github.io/labelcheck/editor.html`
+
+Für jedes verwendete Format einmal „Florence auf Masterbild“ ausführen, Anker und Wertboxen kontrollieren und anschließend die exportierte `label-profiles.json` in `public/config/` ersetzen. Erst dadurch wird auch die anonyme geometrische Feinjustierung aktiviert.
