@@ -1,4 +1,4 @@
-export const APP_VERSION = "0.1.1";
+export const APP_VERSION = "0.1.2";
 export const MODEL_ID = "onnx-community/Florence-2-base-ft";
 export const MODEL_REVISION = "e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f";
 export const FLORENCE_TASK = "<OCR_WITH_REGION>";

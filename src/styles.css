@@ -79,3 +79,46 @@ progress { width: 100%; height: 18px; }
   button, .capture { width: 100%; }
   .actions > * { flex-basis: 100%; }
 }
+
+/* Mobile Vergleichsansicht: keine extrem schmalen Tabellenspalten. */
+@media (max-width: 760px) {
+  .card-head { flex-wrap: wrap; align-items: flex-start; }
+  .card-head .small { width: 100%; }
+  .comparison-table { margin-top: 12px; }
+  .comparison-table thead { display: none; }
+  .comparison-table,
+  .comparison-table tbody,
+  .comparison-table tr,
+  .comparison-table td { display: block; width: 100%; }
+  .comparison-table tr {
+    margin-bottom: 12px;
+    padding: 11px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #0a192b;
+  }
+  .comparison-table td { border: 0; padding: 7px 0; }
+  .comparison-table td.field-name {
+    font-size: 1.05rem;
+    font-weight: 850;
+    color: var(--blue);
+    padding-top: 0;
+    border-bottom: 1px solid #304a68;
+    margin-bottom: 4px;
+  }
+  .comparison-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 5px;
+    color: var(--muted);
+    font-size: .76rem;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .comparison-table td.match,
+  .comparison-table td.mismatch,
+  .comparison-table td.missing { font-size: 1rem; }
+  .field-input { min-width: 0; font-size: 1rem; }
+  .raw-details summary { overflow-wrap: anywhere; }
+}

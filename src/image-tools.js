@@ -115,3 +115,64 @@ function assessImageQuality(source) {
 
   return { sharpness: Math.round(sharpness), darkRatio, brightRatio, warnings, acceptable: warnings.length === 0 };
 }
+
+export async function cropImageToDetectedText(image, entries) {
+  if (!image?.dataUrl || !Array.isArray(entries) || entries.length < 4) return null;
+
+  const valid = entries.filter((entry) =>
+    entry?.text &&
+    Number.isFinite(entry.left) && Number.isFinite(entry.right) &&
+    Number.isFinite(entry.top) && Number.isFinite(entry.bottom) &&
+    entry.right > entry.left && entry.bottom > entry.top
+  );
+  if (valid.length < 4) return null;
+
+  const sourceWidth = Number(image.width);
+  const sourceHeight = Number(image.height);
+  if (!(sourceWidth > 0 && sourceHeight > 0)) return null;
+
+  const textLeft = Math.min(...valid.map((entry) => entry.left));
+  const textRight = Math.max(...valid.map((entry) => entry.right));
+  const textTop = Math.min(...valid.map((entry) => entry.top));
+  const textBottom = Math.max(...valid.map((entry) => entry.bottom));
+
+  const marginX = Math.max(36, sourceWidth * 0.09);
+  const marginY = Math.max(30, sourceHeight * 0.09);
+  const left = Math.max(0, Math.floor(textLeft - marginX));
+  const top = Math.max(0, Math.floor(textTop - marginY));
+  const right = Math.min(sourceWidth, Math.ceil(textRight + marginX));
+  const bottom = Math.min(sourceHeight, Math.ceil(textBottom + marginY));
+  const width = right - left;
+  const height = bottom - top;
+  const areaRatio = (width * height) / (sourceWidth * sourceHeight);
+
+  if (width < sourceWidth * 0.25 || height < sourceHeight * 0.18 || areaRatio > 0.9) return null;
+
+  const source = await loadImageFromDataUrl(image.dataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, width);
+  canvas.height = Math.max(1, height);
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.fillStyle = "white";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(source, left, top, width, height, 0, 0, width, height);
+
+  const blob = await canvasToBlob(canvas, "image/jpeg", JPEG_QUALITY);
+  return {
+    dataUrl: await blobToDataUrl(blob),
+    width,
+    height,
+    cropRect: { left, top, width, height, areaRatio },
+  };
+}
+
+function loadImageFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Detailausschnitt konnte nicht geladen werden."));
+    image.src = dataUrl;
+  });
+}

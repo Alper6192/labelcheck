@@ -1,7 +1,7 @@
 import "./styles.css";
 import { APP_VERSION, MODEL_ID } from "./config.js";
-import { prepareImage } from "./image-tools.js";
-import { parseFlorenceOcr } from "./ocr-parser.js";
+import { cropImageToDetectedText, prepareImage } from "./image-tools.js";
+import { mergeParsedResults, needsRefinement, parseFlorenceOcr } from "./ocr-parser.js";
 import { compareLabels } from "./comparison.js";
 import { FlorenceClient } from "./model-client.js";
 import { clearRecords, deleteRecord, loadRecords, saveRecord } from "./storage.js";
@@ -59,7 +59,7 @@ document.querySelector("#app").innerHTML = `
           <button id="resetButton" class="danger">Aufnahmen zurücksetzen</button>
         </div>
         <div style="overflow-x:auto">
-          <table>
+          <table class="comparison-table">
             <thead><tr><th>Prüfung</th><th>Produktlabel</th><th>VDA-Label</th><th>Ergebnis</th></tr></thead>
             <tbody id="comparisonBody"></tbody>
           </table>
@@ -162,12 +162,27 @@ async function analyzeBoth() {
       showProgress(true, `${role === "product" ? "Produktlabel" : "VDA-Label"} wird analysiert …`, role === "product" ? 35 : 65);
       const response = await client.analyze(state[role].image.dataUrl, role);
       totalMs += response.elapsedMs || 0;
-      const parsed = parseFlorenceOcr(response.result);
+      let parsed = parseFlorenceOcr(response.result, { role, imageSize: response.imageSize });
+      let refinement = null;
+
+      const detailImage = await cropImageToDetectedText(state[role].image, parsed.entries);
+      if (detailImage && (needsRefinement(parsed) || detailImage.cropRect.areaRatio < 0.72)) {
+        showProgress(true, `${role === "product" ? "Produktlabel" : "VDA-Label"}: Detailausschnitt wird erneut gelesen …`, role === "product" ? 48 : 82);
+        const detailResponse = await client.analyze(detailImage.dataUrl, role);
+        totalMs += detailResponse.elapsedMs || 0;
+        const detailParsed = parseFlorenceOcr(detailResponse.result, { role, imageSize: detailResponse.imageSize });
+        parsed = mergeParsedResults(parsed, detailParsed);
+        refinement = { image: detailImage, response: detailResponse, parsed: detailParsed };
+      }
+
       state[role].ocr = response;
+      state[role].refinement = refinement;
       state[role].fields = parsed.fields;
       state[role].entries = parsed.entries;
+      state[role].refinedEntries = parsed.refinedEntries || [];
       drawBoxes(role, parsed.entries);
-      setLabelStatus(role, `Analysiert in ${formatDuration(response.elapsedMs)}`);
+      const detailText = refinement ? " · Detailpass aktiv" : "";
+      setLabelStatus(role, `Analysiert in ${formatDuration((response.elapsedMs || 0) + (refinement?.response?.elapsedMs || 0))}${detailText}`);
     }
 
     state.comparison = compareLabels(state.product.fields, state.vda.fields);
@@ -248,10 +263,10 @@ function renderComparison() {
     const status = check ? check.status : "info";
     const resultText = check ? ({ match: "stimmt", mismatch: "abweichend", missing: "fehlt" }[status]) : "nur Information";
     return `<tr data-field="${key}">
-      <td>${label}</td>
-      <td>${fieldInput("product", key)}</td>
-      <td>${fieldInput("vda", key)}</td>
-      <td class="${status}">${resultText}</td>
+      <td class="field-name">${label}</td>
+      <td data-label="Produktlabel">${fieldInput("product", key)}</td>
+      <td data-label="VDA-Label">${fieldInput("vda", key)}</td>
+      <td data-label="Ergebnis" class="${status}">${resultText}</td>
     </tr>`;
   }).join("");
 }
@@ -376,8 +391,16 @@ function resetCurrent() {
 
 function renderRawOutput() {
   elements.rawOutput.textContent = JSON.stringify({
-    product: { fields: valuesOnly(state.product.fields), blocks: state.product.entries?.map((entry) => ({ text: entry.text, box: entry.box })) || [] },
-    vda: { fields: valuesOnly(state.vda.fields), blocks: state.vda.entries?.map((entry) => ({ text: entry.text, box: entry.box })) || [] },
+    product: {
+      fields: valuesOnly(state.product.fields),
+      blocks: state.product.entries?.map((entry) => ({ text: entry.text, box: entry.box })) || [],
+      detailBlocks: state.product.refinedEntries?.map((entry) => ({ text: entry.text, box: entry.box })) || [],
+    },
+    vda: {
+      fields: valuesOnly(state.vda.fields),
+      blocks: state.vda.entries?.map((entry) => ({ text: entry.text, box: entry.box })) || [],
+      detailBlocks: state.vda.refinedEntries?.map((entry) => ({ text: entry.text, box: entry.box })) || [],
+    },
   }, null, 2);
 }
 
@@ -414,7 +437,7 @@ function setLabelStatus(role, text) {
 }
 
 function emptyLabel(role) {
-  return { role, image: null, ocr: null, fields: null, entries: [] };
+  return { role, image: null, ocr: null, refinement: null, fields: null, entries: [], refinedEntries: [] };
 }
 
 function valuesOnly(fields) {
