@@ -6,13 +6,12 @@
 <meta name="theme-color" content="#071426">
 <title>LabelCheck Vision AI (Florence-2)</title>
 
-<!-- In-Browser Vision KI (Transformers.js v3 - Florence-2 mit Tensor) -->
+<!-- In-Browser Vision KI (Transformers.js v3 - Florence-2) -->
 <script type="module">
   import {
     Florence2ForConditionalGeneration,
     AutoProcessor,
     RawImage,
-    Tensor,
     env
   } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0';
 
@@ -20,7 +19,6 @@
   window.Florence2 = Florence2ForConditionalGeneration;
   window.AutoProcessor = AutoProcessor;
   window.RawImage = RawImage;
-  window.Tensor = Tensor;
 </script>
 
 <style>
@@ -90,7 +88,7 @@ th{color:var(--muted)}
 <body>
 
 <header>
-  <h1>LabelCheck <small style="color:var(--muted);font-size:.55em">7.4 · Florence-2 Vision AI</small></h1>
+  <h1>LabelCheck <small style="color:var(--muted);font-size:.55em">7.5 · Florence-2 Vision AI</small></h1>
   <p>Fassetiketten per Handykamera aufnehmen – Daten werden automatisch per Microsoft Florence-2 erkannt und verglichen.</p>
   <div class="privacy">100 % Datenschutz: Fotos &amp; KI-Verarbeitung verbleiben lokal im Arbeitsspeicher Ihres Smartphones.</div>
 </header>
@@ -218,7 +216,7 @@ th{color:var(--muted)}
 "use strict";
 const $=id=>document.getElementById(id);
 const slots={a:emptySlot("a"),b:emptySlot("b")};
-const LOG_KEY="labelcheck_scan_log_v74";
+const LOG_KEY="labelcheck_scan_log_v75";
 let scanLog=loadScanLog();
 
 let florenceModel=null;
@@ -347,7 +345,7 @@ function parseLabelFields(text){
   return {fields, values};
 }
 
-// Optimierte Prozessierung mit Florence-2, Tensor & Attention Mask
+// Florence-2 Ausführung mit korrekten getrennten Tensor-Inputs
 async function processSlot(key){
   const s=slots[key];
   if(!s.sourceCanvas){
@@ -371,19 +369,15 @@ async function processSlot(key){
     // Bild verkleinern & in RawImage konvertieren
     const aiCanvas = scaleCanvasForAI(s.sourceCanvas, 640);
     const image = await window.RawImage.fromCanvas(aiCanvas);
-    const prompt = '<OCR>';
-    
-    // Inputs über den Processor aufbauen
-    const inputs = await processor(prompt, image);
 
-    // Attention-Mask automatisch erzeugen, falls sie fehlt
-    if (inputs.input_ids && !inputs.attention_mask) {
-      inputs.attention_mask = new window.Tensor(
-        'int64',
-        new BigInt64Array(inputs.input_ids.data.length).fill(1n),
-        inputs.input_ids.dims
-      );
-    }
+    // Getrennte Verarbeitung für Vision und Text (Tokenizer)
+    const vision_inputs = await processor(image);
+    const text_inputs = processor.tokenizer('<OCR>');
+
+    const inputs = {
+      ...vision_inputs,
+      ...text_inputs
+    };
 
     setProgress(key, 65);
     setStatus(key, "Berechne Text mit KI (bitte kurz warten) …");
@@ -391,11 +385,12 @@ async function processSlot(key){
 
     const generated_ids = await model.generate({
       ...inputs,
-      max_new_tokens: 64,
+      max_new_tokens: 128,
       num_beams: 1
     });
 
-    const rawText = processor.batch_decode(generated_ids, { skip_special_tokens: false })[0];
+    const rawTextArray = processor.batch_decode(generated_ids, { skip_special_tokens: false });
+    const rawText = Array.isArray(rawTextArray) ? rawTextArray[0] : String(rawTextArray || "");
 
     s.rawText = rawText;
     setProgress(key, 90);
