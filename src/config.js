@@ -1,0 +1,14 @@
+export const APP_VERSION = "0.1.0";
+export const MODEL_ID = "onnx-community/Florence-2-base-ft";
+export const MODEL_REVISION = "e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f";
+export const FLORENCE_TASK = "<OCR_WITH_REGION>";
+
+export const COMPARISON_PROFILE = Object.freeze({
+  batch: { required: true, label: "Batch" },
+  idh: { required: true, label: "IDH" },
+  weight: { required: true, label: "Gewicht" },
+});
+
+export const MAX_IMAGE_SIDE = 1800;
+export const JPEG_QUALITY = 0.92;
+export const WEIGHT_TOLERANCE = 0.01;
