@@ -1,0 +1,15 @@
+LABELCHECK AUF GITHUB HOCHLADEN
+
+1. ZIP-Datei entpacken.
+2. Neues GitHub-Repository erstellen.
+3. Add file -> Upload files.
+4. Alle entpackten Dateien und den Ordner "layouts" hochladen.
+5. Commit changes.
+6. Settings -> Pages.
+7. Source: Deploy from a branch.
+8. Branch: main.
+9. Folder: /(root).
+10. Save.
+
+Keine Datei muss umbenannt werden.
+Es gibt in diesem Paket keine Punktdateien.
