@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#071426">
 <title>LabelCheck Vision AI</title>
 
-<!-- In-Browser Vision KI (Transformers.js) -->
+<!-- In-Browser Vision KI (Transformers.js v3) -->
 <script type="module">
   import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0';
   env.allowLocalModels = false;
@@ -80,7 +80,7 @@ th{color:var(--muted)}
 <body>
 
 <header>
-  <h1>LabelCheck <small style="color:var(--muted);font-size:.55em">7.0 · In-Browser Vision AI</small></h1>
+  <h1>LabelCheck <small style="color:var(--muted);font-size:.55em">7.1 · Vision AI</small></h1>
   <p>Fassetiketten per Handykamera aufnehmen – Daten werden automatisch per Vision AI erkannt und verglichen.</p>
   <div class="privacy">100 % Datenschutz: Fotos &amp; KI-Verarbeitung verbleiben lokal im Arbeitsspeicher Ihres Smartphones.</div>
 </header>
@@ -208,7 +208,7 @@ th{color:var(--muted)}
 "use strict";
 const $=id=>document.getElementById(id);
 const slots={a:emptySlot("a"),b:emptySlot("b")};
-const LOG_KEY="labelcheck_scan_log_v70";
+const LOG_KEY="labelcheck_scan_log_v71";
 let scanLog=loadScanLog();
 
 let visionPipeline=null;
@@ -223,7 +223,7 @@ function setStatus(key,text,kind=""){const el=$("status"+key.toUpperCase());if(e
 function setProgress(key,value){const el=$("progress"+key.toUpperCase());if(el)el.style.width=Math.max(0,Math.min(100,value))+"%"}
 function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
 
-// Vision AI Pipeline initialisieren (Florence-2 ONNX)
+// Vision AI Pipeline initialisieren (Task Name: 'image-to-text')
 async function getVisionPipeline(){
   if(visionPipeline) return visionPipeline;
   if(isModelLoading){
@@ -236,7 +236,7 @@ async function getVisionPipeline(){
   try {
     const device = navigator.gpu ? 'webgpu' : 'wasm';
     visionPipeline = await window.transformersPipeline(
-      'image-text-to-text',
+      'image-to-text',
       'onnx-community/Florence-2-base-ft',
       { device }
     );
@@ -245,7 +245,7 @@ async function getVisionPipeline(){
     console.warn("WebGPU Fallback auf WASM...", e);
     try {
       visionPipeline = await window.transformersPipeline(
-        'image-text-to-text',
+        'image-to-text',
         'onnx-community/Florence-2-base',
         { device: 'wasm' }
       );
@@ -349,10 +349,8 @@ async function processSlot(key){
 
     const dataUrl = s.sourceCanvas.toDataURL("image/jpeg", 0.9);
 
-    // Florence-2 liest ungefiltert den kompletten Etikettentext
-    const output = await ai(dataUrl, {
-      generate_kwargs: { task_prompt: '<OCR>' }
-    });
+    // Florence-2 liest den kompletten Etikettentext aus das Bild
+    const output = await ai(dataUrl, '<OCR>');
 
     const rawText = Array.isArray(output) && output[0]?.generated_text 
       ? output[0].generated_text 
