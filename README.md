@@ -1,5 +1,5 @@
-# LabelCheck Florence 0.2.5
-> **0.2.5:** WebGPU wird getrennt im Worker und im Browserfenster geprüft. Scheitert oder stürzt der Worker ab, lädt Florence automatisch im Hauptfenster weiter, statt im Ladezustand hängen zu bleiben.
+# LabelCheck Florence 0.2.6
+> **0.2.6:** Direkte Adapter-Vorabfragen sind nur noch diagnostisch. Worker und Hauptfenster werden durch den tatsächlichen ONNX-/Florence-Start getestet; fehlgeschlagene Initialisierungen lassen sich sauber neu starten.
 
 
 > **0.2.2:** Der Editor bleibt während Florence sichtbar, kann Analysen abbrechen und erlaubt das Verschieben sowie Vergrößern vorhandener Zuordnungen.

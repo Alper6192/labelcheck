@@ -1,4 +1,3 @@
-const WORKER_PROBE_TIMEOUT = 8000;
 const WORKER_LOAD_TIMEOUT = 180000;
 
 export class FlorenceClient extends EventTarget {
@@ -10,7 +9,6 @@ export class FlorenceClient extends EventTarget {
     this.loaded = false;
     this.loadPromise = null;
     this.closed = false;
-    this.mainProbe = null;
   }
 
   load() {
@@ -51,47 +49,31 @@ export class FlorenceClient extends EventTarget {
   }
 
   async #loadAdaptive() {
-    this.#emitStatus("WebGPU im Browserfenster wird geprüft …");
-    this.mainProbe = await probeMainThreadWebGpu();
-    if (!this.mainProbe.ok) {
-      throw new Error(this.mainProbe.reason || "Im Browserfenster ist kein WebGPU-Adapter verfügbar.");
+    if (!globalThis.navigator?.gpu) {
+      throw new Error("WebGPU ist in diesem Browserkontext nicht verfügbar.");
     }
 
+    // Keine harte Adapter-Vorprüfung: Auf einzelnen verwalteten Edge-Versionen
+    // liefert requestAdapter() bei einer Vorabfrage null, obwohl ONNX Runtime
+    // den WebGPU-Backend beim tatsächlichen Session-Start verwenden kann.
+    // Deshalb ist der echte Modellstart der maßgebliche Kompatibilitätstest.
+    this.#emitStatus("Florence wird im Web Worker praktisch gestartet …");
     this.workerClient = this.#createWorkerClient();
-    let workerProbe;
-    try {
-      workerProbe = await withTimeout(
-        this.workerClient.probe(),
-        WORKER_PROBE_TIMEOUT,
-        "WebGPU-Prüfung im Worker hat nicht geantwortet.",
-      );
-    } catch (error) {
-      workerProbe = { ok: false, reason: error?.message || String(error) };
-    }
 
-    if (workerProbe?.ok) {
-      this.#emitStatus("WebGPU ist im Worker verfügbar. Florence wird dort gestartet …");
-      try {
-        const info = await withTimeout(
-          this.workerClient.load(),
-          WORKER_LOAD_TIMEOUT,
-          "Florence konnte im Worker nicht rechtzeitig geladen werden.",
-        );
-        this.mode = "worker";
-        this.loaded = true;
-        return { ...info, mode: "worker" };
-      } catch (error) {
-        this.#emitStatus(
-          `Worker konnte Florence nicht starten (${error?.message || error}). Wechsel ins Hauptfenster …`,
-        );
-        try { this.workerClient.terminate("Wechsel zum Hauptfenster."); } catch {}
-        this.workerClient = null;
-      }
-    } else {
-      this.#emitStatus(
-        `WebGPU ist im Worker nicht nutzbar${workerProbe?.reason ? `: ${workerProbe.reason}` : ""}. Florence startet im Hauptfenster …`,
+    try {
+      const info = await withTimeout(
+        this.workerClient.load(),
+        WORKER_LOAD_TIMEOUT,
+        "Florence konnte im Worker nicht rechtzeitig geladen werden.",
       );
-      try { this.workerClient.terminate("Worker-WebGPU nicht verfügbar."); } catch {}
+      this.mode = "worker";
+      this.loaded = true;
+      return { ...info, mode: "worker" };
+    } catch (error) {
+      this.#emitStatus(
+        `Worker konnte Florence nicht starten (${error?.message || error}). Wechsel ins Hauptfenster …`,
+      );
+      try { this.workerClient.terminate("Wechsel zum Hauptfenster."); } catch {}
       this.workerClient = null;
     }
 
@@ -114,7 +96,7 @@ export class FlorenceClient extends EventTarget {
   }
 
   async #loadMainClient() {
-    this.mainClient ??= this.#createMainClient(this.mainProbe);
+    this.mainClient ??= this.#createMainClient();
     const info = await withTimeout(
       this.mainClient.load(),
       WORKER_LOAD_TIMEOUT,
@@ -134,8 +116,8 @@ export class FlorenceClient extends EventTarget {
     return client;
   }
 
-  #createMainClient(probe) {
-    const client = new MainThreadFlorenceClient(probe);
+  #createMainClient() {
+    const client = new MainThreadFlorenceClient();
     forwardEvents(client, this);
     return client;
   }
@@ -240,22 +222,19 @@ class WorkerFlorenceClient extends EventTarget {
 }
 
 class MainThreadFlorenceClient extends EventTarget {
-  constructor(probe) {
+  constructor() {
     super();
-    this.probe = probe;
     this.runtime = null;
     this.loaded = false;
     this.closed = false;
   }
 
   async load() {
-    if (this.loaded) return { context: "main-webgpu", adapterMode: this.probe.mode };
+    if (this.loaded) return { context: "main-webgpu", adapterMode: "runtime-auto" };
     if (this.closed) throw new Error("Florence-Hauptfenster-Client wurde beendet.");
     this.#status("Florence-2 wird im Browserfenster geladen …");
     this.runtime ??= await import("./florence-runtime.js");
     const loaded = await this.runtime.initializeFlorence({
-      adapter: this.probe.adapter,
-      adapterMode: this.probe.mode,
       context: "main-webgpu",
       progressCallback: (progress) => {
         this.dispatchEvent(new CustomEvent("progress", {
@@ -275,8 +254,6 @@ class MainThreadFlorenceClient extends EventTarget {
     );
     return this.runtime.analyzeFlorence(dataUrl, role, {
       ...options,
-      adapter: this.probe.adapter,
-      adapterMode: this.probe.mode,
       context: "main-webgpu",
       progressCallback: (progress) => {
         this.dispatchEvent(new CustomEvent("progress", {
@@ -291,6 +268,7 @@ class MainThreadFlorenceClient extends EventTarget {
     // abgebrochen werden. Das Ergebnis wird vom Aufrufer über Job-IDs ignoriert.
     this.closed = true;
     this.loaded = false;
+    try { this.runtime?.resetFlorenceRuntime?.(); } catch {}
   }
 
   #status(text) {
@@ -298,45 +276,6 @@ class MainThreadFlorenceClient extends EventTarget {
       detail: { type: "status", text },
     }));
   }
-}
-
-async function probeMainThreadWebGpu() {
-  if (!navigator.gpu) {
-    return { ok: false, reason: "WebGPU ist im Browserfenster nicht verfügbar." };
-  }
-
-  const attempts = [
-    { mode: "core", options: undefined },
-    { mode: "high-performance", options: { powerPreference: "high-performance" } },
-    { mode: "compatibility", options: { featureLevel: "compatibility" } },
-  ];
-  const errors = [];
-
-  for (const attempt of attempts) {
-    try {
-      const adapter = await withTimeout(
-        navigator.gpu.requestAdapter(attempt.options),
-        6000,
-        `GPU-Adapter (${attempt.mode}) antwortet nicht.`,
-      );
-      if (adapter) {
-        return {
-          ok: true,
-          adapter,
-          mode: attempt.mode,
-          fp16: Boolean(adapter.features?.has?.("shader-f16")),
-        };
-      }
-      errors.push(`${attempt.mode}: kein Adapter`);
-    } catch (error) {
-      errors.push(`${attempt.mode}: ${error?.message || error}`);
-    }
-  }
-
-  return {
-    ok: false,
-    reason: `Kein WebGPU-Adapter im Browserfenster (${errors.join("; ")}).`,
-  };
 }
 
 function forwardEvents(source, target) {

@@ -75,18 +75,23 @@ export async function initializeFlorence({
 } = {}) {
   configureEnvironment();
 
+  // Eine direkte requestAdapter()-Vorabfrage ist nur eine Optimierung und
+  // kein hartes Gate. Auf manchen verwalteten Edge-Android-Installationen
+  // liefert sie null, während ONNX Runtime beim echten Session-Start dennoch
+  // einen WebGPU-Adapter erhalten kann. In diesem Fall lassen wir das Backend
+  // seinen Adapter selbst auswählen und verwenden die breiter kompatible
+  // q4-Variante.
   let probe = adapter
     ? { ok: true, adapter, mode: adapterMode, fp16: Boolean(adapter.features?.has?.("shader-f16")) }
-    : await probeWebGpu();
+    : await probeWebGpu().catch((error) => ({
+        ok: false,
+        adapter: null,
+        mode: "runtime-auto",
+        fp16: false,
+        reason: error?.message || String(error),
+      }));
 
-  if (!probe.ok || !probe.adapter) {
-    throw new Error(probe.reason || "Kein WebGPU-Adapter verfügbar.");
-  }
-
-  // ONNX Runtime darf nicht nochmals einen möglicherweise anderen Adapter
-  // anfordern. Das ist besonders wichtig bei verwalteten Edge-Versionen, bei
-  // denen WebGPU im Fenster, aber nicht zuverlässig im Worker verfügbar ist.
-  if (env.backends?.onnx?.webgpu) {
+  if (probe.ok && probe.adapter && env.backends?.onnx?.webgpu) {
     try {
       env.backends.onnx.webgpu.adapter = probe.adapter;
     } catch (error) {
@@ -94,7 +99,7 @@ export async function initializeFlorence({
     }
   }
 
-  const fp16 = probe.fp16;
+  const fp16 = Boolean(probe.ok && probe.fp16);
   processorPromise ??= AutoProcessor.from_pretrained(MODEL_ID, {
     progress_callback: progressCallback,
   });
@@ -119,20 +124,46 @@ export async function initializeFlorence({
     progress_callback: progressCallback,
   });
 
-  const [model, processor, tokenizer] = await Promise.all([
-    modelPromise,
-    processorPromise,
-    tokenizerPromise,
-  ]);
+  let model;
+  let processor;
+  let tokenizer;
+  try {
+    [model, processor, tokenizer] = await Promise.all([
+      modelPromise,
+      processorPromise,
+      tokenizerPromise,
+    ]);
+  } catch (error) {
+    const diagnostic = probe.ok
+      ? `Direkte Adapterprüfung: ${probe.mode}.`
+      : `Direkte Adapterprüfung lieferte keinen Adapter${probe.reason ? ` (${probe.reason})` : ""}; ONNX-Runtime-Automatik wurde versucht.`;
+    resetFlorenceRuntime();
+    throw new Error(`Florence-WebGPU konnte nicht initialisiert werden: ${error?.message || error}. ${diagnostic}`);
+  }
 
   runtimeInfo = {
     context,
-    adapterMode: probe.mode,
+    adapterMode: probe.ok ? probe.mode : "runtime-auto",
     fp16,
     localOnly,
+    directProbeAvailable: Boolean(probe.ok),
   };
 
   return { model, processor, tokenizer, info: runtimeInfo };
+}
+
+export function resetFlorenceRuntime() {
+  const previousModelPromise = modelPromise;
+  modelPromise = null;
+  processorPromise = null;
+  tokenizerPromise = null;
+  runtimeInfo = null;
+
+  // Bereits erfolgreich erzeugte Sessions möglichst freigeben. Ein
+  // fehlgeschlagener Promise wird absichtlich ignoriert.
+  Promise.resolve(previousModelPromise)
+    .then((model) => model?.dispose?.())
+    .catch(() => {});
 }
 
 export async function analyzeFlorence(dataUrl, role, options = {}) {
