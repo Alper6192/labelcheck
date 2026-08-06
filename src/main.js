@@ -435,8 +435,12 @@ function drawOverlay(role) {
     const mapping = state[role].mapping;
     if (mapping?.anchor?.entry) drawQuad(context, mapping.anchor.entry.box, scale, offsetX, offsetY, "#63e6be", "rgba(99,230,190,.13)", "ANKER");
     for (const [key, label] of FIELD_DEFINITIONS) {
-      const field = mapping?.fields?.[key]; if (!field?.expectedQuad) continue;
-      drawQuad(context, field.expectedQuad, scale, offsetX, offsetY, field.value ? "#55c2f2" : "#ff666e", field.value ? "rgba(85,194,242,.10)" : "rgba(255,102,110,.10)", label);
+      const field = mapping?.fields?.[key];
+      const quad = field?.value && Array.isArray(field?.candidateBox)
+        ? field.candidateBox
+        : field?.expectedQuad;
+      if (!quad) continue;
+      drawQuad(context, quad, scale, offsetX, offsetY, field.value ? "#55c2f2" : "#ff666e", field.value ? "rgba(85,194,242,.10)" : "rgba(255,102,110,.10)", label);
     }
   };
   image.complete ? requestAnimationFrame(draw) : image.addEventListener("load", draw, { once: true });

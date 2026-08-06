@@ -56,9 +56,23 @@ export function mapWithProfile(profile, entries, imageSize, options = {}) {
    * bestimmt. Es werden weiterhin keine Bildbereiche ausgeschnitten und keine
    * Beschriftungen neben den Werten ausgewertet.
    */
-  if (!anchor?.matched && options.forced && profile?.role === "product") {
+  if (options.forced && profile?.role === "product") {
     const fieldCalibration = calibrateWithoutAnchor(profile, candidates, imageSize);
-    if (fieldCalibration) {
+    const currentInliers = Number(calibration?.inliers || 0);
+    const fieldInliers = Number(fieldCalibration?.inliers || 0);
+    const fieldIsClearlyBetter = fieldCalibration && (
+      !calibration ||
+      fieldInliers > currentInliers ||
+      (fieldInliers === currentInliers && Number(fieldCalibration.score || 0) > Number(calibration.score || 0) + 20)
+    );
+
+    /*
+     * Ein im Adressblock gelesenes „Henkel“ darf nicht als Logoanker die
+     * komplette Geometrie verdrehen. Sobald die drei Kernwerte gemeinsam eine
+     * konsistentere, nahezu horizontale Transformation liefern, gewinnt die
+     * Wertgeometrie – auch wenn irgendein HENKEL-Text gefunden wurde.
+     */
+    if (fieldIsClearlyBetter) {
       calibration = fieldCalibration;
       anchor = {
         matched: false,
@@ -95,28 +109,34 @@ export function mapWithProfile(profile, entries, imageSize, options = {}) {
   }
 
   const anonymousRefinement = refineWithAnonymousGeometry(profile, entries, imageSize, initialTransform);
-  const transform = anonymousRefinement?.matrix || initialTransform;
-  const fields = {};
+  let transform = anonymousRefinement?.matrix || initialTransform;
+  let fields = mapAllFields(profile, candidates, imageSize, transform);
+
+  /*
+   * Sobald mindestens drei gültige Wertboxen gefunden wurden, wird aus ihren
+   * tatsächlichen Florence-Mittelpunkten eine gemeinsame Ähnlichkeitstrans-
+   * formation berechnet. Das korrigiert kleine Kameraabstände und Verschie-
+   * bungen, ohne Etikettenränder oder Beschriftungstexte zu benötigen.
+   */
+  const fieldRefinement = refineWithMappedFields(profile, fields, imageSize);
+  if (fieldRefinement?.used) {
+    transform = fieldRefinement.matrix;
+    fields = mapAllFields(profile, candidates, imageSize, transform);
+  }
+
   let fieldScoreSum = 0;
   let fieldScoreCount = 0;
-
-  for (const key of FIELD_KEYS) {
-    const fieldProfile = (profile.fields || []).find((field) => field.key === key);
-    if (!fieldProfile) {
-      fields[key] = emptyField("Für dieses Profil nicht konfiguriert");
-      continue;
-    }
-    const mapped = mapField(fieldProfile, candidates, profile, imageSize, transform);
-    fields[key] = mapped;
-    if (mapped.value) {
-      fieldScoreSum += mapped.score;
+  for (const mapped of Object.values(fields)) {
+    if (mapped?.value) {
+      fieldScoreSum += Number(mapped.score || 0);
       fieldScoreCount += 1;
     }
   }
 
   const fieldConsensusInliers = Number(calibration?.inliers || 0);
   const anonymousInliers = Number(anonymousRefinement?.inliers || 0);
-  const geometryBonus = Math.min(18, fieldConsensusInliers * 3 + anonymousInliers * 1.2);
+  const mappedFieldInliers = Number(fieldRefinement?.inliers || 0);
+  const geometryBonus = Math.min(22, fieldConsensusInliers * 3 + anonymousInliers * 1.2 + mappedFieldInliers * 1.6);
   const fieldAverage = fieldScoreCount ? fieldScoreSum / fieldScoreCount : 0;
   const anchorContribution = anchor?.synthetic
     ? Math.min(70, 22 + fieldConsensusInliers * 18)
@@ -135,11 +155,12 @@ export function mapWithProfile(profile, entries, imageSize, options = {}) {
     transform,
     refinement: {
       method: calibration?.method || "anchor-image-fit",
-      inliers: fieldConsensusInliers + anonymousInliers,
+      inliers: fieldConsensusInliers + anonymousInliers + mappedFieldInliers,
       fieldInliers: fieldConsensusInliers,
       anonymousInliers,
-      used: Boolean(fieldConsensusInliers || anonymousRefinement?.used),
-      rms: anonymousRefinement?.rms,
+      mappedFieldInliers,
+      used: Boolean(fieldConsensusInliers || anonymousRefinement?.used || fieldRefinement?.used),
+      rms: fieldRefinement?.rms ?? anonymousRefinement?.rms,
     },
     fields,
     entries,
@@ -253,6 +274,7 @@ function calibrateWithoutAnchor(profile, candidates, imageSize) {
             [secondLive.entry.centerX, secondLive.entry.centerY],
           );
           if (!matrix || !anchorTransformIsSane(matrix, profile.master, imageSize)) continue;
+          if (!productTransformIsPlausible(matrix, profile.master, imageSize)) continue;
 
           const syntheticAnchor = { matched: false, synthetic: true, score: 0, alias: "Wertgeometrie" };
           const scored = scoreCalibration(
@@ -269,10 +291,12 @@ function calibrateWithoutAnchor(profile, candidates, imageSize) {
     }
   }
 
-  if (!best || best.inliers < 2) return null;
+  const configuredCoreFields = fields.length;
+  const minimumInliers = configuredCoreFields >= 3 ? 3 : 2;
+  if (!best || best.inliers < minimumInliers) return null;
   return {
     ...best,
-    fallback: best.inliers < 3,
+    fallback: best.inliers < configuredCoreFields,
     anchorless: true,
   };
 }
@@ -384,6 +408,90 @@ function masterCorners(master) {
   const width = Number(master?.width || 1);
   const height = Number(master?.height || 1);
   return [[0, 0], [width, 0], [width, height], [0, height]];
+}
+
+function mapAllFields(profile, candidates, imageSize, transform) {
+  const fields = {};
+  for (const key of FIELD_KEYS) {
+    const fieldProfile = (profile.fields || []).find((field) => field.key === key);
+    fields[key] = fieldProfile
+      ? mapField(fieldProfile, candidates, profile, imageSize, transform)
+      : emptyField("Für dieses Profil nicht konfiguriert");
+  }
+  return fields;
+}
+
+function refineWithMappedFields(profile, fields, imageSize) {
+  const pairs = [];
+  const usedEntries = new Set();
+  for (const fieldProfile of profile.fields || []) {
+    if (!fieldProfile?.rect || fieldProfile.extractor === "drumAfterSlash") continue;
+    const mapped = fields?.[fieldProfile.key];
+    if (!mapped?.value || !mapped?.valid || !Array.isArray(mapped?.candidateBox)) continue;
+    const entryKey = mapped.entryIndices?.join(",") || `${mapped.candidateBox.join(",")}`;
+    if (usedEntries.has(entryKey)) continue;
+    usedEntries.add(entryKey);
+    const source = rectCenterInMaster(fieldProfile.rect, profile.master);
+    const targetBounds = quadBounds(mapped.candidateBox);
+    pairs.push({ source, target: [targetBounds.centerX, targetBounds.centerY] });
+  }
+  if (pairs.length < 3) return { used: false, inliers: pairs.length };
+  const fitted = fitSimilarity(pairs);
+  if (!fitted || !anchorTransformIsSane(fitted.matrix, profile.master, imageSize)) return { used: false, inliers: 0 };
+  if (profile?.role === "product" && !productTransformIsPlausible(fitted.matrix, profile.master, imageSize)) {
+    return { used: false, inliers: 0 };
+  }
+  const diagonal = Math.max(1, Math.hypot(Number(imageSize?.[0] || 1), Number(imageSize?.[1] || 1)));
+  if (fitted.rms > diagonal * 0.035) return { used: false, inliers: pairs.length, rms: fitted.rms };
+  return { used: true, matrix: fitted.matrix, inliers: pairs.length, rms: fitted.rms };
+}
+
+function fitSimilarity(pairs) {
+  if (!Array.isArray(pairs) || pairs.length < 2) return null;
+  const sourceCenter = [
+    pairs.reduce((sum, pair) => sum + pair.source[0], 0) / pairs.length,
+    pairs.reduce((sum, pair) => sum + pair.source[1], 0) / pairs.length,
+  ];
+  const targetCenter = [
+    pairs.reduce((sum, pair) => sum + pair.target[0], 0) / pairs.length,
+    pairs.reduce((sum, pair) => sum + pair.target[1], 0) / pairs.length,
+  ];
+  let denominator = 0;
+  let real = 0;
+  let imaginary = 0;
+  for (const pair of pairs) {
+    const sx = pair.source[0] - sourceCenter[0];
+    const sy = pair.source[1] - sourceCenter[1];
+    const tx = pair.target[0] - targetCenter[0];
+    const ty = pair.target[1] - targetCenter[1];
+    denominator += sx * sx + sy * sy;
+    real += sx * tx + sy * ty;
+    imaginary += sx * ty - sy * tx;
+  }
+  if (denominator < 1e-6) return null;
+  const a = real / denominator;
+  const b = imaginary / denominator;
+  const tx = targetCenter[0] - a * sourceCenter[0] + b * sourceCenter[1];
+  const ty = targetCenter[1] - b * sourceCenter[0] - a * sourceCenter[1];
+  const matrix = [a, -b, tx, b, a, ty, 0, 0, 1];
+  const rms = Math.sqrt(pairs.reduce((sum, pair) => {
+    const mapped = applyHomography(matrix, pair.source);
+    return sum + pointDistance(mapped, pair.target) ** 2;
+  }, 0) / pairs.length);
+  return { matrix, rms };
+}
+
+function productTransformIsPlausible(matrix, master, imageSize) {
+  const angle = Math.atan2(Number(matrix?.[3] || 0), Number(matrix?.[0] || 1));
+  const normalizedAngle = Math.atan2(Math.sin(angle), Math.cos(angle));
+  if (Math.abs(normalizedAngle) > Math.PI / 9) return false; // ca. 20°
+  const scale = Math.hypot(Number(matrix?.[0] || 0), Number(matrix?.[3] || 0));
+  const fitScale = Math.min(
+    Number(imageSize?.[0] || 1) / Math.max(1, Number(master?.width || 1)),
+    Number(imageSize?.[1] || 1) / Math.max(1, Number(master?.height || 1)),
+  );
+  if (!Number.isFinite(scale) || scale < fitScale * 0.32 || scale > fitScale * 1.25) return false;
+  return true;
 }
 
 export function mapField(field, candidates, profile, imageSize, transform) {
@@ -647,8 +755,12 @@ function extractValues(field, text) {
   } else if (field.key === "weight") {
     for (const match of source.matchAll(/([0-9]{1,7}(?:[.,][0-9]{1,3})?)\s*(KG|KGM|G|L|LTR|LITER)?/g)) {
       const number = match[1].replace(",", ".");
-      const unit = (match[2] || field.defaultUnit || "").replace("KGM", "KG");
-      if (unit || field.pattern?.includes("KG") || field.defaultUnit) output.push({ value: `${number}${unit ? ` ${unit}` : ""}`.trim() });
+      const explicitUnit = match[2] || "";
+      const unit = (explicitUnit || field.defaultUnit || "").replace("KGM", "KG");
+      // Eine beliebige Zahl darf niemals nur wegen eines KG-RegEx als Gewicht
+      // gelten. Ohne explizite Einheit ist ein Wert nur mit konfigurierter
+      // defaultUnit zulässig.
+      if (explicitUnit || field.defaultUnit) output.push({ value: `${number}${unit ? ` ${unit}` : ""}`.trim() });
     }
   } else if (field.key === "deliveryNote") {
     for (const match of source.matchAll(/(?<![A-Z0-9])[0-9]{5,16}(?![A-Z0-9])/g)) output.push({ value: match[0] });

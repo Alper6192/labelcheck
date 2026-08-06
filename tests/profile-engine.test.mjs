@@ -158,6 +158,48 @@ test("Produktprofil kalibriert sich ohne lesbaren Henkel-Anker aus den Wertfelde
   assert.ok(result.profileScore >= 50);
 });
 
+
+
+test("ignoriert den HENKEL-Adressblock und kalibriert das Produkt über drei Kernwerte", () => {
+  const profile = {
+    id:"PRODUCT",name:"Produktlabel",role:"product",active:true,configured:true,manualOnly:false,
+    anchor:{aliases:["HENKEL"],masterQuad:[.715,.795,.96,.795,.96,.92,.715,.92]},
+    master:{width:1000,height:966,geometry:[]},
+    fields:[
+      {key:"idh",label:"IDH",rect:{x:.721,y:.247,width:.27,height:.055},pattern:"^[0-9]{6,8}$",extractor:"idh",required:true,compare:true},
+      {key:"weight",label:"Gewicht",rect:{x:.778,y:.314,width:.209,height:.052},pattern:"^[0-9]+\\s*KG$",extractor:"weight",required:true,compare:true},
+      {key:"batch",label:"Batch",rect:{x:.63,y:.377,width:.354,height:.053},pattern:"^D[0-9]{8,10}$",extractor:"batch",required:true,compare:true},
+    ],
+  };
+  // Nur der kleine HENKEL-Text im Adressblock ist lesbar, nicht das Logo.
+  const labels=["TEROSON","HENKEL AG & CO. KGAA","2210485","25 KG","D562900431 /0001","24-JUL-26"];
+  const boxes=[
+    quad(150,95,280,48),
+    quad(170,520,190,24),
+    quad(805,185,155,34),
+    quad(830,238,120,32),
+    quad(720,292,245,34),
+    quad(830,345,125,28),
+  ];
+  const entries=parseFlorenceEntries({"<OCR_WITH_REGION>":{labels,quad_boxes:boxes}},[1100,700]);
+  const result=mapWithProfile(profile,entries,[1100,700],{forced:true});
+  assert.equal(result.anchor.synthetic,true);
+  assert.equal(result.fields.idh.value,"2210485");
+  assert.equal(result.fields.weight.value,"25 KG");
+  assert.equal(result.fields.batch.value,"D562900431");
+  assert.ok(result.refinement.fieldInliers >= 3);
+});
+
+test("verwendet eine nackte Artikelnummer nicht als Gewicht", () => {
+  const profile=sampleProfile();
+  const labels=["MERCEDES-BENZ AG","12981531","1845762","1300 KG","D561707374"];
+  const boxes=[quad(50,50,300,56),quad(290,350,120,52),quad(500,420,160,42),quad(290,350,120,52),quad(770,609,220,52)];
+  const entries=parseFlorenceEntries({"<OCR_WITH_REGION>":{labels,quad_boxes:boxes}},[1000,700]);
+  const result=mapWithProfile(profile,entries,[1000,700],{forced:true});
+  assert.equal(result.fields.weight.value,"1300 KG");
+  assert.notEqual(result.fields.weight.value,"12981531");
+});
+
 test("Vergleich gibt nur bei identischen Pflichtwerten frei", () => {
   const f=(value)=>({value});
   const product={batch:f("D123456789"),idh:f("2847365"),weight:f("200 KG")};
