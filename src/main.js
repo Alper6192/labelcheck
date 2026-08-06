@@ -23,6 +23,7 @@ const state = {
   pendingAnalyses: 0,
   imageRevision: { product: 0, vda: 0 },
   timings: { model: 0, product: 0, vda: 0 },
+  runtimeMode: "",
   product: emptyLabel("product"),
   vda: emptyLabel("vda"),
   comparison: null,
@@ -41,6 +42,7 @@ document.querySelector("#app").innerHTML = `
       <span id="modelBadge" class="badge warn">Florence-2 noch nicht geladen</span>
       <span id="configBadge" class="badge warn">Profile werden geladen …</span>
       <span id="storageBadge" class="badge">Lokales Protokoll</span>
+      <button id="retryModelButton" class="secondary compact">Florence neu starten</button>
     </div>
     <div class="privacy">Die Fotos verlassen das Smartphone nicht. Das Produktlabel wird bereits analysiert, während du das VDA-Label aufnimmst. Es findet keine Randerkennung und kein automatischer Zuschnitt statt.</div>
 
@@ -76,7 +78,7 @@ document.querySelector("#app").innerHTML = `
   </main>`;
 
 const elements = Object.fromEntries([
-  "webgpuBadge", "modelBadge", "configBadge", "storageBadge", "overall", "profileWarning", "progressWrap", "progress", "progressText", "analyzeButton", "saveButton", "demoButton", "resetButton", "comparisonBody", "rawOutput", "analysisTime", "recordCount", "exportButton", "clearButton", "logBody",
+  "webgpuBadge", "modelBadge", "configBadge", "storageBadge", "retryModelButton", "overall", "profileWarning", "progressWrap", "progress", "progressText", "analyzeButton", "saveButton", "demoButton", "resetButton", "comparisonBody", "rawOutput", "analysisTime", "recordCount", "exportButton", "clearButton", "logBody",
 ].map((id) => [id, document.getElementById(id)]));
 
 initialize().catch(showFatal);
@@ -97,6 +99,7 @@ async function initialize() {
     document.getElementById(`${role}Profile`).addEventListener("change", () => remapRole(role));
   }
   elements.analyzeButton.addEventListener("click", reanalyzeBoth);
+  elements.retryModelButton.addEventListener("click", restartFlorence);
   elements.saveButton.addEventListener("click", persistCurrentRecord);
   elements.demoButton.addEventListener("click", loadDemo);
   elements.resetButton.addEventListener("click", resetCurrent);
@@ -191,17 +194,51 @@ function preloadModel() {
 
   state.modelLoadPromise = getClient().load().then((result) => {
     state.timings.model = performance.now() - started;
-    elements.modelBadge.textContent = `Florence-2 bereit · ${MODEL_ID}`;
+    state.runtimeMode = result?.mode || (result?.context === "main-webgpu" ? "main" : "worker");
+    const modeText = state.runtimeMode === "main"
+      ? "Hauptfenster-Fallback"
+      : "Web Worker";
+    elements.modelBadge.textContent = `Florence-2 bereit · ${modeText}`;
     elements.modelBadge.className = "badge ok";
+    elements.webgpuBadge.textContent = `WebGPU aktiv · ${result?.adapterMode || "core"}`;
+    elements.webgpuBadge.className = "badge ok";
     if (state.pendingAnalyses === 0) showProgress(false);
     renderAnalysisTiming();
     return result;
   }).catch((error) => {
     state.modelLoadPromise = null;
+    state.runtimeMode = "";
+    elements.modelBadge.textContent = `Florence nicht bereit: ${error.message || error}`;
+    elements.modelBadge.className = "badge bad";
+    showProgress(false);
     throw error;
   });
 
   return state.modelLoadPromise;
+}
+
+
+async function restartFlorence() {
+  if (state.busy || state.pendingAnalyses > 0) return;
+  try { state.client?.terminate?.("Florence wird neu gestartet."); } catch {}
+  state.client = null;
+  state.modelLoadPromise = null;
+  state.runtimeMode = "";
+  elements.modelBadge.textContent = "Florence-2 wird neu gestartet …";
+  elements.modelBadge.className = "badge warn";
+  try {
+    await preloadModel();
+    if (state.product.image?.dataUrl && state.product.analysisStatus === "error") {
+      scheduleRoleAnalysis("product", { force: true });
+    }
+    if (state.vda.image?.dataUrl && state.vda.analysisStatus === "error") {
+      scheduleRoleAnalysis("vda", { force: true });
+    }
+  } catch (error) {
+    console.error(error);
+    elements.overall.textContent = `Florence konnte nicht neu gestartet werden: ${error.message || error}`;
+    elements.overall.className = "overall rejected";
+  }
 }
 
 function scheduleRoleAnalysis(role, { force = false } = {}) {
@@ -358,7 +395,17 @@ function renderProfileInfo(role) {
 function getClient() {
   if (state.client) return state.client;
   state.client = new FlorenceClient();
-  state.client.addEventListener("status", (event) => showProgress(true, event.detail.text, Number(elements.progress.value) || 5));
+  state.client.addEventListener("status", (event) => {
+    showProgress(true, event.detail.text, Number(elements.progress.value) || 5);
+    if (/Hauptfenster/i.test(event.detail.text || "")) {
+      elements.modelBadge.textContent = "Florence wechselt ins Hauptfenster …";
+      elements.modelBadge.className = "badge warn";
+    }
+  });
+  state.client.addEventListener("crash", () => {
+    elements.modelBadge.textContent = "Florence-Worker abgestürzt · automatischer Fallback läuft";
+    elements.modelBadge.className = "badge warn";
+  });
   state.client.addEventListener("progress", (event) => {
     const info = event.detail.progress || {}; const percent = Number(info.progress);
     showProgress(true, info.file ? `${info.status || "Laden"}: ${info.file}` : info.status || "Modelldateien werden geladen …", Number.isFinite(percent) ? percent : Number(elements.progress.value) || 10);
