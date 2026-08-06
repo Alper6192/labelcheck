@@ -1,30 +1,14 @@
-# Start – LabelCheck PaddleOCR 0.5.2
+# Start mit Version 0.5.4
 
-## Update installieren
+1. Patch entpacken.
+2. Inhalt in den lokalen Repository-Ordner kopieren und vorhandene Dateien ersetzen.
+3. `public/config/label-profiles.json` wird vom Patch nicht überschrieben.
+4. In GitHub Desktop committen und pushen.
+5. Warten, bis GitHub Actions vollständig grün ist.
+6. Editor mit `editor.html?v=054` öffnen.
 
-1. Repository in GitHub Desktop öffnen.
-2. `Repository → Show in Explorer` auswählen.
-3. Inhalt des Patch-Ordners in den Repository-Ordner kopieren.
-4. Vorhandene Dateien ersetzen.
-5. Commit-Nachricht: `Profileditor Worker-Test und Hauptfenster-Fallback`.
-6. Committen und zu GitHub pushen.
-7. Unter GitHub Actions warten, bis Build und Deployment grün sind.
+Im Editor muss vor der Analyse stehen:
 
-## Seiten öffnen
+`PaddleOCR bereit · Web Worker · WASM/SIMD`
 
-```text
-Scanner:      https://alper6192.github.io/labelcheck/?v=052
-Profileditor: https://alper6192.github.io/labelcheck/editor.html?v=052
-```
-
-## Profileditor testen
-
-1. Produktprofil auswählen und Produkt-Masterbild laden.
-2. VDA-Profil auswählen: Dort darf das Produktbild nicht erscheinen.
-3. Eigenes VDA-Masterbild laden.
-4. Zwischen den Profilen wechseln: Jedes Profil muss sein eigenes Bild behalten.
-5. Warten, bis „praktisch geprüft“ erscheint.
-6. PaddleOCR starten. Ein blockierter Worker wechselt automatisch ins Hauptfenster.
-7. Bei Bedarf „Analyse abbrechen“ verwenden.
-
-Masterbilder sind nur für die aktuelle Browsersitzung gespeichert. Nach einem Neuladen der Seite müssen sie erneut geladen werden.
+Der Editor zeigt während der OCR die laufenden Sekunden an. Es gibt keinen automatischen Wechsel ins Hauptfenster.

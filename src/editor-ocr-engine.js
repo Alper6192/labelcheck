@@ -2,12 +2,11 @@ import { PaddleOCR } from "@paddleocr/paddleocr-js";
 import { MODEL_OPTIONS } from "./config.js";
 
 /**
- * Bewusst einfacher OCR-Lauf für den Profileditor.
+ * OCR-Lauf des Profileditors.
  *
- * Der Scanner nutzt weiterhin den Web Worker. Im Editor wird PaddleOCR dagegen
- * genau einmal im Hauptfenster initialisiert. Dadurch kann kein abgelaufener
- * Worker-Auftrag im Hintergrund weiterlaufen und mit einer zweiten ORT-/OpenCV-
- * Instanz konkurrieren.
+ * Wichtig: Der Editor benutzt genau denselben schnellen Laufzeitpfad wie der
+ * Scanner: einen einzelnen PaddleOCR-Web-Worker mit WASM/SIMD. Es gibt keinen
+ * Zeitüberschreitungs-Fallback und keine zweite parallele OCR-Instanz.
  */
 export class EditorPaddleOcrEngine {
   #ocr = null;
@@ -25,7 +24,7 @@ export class EditorPaddleOcrEngine {
   }
 
   get mode() {
-    return "Hauptfenster · WASM/SIMD";
+    return "Web Worker · WASM/SIMD";
   }
 
   get summary() {
@@ -37,6 +36,7 @@ export class EditorPaddleOcrEngine {
       return { reused: true, mode: this.mode, summary: this.#summary, initMs: 0 };
     }
     if (this.#initPromise) return this.#initPromise;
+    if (this.#predictPromise) throw new Error("PaddleOCR analysiert bereits ein Bild.");
 
     const operation = this.#initializeInternal(modelKey, onStatus, force);
     this.#initPromise = operation;
@@ -50,9 +50,7 @@ export class EditorPaddleOcrEngine {
   async #initializeInternal(modelKey, onStatus, force) {
     const model = MODEL_OPTIONS[modelKey];
     if (!model) throw new Error(`Unbekanntes Modell: ${modelKey}`);
-    if (this.#predictPromise) {
-      throw new Error("PaddleOCR analysiert bereits ein Bild.");
-    }
+
     if (force) await this.dispose();
     if (this.ready && this.#modelKey === modelKey) {
       return { reused: true, mode: this.mode, summary: this.#summary, initMs: 0 };
@@ -60,16 +58,14 @@ export class EditorPaddleOcrEngine {
 
     const startedAt = performance.now();
     const wasmPaths = new URL("./ort/", window.location.href).href;
-    onStatus("PaddleOCR wird einmalig im Hauptfenster geladen …");
+    onStatus("PaddleOCR wird im Web Worker geladen …");
 
-    // worker:false ist hier absichtlich fest. Kein Probe-Worker, kein Timeout-
-    // Fallback und keine zweite, parallel startende OCR-Instanz.
     this.#ocr = await PaddleOCR.create({
       textDetectionModelName: model.textDetectionModelName,
       textRecognitionModelName: model.textRecognitionModelName,
       textDetectionBatchSize: 1,
-      textRecognitionBatchSize: 4,
-      worker: false,
+      textRecognitionBatchSize: 8,
+      worker: true,
       ortOptions: {
         backend: "wasm",
         wasmPaths,
@@ -91,6 +87,9 @@ export class EditorPaddleOcrEngine {
   async predict(canvas, params, onStatus = () => {}) {
     if (!this.#ocr) throw new Error("PaddleOCR wurde noch nicht initialisiert.");
     if (this.#predictPromise) throw new Error("PaddleOCR analysiert bereits ein Bild.");
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new TypeError("Für die OCR wird ein Canvas-Masterbild benötigt.");
+    }
 
     const operation = this.#predictInternal(canvas, params, onStatus);
     this.#predictPromise = operation;
@@ -103,12 +102,21 @@ export class EditorPaddleOcrEngine {
 
   async #predictInternal(canvas, params, onStatus) {
     const startedAt = performance.now();
-    onStatus("Masterbild wird für PaddleOCR vorbereitet …");
-    const blob = await canvasToBlob(canvas);
-    onStatus("PaddleOCR erkennt Text im Hauptfenster …");
-    const [result] = await this.#ocr.predict(blob, params);
+    onStatus("PaddleOCR erkennt Text im Web Worker …");
+
+    // Exakt wie im funktionierenden Scanner: das vorbereitete Canvas direkt
+    // an PaddleOCR übergeben. Keine erneute JPEG-Komprimierung im Hauptfenster.
+    const [result] = await this.#ocr.predict(canvas, params);
     if (!result) throw new Error("PaddleOCR hat kein Ergebnis zurückgegeben.");
     return { result, wallMs: performance.now() - startedAt };
+  }
+
+  async abort() {
+    const current = this.#ocr;
+    this.#ocr = null;
+    this.#modelKey = null;
+    this.#summary = null;
+    if (current?.dispose) await current.dispose();
   }
 
   async dispose() {
@@ -119,25 +127,6 @@ export class EditorPaddleOcrEngine {
     this.#ocr = null;
     this.#modelKey = null;
     this.#summary = null;
-    if (current?.dispose) {
-      try {
-        await current.dispose();
-      } catch {
-        // Ein fehlgeschlagenes Dispose darf einen späteren Seiten-Neustart nicht blockieren.
-      }
-    }
+    if (current?.dispose) await current.dispose();
   }
-}
-
-function canvasToBlob(canvas) {
-  if (!(canvas instanceof HTMLCanvasElement)) {
-    throw new TypeError("Für die OCR wird ein Canvas-Masterbild benötigt.");
-  }
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => blob ? resolve(blob) : reject(new Error("Masterbild konnte nicht in ein OCR-Bild umgewandelt werden.")),
-      "image/jpeg",
-      0.94
-    );
-  });
 }

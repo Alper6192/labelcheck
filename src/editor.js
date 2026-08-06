@@ -38,7 +38,8 @@ const state = {
   drag: null,
   dirty: false,
   ocrRun: null,
-  engineInitPromise: null
+  engineInitPromise: null,
+  elapsedTimer: null
 };
 
 el("version").textContent = `v${APP_VERSION}`;
@@ -294,11 +295,11 @@ async function initializeEngineInternal(force) {
       force
     );
     setEditorEngine(`PaddleOCR bereit · ${info.mode}`, "ok");
-    el("editorEngineDetails").textContent = `Initialisierung ${formatMilliseconds(info.initMs)} · Editor ohne Web Worker und ohne Parallel-Fallback.`;
+    el("editorEngineDetails").textContent = `Initialisierung ${formatMilliseconds(info.initMs)} · derselbe Web-Worker-Pfad wie im Scanner.`;
     return true;
   } catch (error) {
     setEditorEngine(`PaddleOCR nicht bereit: ${safeError(error)}`, "bad");
-    el("editorEngineDetails").textContent = "Der Editor startet genau eine PaddleOCR-Instanz im Hauptfenster.";
+    el("editorEngineDetails").textContent = "Der Editor benötigt den PaddleOCR-Web-Worker; es wird kein langsamer Hauptfenster-Fallback gestartet.";
     return false;
   }
 }
@@ -341,8 +342,8 @@ async function runOcr() {
   };
   state.ocrRun = run;
   refreshMasterControls();
-  setEditorEngine("PaddleOCR analysiert das Masterbild im Hauptfenster …", "wait");
-  el("editorEngineDetails").textContent = `Bild ${session.prepared.width} × ${session.prepared.height} px · kein Worker, kein Timeout-Fallback.`;
+  setEditorEngine("PaddleOCR analysiert das Masterbild im Web Worker …", "wait");
+  startElapsedDisplay(run, session);
 
   try {
     const preset = QUALITY_PRESETS.balanced;
@@ -351,7 +352,7 @@ async function runOcr() {
       {
         textDetLimitSideLen: preset.textDetLimitSideLen,
         textDetLimitType: "min",
-        textDetMaxSideLimit: 2000,
+        textDetMaxSideLimit: 2400,
         textDetThresh: 0.25,
         textDetBoxThresh: preset.textDetBoxThresh,
         textDetUnclipRatio: 1.55,
@@ -378,9 +379,10 @@ async function runOcr() {
       el("editorEngineDetails").textContent = "Das Ergebnis wird nicht übernommen.";
     } else {
       setEditorEngine(`OCR fehlgeschlagen: ${safeError(error)}`, "bad");
-      el("editorEngineDetails").textContent = "Kein automatischer Parallel-Neustart. Modell bei Bedarf manuell neu laden.";
+      el("editorEngineDetails").textContent = "Der Worker wurde nicht automatisch ersetzt. Modell bei Bedarf manuell neu laden.";
     }
   } finally {
+    stopElapsedDisplay();
     if (state.ocrRun?.id === run.id) state.ocrRun = null;
     refreshMasterControls();
   }
@@ -394,12 +396,39 @@ async function cancelOcrAnalysis(silent = false) {
   const run = state.ocrRun;
   if (!run) return;
   run.cancelled = true;
+  stopElapsedDisplay();
   state.ocrRun = null;
   refreshMasterControls();
   if (!silent) {
-    setEditorEngine("OCR-Ergebnis wird verworfen …", "warn");
-    el("editorEngineDetails").textContent = "Eine bereits laufende Hauptfenster-Inferenz kann technisch nicht hart beendet werden; ihr Ergebnis wird nicht übernommen.";
+    setEditorEngine("PaddleOCR-Worker wird beendet …", "warn");
+    el("editorEngineDetails").textContent = "Der laufende Worker wird vollständig beendet; danach muss das Modell neu geladen werden.";
   }
+  try {
+    await engine.abort();
+    if (!silent) {
+      setEditorEngine("OCR abgebrochen · Modell neu laden", "warn");
+      el("editorEngineDetails").textContent = "Der alte Worker ist beendet. Vor der nächsten Analyse auf „Modell neu laden“ klicken.";
+    }
+  } catch (error) {
+    if (!silent) setEditorEngine(`Worker konnte nicht sauber beendet werden: ${safeError(error)}`, "bad");
+  }
+}
+
+function startElapsedDisplay(run, session) {
+  stopElapsedDisplay();
+  const startedAt = performance.now();
+  const update = () => {
+    if (!isRunActive(run)) return;
+    const seconds = Math.max(0, Math.round((performance.now() - startedAt) / 1000));
+    el("editorEngineDetails").textContent = `Bild ${session.prepared.width} × ${session.prepared.height} px · Web Worker läuft seit ${seconds} s.`;
+  };
+  update();
+  state.elapsedTimer = setInterval(update, 1000);
+}
+
+function stopElapsedDisplay() {
+  if (state.elapsedTimer) clearInterval(state.elapsedTimer);
+  state.elapsedTimer = null;
 }
 
 async function clearMasterImage() {
