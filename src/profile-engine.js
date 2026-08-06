@@ -1,12 +1,14 @@
 import { boundsFromPoly, normalizePoly } from "./utils.js";
+import { normalizeProfileConfig } from "./profile-schema.js";
 
-const FIELD_KEYS = ["batch", "idh", "weight", "delivery_note", "drum_number"];
+export async function loadProfileConfig() {
+  const response = await fetch(new URL(`./config/label-profiles.json?t=${Date.now()}`, window.location.href), { cache: "no-store" });
+  if (!response.ok) throw new Error(`Profile konnten nicht geladen werden (${response.status}).`);
+  return normalizeProfileConfig(await response.json());
+}
 
 export async function loadProfiles() {
-  const response = await fetch(new URL("./config/label-profiles.json", window.location.href));
-  if (!response.ok) throw new Error(`Profile konnten nicht geladen werden (${response.status}).`);
-  const config = await response.json();
-  if (!Array.isArray(config.profiles)) throw new Error("Ungültige Profilkonfiguration.");
+  const config = await loadProfileConfig();
   return config.profiles.filter((profile) => profile.active !== false);
 }
 
@@ -30,43 +32,78 @@ export function extractProfileFields(items, profile, imageSize) {
   if (!anchorMatch) {
     return { ...emptyExtraction(), profile, warning: "Profilanker wurde nicht erkannt." };
   }
+
   const transform = buildTransform(profile.anchor.poly, anchorMatch.item.poly, imageSize);
   const fields = {};
+  const candidates = {};
+  const expectedPolys = {};
   const overlays = [{ key: "anchor", label: "ANKER", poly: normalizePoly(anchorMatch.item.poly), item: anchorMatch.item }];
+
   for (const field of profile.fields || []) {
     const expected = transformPoly(field.poly, transform, imageSize);
+    expectedPolys[field.key] = expected;
     const candidate = chooseCandidate(items, expected, field);
+    if (candidate) candidates[field.key] = candidate;
+  }
+
+  for (const field of profile.fields || []) {
+    const expected = expectedPolys[field.key];
+    let candidate = candidates[field.key] || null;
+    let source = candidate ? "ocr" : "missing";
+
+    if (field.key === "drum_number") {
+      const derived = deriveDrumCandidate(items, candidates.batch, field, expected);
+      if (!candidate || (derived && derived.selectionScore > Number(candidate.selectionScore || 0))) {
+        candidate = derived || candidate;
+        source = derived ? derived.source || "ocr-neighbor" : source;
+      }
+    }
+
+    const raw = candidate?.text || "";
+    const value = normalizeFieldValue(field.key, raw, field);
+    const valid = Boolean(value && validateField(value, field.regex));
     fields[field.key] = {
       key: field.key,
       label: field.label || field.key,
-      value: candidate ? normalizeFieldValue(field.key, candidate.text) : "",
-      raw: candidate?.text || "",
+      value,
+      raw,
       confidence: Number(candidate?.score || 0),
-      valid: Boolean(candidate && validateField(candidate.text, field.regex)),
+      valid,
       required: Boolean(field.required),
       compare: Boolean(field.compare),
-      source: candidate ? "ocr" : "missing",
+      source,
       poly: candidate?.poly || expected
     };
     overlays.push({ key: field.key, label: field.label || field.key, poly: candidate?.poly || expected, item: candidate || null });
   }
+
   return { profile, anchorMatch, transform, fields, overlays, warning: "" };
 }
 
 export function applyManualValue(extraction, key, value) {
   const field = extraction?.fields?.[key];
   if (!field) return;
-  field.value = normalizeFieldValue(key, value);
+  const configField = extraction.profile?.fields?.find((entry) => entry.key === key) || {};
+  field.value = normalizeFieldValue(key, value, configField);
   field.raw = value;
   field.source = "manual";
-  field.valid = field.value.length > 0;
+  field.valid = Boolean(field.value && validateField(field.value, configField.regex));
 }
 
-export function normalizeFieldValue(key, value) {
+export function normalizeFieldValue(key, value, field = {}) {
   const text = String(value ?? "").trim().toUpperCase().replace(/\s+/g, " ");
-  if (key === "batch") return text.replace(/\s/g, "").split("/")[0].replace(/[^A-Z0-9-]/g, "");
-  if (["idh", "delivery_note", "drum_number"].includes(key)) return text.replace(/\D/g, "");
-  if (key === "weight") return text.replace(/,/g, ".").replace(/\s+/g, " ");
+  const normalizer = field.normalizer || defaultNormalizer(key);
+
+  if (normalizer === "batch") {
+    return text.replace(/\s/g, "").split(/[\/|I]/)[0].replace(/[^A-Z0-9-]/g, "");
+  }
+  if (normalizer === "last_digits") {
+    const digits = text.replace(/\D/g, "");
+    const count = Math.max(1, Number(field.digits || 4));
+    return digits.length >= count ? digits.slice(-count) : digits;
+  }
+  if (normalizer === "digits") return text.replace(/\D/g, "");
+  if (normalizer === "weight") return text.replace(/,/g, ".").replace(/\s+/g, " ");
   return text;
 }
 
@@ -79,7 +116,15 @@ export function normalizedWeight(value) {
   return { number, unit, base: unit === "KG" ? number * 1000 : number };
 }
 
-function emptyExtraction() { return { profile: null, anchorMatch: null, transform: null, fields: {}, overlays: [], warning: "" }; }
+export function validateField(value, regex) {
+  if (!regex) return Boolean(String(value || "").trim());
+  try { return new RegExp(regex, "i").test(String(value || "").trim()); }
+  catch { return false; }
+}
+
+function emptyExtraction() {
+  return { profile: null, anchorMatch: null, transform: null, fields: {}, overlays: [], warning: "" };
+}
 
 function findAnchor(items, aliases) {
   let best = null;
@@ -117,16 +162,19 @@ function transformPoly(normalized, transform, imageSize) {
 
 function chooseCandidate(items, expectedPoly, field) {
   const expected = boundsFromPoly(expectedPoly);
-  const cx = expected.x + expected.width / 2, cy = expected.y + expected.height / 2;
-  const radius = Math.max(expected.width, expected.height) * 1.8 + 28;
+  const cx = expected.x + expected.width / 2;
+  const cy = expected.y + expected.height / 2;
+  const radius = Math.max(expected.width, expected.height) * Number(field.searchRadius || 1.8) + 28;
+  const sourceRegex = field.sourceRegex || field.regex;
   let best = null;
   for (const item of items || []) {
-    if (!validateField(item.text, field.regex)) continue;
+    if (!validateField(item.text, sourceRegex)) continue;
     const b = boundsFromPoly(item.poly);
     const ix = Math.max(0, Math.min(expected.x + expected.width, b.x + b.width) - Math.max(expected.x, b.x));
     const iy = Math.max(0, Math.min(expected.y + expected.height, b.y + b.height) - Math.max(expected.y, b.y));
     const overlap = (ix * iy) / Math.max(1, Math.min(expected.width * expected.height, b.width * b.height));
-    const dx = (b.x + b.width / 2) - cx, dy = (b.y + b.height / 2) - cy;
+    const dx = (b.x + b.width / 2) - cx;
+    const dy = (b.y + b.height / 2) - cy;
     const distance = Math.hypot(dx, dy);
     if (distance > radius && overlap <= 0) continue;
     const proximity = Math.max(0, 1 - distance / radius);
@@ -136,17 +184,79 @@ function chooseCandidate(items, expectedPoly, field) {
   return best;
 }
 
-function validateField(value, regex) {
-  if (!regex) return Boolean(String(value || "").trim());
-  try { return new RegExp(regex, "i").test(String(value || "").trim()); }
-  catch { return false; }
+function deriveDrumCandidate(items, batchCandidate, field, expectedPoly) {
+  if (!batchCandidate) return null;
+  const rawBatch = String(batchCandidate.text || "");
+  const explicit = rawBatch.match(/[\/|I]\s*(\d{3,6})\b/i);
+  if (explicit) {
+    return {
+      text: explicit[1],
+      score: Number(batchCandidate.score || 0),
+      poly: batchCandidate.poly,
+      selectionScore: 1,
+      source: "batch-suffix"
+    };
+  }
+
+  if (field.adjacentTo !== "batch") return null;
+  const batchBounds = boundsFromPoly(batchCandidate.poly);
+  const expected = boundsFromPoly(expectedPoly || []);
+  const sourceRegex = field.sourceRegex || "^(?:[/|I1]?\\s*)?\\d{4}$";
+  let best = null;
+  for (const item of items || []) {
+    if (item === batchCandidate || !validateField(item.text, sourceRegex)) continue;
+    const bounds = boundsFromPoly(item.poly);
+    const verticalDistance = Math.abs((bounds.y + bounds.height / 2) - (batchBounds.y + batchBounds.height / 2));
+    const gap = bounds.x - (batchBounds.x + batchBounds.width);
+    if (verticalDistance > Math.max(18, batchBounds.height * 0.8)) continue;
+    if (gap < -8 || gap > Math.max(170, batchBounds.width * 1.1)) continue;
+    const expectedDistance = expected.width
+      ? Math.hypot((bounds.x + bounds.width / 2) - (expected.x + expected.width / 2), (bounds.y + bounds.height / 2) - (expected.y + expected.height / 2))
+      : 0;
+    const score = 0.55 * Math.max(0, 1 - gap / Math.max(1, batchBounds.width * 1.1))
+      + 0.25 * Math.max(0, 1 - verticalDistance / Math.max(1, batchBounds.height))
+      + 0.15 * Number(item.score || 0)
+      + 0.05 * Math.max(0, 1 - expectedDistance / 180);
+    if (!best || score > best.selectionScore) best = { ...item, selectionScore: score, source: "ocr-neighbor" };
+  }
+  return best;
 }
 
-function scaleNormalizedPoly(poly, size) { return normalizePoly(poly).map(([x,y]) => [x * size.width, y * size.height]); }
-function polyGeometry(poly) {
-  const p = normalizePoly(poly); const b = boundsFromPoly(p);
-  const a = p[0] || [b.x,b.y], c = p[1] || [b.x+b.width,b.y];
-  return { center:[b.x+b.width/2,b.y+b.height/2], width:Math.hypot(c[0]-a[0],c[1]-a[1]) || b.width, angle:Math.atan2(c[1]-a[1],c[0]-a[0]) };
+function defaultNormalizer(key) {
+  if (key === "batch") return "batch";
+  if (key === "weight") return "weight";
+  if (["idh", "delivery_note", "drum_number"].includes(key)) return "digits";
+  return "text";
 }
-function normalizeText(value) { return String(value || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, ""); }
-function dice(a,b) { if (!a || !b) return 0; const pairs=s=>new Set(Array.from({length:Math.max(0,s.length-1)},(_,i)=>s.slice(i,i+2))); const A=pairs(a),B=pairs(b); let hit=0; for(const p of A) if(B.has(p)) hit++; return (2*hit)/Math.max(1,A.size+B.size); }
+
+function scaleNormalizedPoly(poly, size) {
+  return normalizePoly(poly).map(([x, y]) => [x * size.width, y * size.height]);
+}
+
+function polyGeometry(poly) {
+  const points = normalizePoly(poly);
+  const bounds = boundsFromPoly(points);
+  const a = points[0] || [bounds.x, bounds.y];
+  const c = points[1] || [bounds.x + bounds.width, bounds.y];
+  return {
+    center: [bounds.x + bounds.width / 2, bounds.y + bounds.height / 2],
+    width: Math.hypot(c[0] - a[0], c[1] - a[1]) || bounds.width,
+    angle: Math.atan2(c[1] - a[1], c[0] - a[0])
+  };
+}
+
+function normalizeText(value) {
+  return String(value || "").toUpperCase().normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function dice(a, b) {
+  if (!a || !b) return 0;
+  const pairs = (value) => new Set(Array.from({ length: Math.max(0, value.length - 1) }, (_, index) => value.slice(index, index + 2)));
+  const left = pairs(a);
+  const right = pairs(b);
+  let hits = 0;
+  for (const pair of left) if (right.has(pair)) hits += 1;
+  return (2 * hits) / Math.max(1, left.size + right.size);
+}

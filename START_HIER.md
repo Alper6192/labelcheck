@@ -1,20 +1,31 @@
-# Update auf 0.4.0
+# Update auf 0.5.0
+
+## Installation
 
 1. ZIP entpacken.
 2. In GitHub Desktop `Repository → Show in Explorer` öffnen.
 3. Den gesamten Inhalt dieses Ordners in den Repository-Ordner kopieren.
-4. Vorhandene Dateien ersetzen, `.git` nicht löschen.
-5. Commit: `PaddleOCR Vergleich und Excel ergänzen`.
-6. `Push origin`.
-7. In GitHub Actions warten, bis Build und Deploy grün sind.
-8. Öffnen: `https://alper6192.github.io/labelcheck/?v=040`.
+4. Vorhandene Dateien ersetzen.
+5. Commit-Nachricht: `PaddleOCR Profileditor und Fassnummer ergänzen`
+6. `Commit to main` und danach `Push origin`.
+7. Unter GitHub Actions warten, bis Build und Deployment grün sind.
 
-## Test
+Danach:
 
-- Produktlabel TEROSON PU 1511 fotografieren.
-- Mercedes-VDA-Label Format_007 fotografieren.
-- Prüfen, ob IDH, Gewicht, Batch und Lieferscheinnummer richtig erscheinen.
-- Werte bei Bedarf direkt im Eingabefeld korrigieren.
-- Vergleich ansehen.
-- Datensatz übernehmen.
-- Excel speichern.
+- Scanner: `https://DEIN-NAME.github.io/labelcheck/?v=050`
+- Editor: `https://DEIN-NAME.github.io/labelcheck/editor.html?v=050`
+
+## Fassnummer
+
+Beim vorhandenen Produktprofil ist bereits eine Fassnummer konfiguriert. PaddleOCR hatte `/0001` als `10001` gelesen. Die neue Bereinigung übernimmt die letzten vier Ziffern und liefert deshalb korrekt `0001`.
+
+## Neues Profil einrichten
+
+1. Editor öffnen.
+2. `Neues Profil` oder `Profil duplizieren` wählen.
+3. Profilname, Rolle und Anker-Aliase eintragen.
+4. Masterbild laden und PaddleOCR starten.
+5. Kundennamen bzw. stabilen Produktnamen als Anker zuweisen.
+6. Wertboxen den Feldern zuordnen.
+7. Zonen im Bearbeitungsmodus verschieben oder an den weißen Eckpunkten ändern.
+8. JSON exportieren und unter `public/config/label-profiles.json` ablegen.

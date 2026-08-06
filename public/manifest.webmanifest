@@ -1,9 +1,9 @@
 {
-  "name": "LabelCheck PaddleOCR Test",
-  "short_name": "PaddleOCR Test",
+  "name": "LabelCheck PaddleOCR",
+  "short_name": "LabelCheck",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#061423",
   "theme_color": "#061423",
-  "description": "Lokaler PaddleOCR-Browsertest für Industrieetiketten"
+  "description": "Lokaler PaddleOCR-Etikettenvergleich mit Profileditor"
 }
