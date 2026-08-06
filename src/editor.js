@@ -61,6 +61,7 @@ function setupEvents() {
   }
 
   el("masterInput").addEventListener("change", loadMasterImage);
+  el("ocrJsonInput").addEventListener("change", importOcrJson);
   el("runOcrButton").onclick = runOcr;
   el("cancelOcrButton").onclick = () => cancelOcrAnalysis(false);
   el("initializeEditorButton").onclick = async () => {
@@ -84,6 +85,7 @@ function setupEvents() {
     el("paddingValue").textContent = `${el("paddingInput").value} %`;
   });
   el("assignAnchorButton").onclick = assignAnchor;
+  el("assignBatchDrumButton").onclick = assignBatchAndDrum;
   document.querySelectorAll("[data-field]").forEach((button) => {
     button.addEventListener("click", () => assignField(button.dataset.field));
   });
@@ -330,6 +332,46 @@ async function loadMasterImage(event) {
   }
 }
 
+async function importOcrJson(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  const profile = selectedProfile();
+  const session = currentSession(false);
+  if (!profile || !session?.prepared) {
+    alert("Zuerst das passende Profil auswählen und das zugehörige Masterbild laden.");
+    return;
+  }
+
+  try {
+    const payload = JSON.parse(await file.text());
+    const rawResult = pickOcrResult(payload, profile.role);
+    if (!rawResult || !Array.isArray(rawResult.items)) {
+      throw new Error("In der JSON wurde kein PaddleOCR-Ergebnis für dieses Profil gefunden.");
+    }
+
+    const sourceWidth = Number(rawResult.image?.width || session.prepared.width);
+    const sourceHeight = Number(rawResult.image?.height || session.prepared.height);
+    session.ocrResult = scaleOcrResult(
+      rawResult,
+      sourceWidth,
+      sourceHeight,
+      session.prepared.width,
+      session.prepared.height
+    );
+    session.selection = null;
+    setEditorEngine(`OCR-JSON importiert · ${session.ocrResult.items.length} Textzeilen`, "ok");
+    el("editorEngineDetails").textContent = `Quelle „${file.name}“ · Boxen auf ${session.prepared.width} × ${session.prepared.height} px skaliert.`;
+    el("editorHint").textContent = "OCR-Box anklicken und einem Feld zuweisen. Für eine kombinierte Zeile wie D… / 0001 die Schaltfläche „Batch + Fassnummer“ verwenden.";
+    drawOverlay();
+    renderSelectionInfo();
+    refreshMasterControls();
+  } catch (error) {
+    setEditorEngine(`OCR-JSON konnte nicht importiert werden: ${safeError(error)}`, "bad");
+  }
+}
+
 async function runOcr() {
   const session = currentSession(false);
   if (!session?.prepared || state.ocrRun || !(await initializeEngine())) return;
@@ -346,17 +388,20 @@ async function runOcr() {
   startElapsedDisplay(run, session);
 
   try {
-    const preset = QUALITY_PRESETS.balanced;
+    // Der Editor benötigt nur anklickbare Textboxen. Dafür wird eine separate,
+    // kleinere OCR-Kopie verwendet; das hochauflösende Masterbild bleibt für
+    // die genaue Zonenbearbeitung unverändert erhalten.
+    const ocrInput = createOcrInputCanvas(session.prepared.canvas, 1200);
     const output = await engine.predict(
-      session.prepared.canvas,
+      ocrInput.canvas,
       {
-        textDetLimitSideLen: preset.textDetLimitSideLen,
-        textDetLimitType: "min",
-        textDetMaxSideLimit: 2400,
+        textDetLimitSideLen: 1200,
+        textDetLimitType: "max",
+        textDetMaxSideLimit: 1200,
         textDetThresh: 0.25,
-        textDetBoxThresh: preset.textDetBoxThresh,
+        textDetBoxThresh: 0.44,
         textDetUnclipRatio: 1.55,
-        textRecScoreThresh: preset.textRecScoreThresh
+        textRecScoreThresh: 0.20
       },
       (message) => setEditorEngine(message, "wait")
     );
@@ -365,11 +410,24 @@ async function runOcr() {
     const targetSession = state.sessions.get(run.profileId, false);
     if (!targetSession || targetSession.imageRevision !== run.imageRevision) return;
 
-    targetSession.ocrResult = output.result;
+    targetSession.ocrResult = scaleOcrResult(
+      output.result,
+      ocrInput.width,
+      ocrInput.height,
+      targetSession.prepared.width,
+      targetSession.prepared.height
+    );
     targetSession.selection = null;
     if (state.selectedProfileId === run.profileId) {
-      setEditorEngine(`PaddleOCR bereit · ${engine.mode} · ${output.result.items?.length || 0} Textzeilen`, "ok");
-      el("editorEngineDetails").textContent = `Masterbild in ${formatMilliseconds(output.wallMs)} analysiert.`;
+      const result = targetSession.ocrResult;
+      const metrics = result.metrics || {};
+      setEditorEngine(`PaddleOCR bereit · ${engine.mode} · ${result.items?.length || 0} Textzeilen`, "ok");
+      el("editorEngineDetails").textContent = [
+        `Gesamt ${formatMilliseconds(output.wallMs)}`,
+        Number.isFinite(metrics.detMs) ? `Detektion ${formatMilliseconds(metrics.detMs)}` : "",
+        Number.isFinite(metrics.recMs) ? `Erkennung ${formatMilliseconds(metrics.recMs)}` : "",
+        `OCR-Bild ${ocrInput.width} × ${ocrInput.height} px`
+      ].filter(Boolean).join(" · ");
       drawOverlay();
       renderSelectionInfo();
     }
@@ -580,6 +638,37 @@ function assignField(key) {
   setMode("edit");
   renderAssignments();
   renderProperties();
+}
+
+function assignBatchAndDrum() {
+  const profile = selectedProfile();
+  const session = currentSession(false);
+  if (!profile || !session?.selection?.poly?.length) {
+    return alert("Zuerst die OCR-Box mit der kombinierten Zeile, z. B. D562707978 / 0001, auswählen.");
+  }
+
+  const padding = session.selection.source === "ocr" ? Number(el("paddingInput").value) / 100 : 0;
+  const poly = padding ? expandPoly(session.selection.poly, padding) : session.selection.poly;
+
+  const batch = findField(profile, "batch") || createField("batch");
+  batch.poly = poly.map((point) => [...point]);
+  upsertField(profile, batch);
+
+  const drum = findField(profile, "drum_number") || createField("drum_number");
+  drum.poly = poly.map((point) => [...point]);
+  drum.normalizer = "last_digits";
+  drum.digits = 4;
+  drum.adjacentTo = "batch";
+  upsertField(profile, drum);
+
+  state.selectedAssignment = { type: "field", key: "drum_number" };
+  session.selection = null;
+  markDirty();
+  setMode("edit");
+  renderAssignments();
+  renderProperties();
+  drawOverlay();
+  el("editorHint").textContent = "Die gleiche OCR-Zeile ist Batch und Fassnummer zugeordnet. Der Scanner übernimmt vor dem / die Batchnummer und danach die letzten vier Ziffern als Fassnummer.";
 }
 
 function renderAssignments() {
@@ -880,4 +969,45 @@ function escapeHtml(value) {
   return String(value || "").replace(/[&<>'"]/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
   })[character]);
+}
+
+function createOcrInputCanvas(sourceCanvas, maxSide) {
+  const scale = Math.min(1, Number(maxSide) / Math.max(sourceCanvas.width, sourceCanvas.height));
+  const width = Math.max(1, Math.round(sourceCanvas.width * scale));
+  const height = Math.max(1, Math.round(sourceCanvas.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(sourceCanvas, 0, 0, width, height);
+  return { canvas, width, height };
+}
+
+function scaleOcrResult(result, sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  const sx = Number(targetWidth) / Math.max(1, Number(sourceWidth));
+  const sy = Number(targetHeight) / Math.max(1, Number(sourceHeight));
+  return {
+    ...result,
+    image: { width: Number(targetWidth), height: Number(targetHeight) },
+    items: (result?.items || []).map((item) => ({
+      ...item,
+      poly: (item.poly || []).map(([x, y]) => [Number(x) * sx, Number(y) * sy])
+    }))
+  };
+}
+
+function pickOcrResult(payload, role) {
+  if (Array.isArray(payload?.items)) return payload;
+  if (Array.isArray(payload?.result?.items)) return payload.result;
+  const preferred = role === "product" ? payload?.product : payload?.vda;
+  if (Array.isArray(preferred?.result?.items)) return preferred.result;
+  if (Array.isArray(preferred?.items)) return preferred;
+  for (const key of ["product", "vda"]) {
+    if (Array.isArray(payload?.[key]?.result?.items)) return payload[key].result;
+  }
+  return null;
 }

@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.5.4
+# LabelCheck PaddleOCR 0.5.5
 
 Statische GitHub-Pages-Anwendung zum Erfassen und Vergleichen von Produkt- und VDA-Etiketten mit PP-OCRv5.
 
@@ -8,7 +8,7 @@ Der Scanner verwendet PaddleOCR im Web Worker mit WASM/SIMD und verarbeitet Prod
 
 ## Profileditor
 
-Der Profileditor verwendet ab Version 0.5.4 denselben schnellen OCR-Pfad wie der Scanner:
+Der Profileditor verwendet ab Version 0.5.5 denselben schnellen OCR-Pfad wie der Scanner:
 
 - genau ein Web Worker
 - Canvas wird direkt an PaddleOCR übergeben
@@ -27,3 +27,7 @@ npm install
 npm test
 npm run build
 ```
+
+
+## Editor 0.5.5
+Bei langsamer Desktop-WASM-Ausführung kann ein auf dem schnellen Scanner erzeugtes Debug-JSON direkt im Profileditor importiert werden. Kombinierte Batch-/Fasszeilen werden über „Batch + Fassnummer“ doppelt zugeordnet und beim Scannen automatisch getrennt.

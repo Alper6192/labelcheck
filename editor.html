@@ -57,6 +57,7 @@
           <div class="editor-upload-row">
             <label class="file-button primary">Masterbild laden<input id="masterInput" type="file" accept="image/*"></label>
             <button id="runOcrButton" disabled>PaddleOCR auf Masterbild</button>
+            <label class="file-button">OCR-JSON importieren<input id="ocrJsonInput" type="file" accept=".json,application/json"></label>
             <button id="cancelOcrButton" class="danger" disabled>Analyse abbrechen</button>
             <button id="initializeEditorButton">Modell neu laden</button>
             <button id="clearOcrButton">OCR-Boxen ausblenden</button>
@@ -76,6 +77,7 @@
             <button id="assignAnchorButton" class="anchor-button">Auswahl = Kunden-/Produktanker</button>
             <button data-field="batch">Batch</button>
             <button data-field="drum_number">Fassnummer</button>
+            <button id="assignBatchDrumButton" class="good">Batch + Fassnummer</button>
             <button data-field="idh">IDH</button>
             <button data-field="weight">Gewicht</button>
             <button data-field="delivery_note">Lieferscheinnummer</button>

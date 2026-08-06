@@ -64,7 +64,7 @@ export class EditorPaddleOcrEngine {
       textDetectionModelName: model.textDetectionModelName,
       textRecognitionModelName: model.textRecognitionModelName,
       textDetectionBatchSize: 1,
-      textRecognitionBatchSize: 8,
+      textRecognitionBatchSize: 2,
       worker: true,
       ortOptions: {
         backend: "wasm",
@@ -104,7 +104,7 @@ export class EditorPaddleOcrEngine {
     const startedAt = performance.now();
     onStatus("PaddleOCR erkennt Text im Web Worker …");
 
-    // Exakt wie im funktionierenden Scanner: das vorbereitete Canvas direkt
+    // Das für den Editor verkleinerte OCR-Canvas direkt
     // an PaddleOCR übergeben. Keine erneute JPEG-Komprimierung im Hauptfenster.
     const [result] = await this.#ocr.predict(canvas, params);
     if (!result) throw new Error("PaddleOCR hat kein Ergebnis zurückgegeben.");
