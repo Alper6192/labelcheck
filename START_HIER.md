@@ -1,14 +1,18 @@
-# Start mit Version 0.5.5
+# Start mit Version 0.5.6
 
-1. Patch entpacken.
-2. Inhalt in den lokalen Repository-Ordner kopieren und vorhandene Dateien ersetzen.
-3. `public/config/label-profiles.json` wird vom Patch nicht überschrieben.
-4. In GitHub Desktop committen und pushen.
-5. Warten, bis GitHub Actions vollständig grün ist.
-6. Editor mit `editor.html?v=054` öffnen.
+1. Projektinhalt in das bestehende Repository kopieren.
+2. Commit und Push ausführen.
+3. Warten, bis GitHub Actions Build und Deploy abgeschlossen hat.
+4. Scanner öffnen: `https://alper6192.github.io/labelcheck/?v=056`
+5. Editor öffnen: `https://alper6192.github.io/labelcheck/editor.html?v=056`
 
-Im Editor muss vor der Analyse stehen:
+Nach der ersten Analyse steht im Status beispielsweise:
 
-`PaddleOCR bereit · Web Worker · WASM/SIMD`
+- `Web Worker · WebGPU`
+- oder `Web Worker · WASM`
 
-Der Editor zeigt während der OCR die laufenden Sekunden an. Es gibt keinen automatischen Wechsel ins Hauptfenster.
+Die Detailzeile zeigt Detektor- und Erkennungsprovider sowie deren Laufzeiten.
+
+## Batch und Fassnummer
+
+Im Profileditor die OCR-Box mit dem gesamten Text wie `D… / 0001` anklicken und **Batch + Fassnummer** wählen. Die gleiche Zone wird für beide Felder gespeichert; die Feldregeln trennen den Inhalt später automatisch.

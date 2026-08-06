@@ -1,6 +1,6 @@
 import "./styles.css";
 import { APP_VERSION, QUALITY_PRESETS } from "./config.js";
-import { EditorPaddleOcrEngine } from "./editor-ocr-engine.js";
+import { PaddleOcrEngine, formatRuntimeDetails } from "./ocr-engine.js";
 import { prepareImage } from "./image-tools.js";
 import { boundsFromPoly, formatMilliseconds, safeError } from "./utils.js";
 import {
@@ -27,7 +27,7 @@ import {
 } from "./editor-geometry.js";
 import { EditorProfileSessionStore } from "./editor-session.js";
 
-const engine = new EditorPaddleOcrEngine();
+const engine = new PaddleOcrEngine();
 const el = (id) => document.getElementById(id);
 const state = {
   config: normalizeProfileConfig({ profiles: [] }, APP_VERSION),
@@ -297,11 +297,11 @@ async function initializeEngineInternal(force) {
       force
     );
     setEditorEngine(`PaddleOCR bereit · ${info.mode}`, "ok");
-    el("editorEngineDetails").textContent = `Initialisierung ${formatMilliseconds(info.initMs)} · derselbe Web-Worker-Pfad wie im Scanner.`;
+    el("editorEngineDetails").textContent = `Initialisierung ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary)}`;
     return true;
   } catch (error) {
     setEditorEngine(`PaddleOCR nicht bereit: ${safeError(error)}`, "bad");
-    el("editorEngineDetails").textContent = "Der Editor benötigt den PaddleOCR-Web-Worker; es wird kein langsamer Hauptfenster-Fallback gestartet.";
+    el("editorEngineDetails").textContent = "Scanner und Editor verwenden dieselbe automatische WebGPU/WASM-Engine im Web Worker.";
     return false;
   }
 }
@@ -402,8 +402,7 @@ async function runOcr() {
         textDetBoxThresh: 0.44,
         textDetUnclipRatio: 1.55,
         textRecScoreThresh: 0.20
-      },
-      (message) => setEditorEngine(message, "wait")
+      }
     );
 
     if (!isRunActive(run)) return;
@@ -421,11 +420,12 @@ async function runOcr() {
     if (state.selectedProfileId === run.profileId) {
       const result = targetSession.ocrResult;
       const metrics = result.metrics || {};
-      setEditorEngine(`PaddleOCR bereit · ${engine.mode} · ${result.items?.length || 0} Textzeilen`, "ok");
+      setEditorEngine(`PaddleOCR bereit · ${output.mode} · ${result.items?.length || 0} Textzeilen`, "ok");
       el("editorEngineDetails").textContent = [
         `Gesamt ${formatMilliseconds(output.wallMs)}`,
         Number.isFinite(metrics.detMs) ? `Detektion ${formatMilliseconds(metrics.detMs)}` : "",
         Number.isFinite(metrics.recMs) ? `Erkennung ${formatMilliseconds(metrics.recMs)}` : "",
+        formatRuntimeDetails(engine.summary, output.runtime),
         `OCR-Bild ${ocrInput.width} × ${ocrInput.height} px`
       ].filter(Boolean).join(" · ");
       drawOverlay();
@@ -462,7 +462,7 @@ async function cancelOcrAnalysis(silent = false) {
     el("editorEngineDetails").textContent = "Der laufende Worker wird vollständig beendet; danach muss das Modell neu geladen werden.";
   }
   try {
-    await engine.abort();
+    await engine.abortCurrent();
     if (!silent) {
       setEditorEngine("OCR abgebrochen · Modell neu laden", "warn");
       el("editorEngineDetails").textContent = "Der alte Worker ist beendet. Vor der nächsten Analyse auf „Modell neu laden“ klicken.";
@@ -478,7 +478,7 @@ function startElapsedDisplay(run, session) {
   const update = () => {
     if (!isRunActive(run)) return;
     const seconds = Math.max(0, Math.round((performance.now() - startedAt) / 1000));
-    el("editorEngineDetails").textContent = `Bild ${session.prepared.width} × ${session.prepared.height} px · Web Worker läuft seit ${seconds} s.`;
+    el("editorEngineDetails").textContent = `Bild ${session.prepared.width} × ${session.prepared.height} px · automatisches Backend läuft seit ${seconds} s.`;
   };
   update();
   state.elapsedTimer = setInterval(update, 1000);

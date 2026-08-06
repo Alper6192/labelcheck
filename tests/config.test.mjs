@@ -4,7 +4,7 @@ import { APP_VERSION, MODEL_OPTIONS } from "../src/config.js";
 
 test("Browsermodell nutzt explizite PP-OCRv5-Modellnamen", () => {
   const model = MODEL_OPTIONS.standard;
-  assert.equal(APP_VERSION, "0.5.5");
+  assert.equal(APP_VERSION, "0.5.6");
   assert.equal(model.textDetectionModelName, "PP-OCRv5_mobile_det");
   assert.equal(model.textRecognitionModelName, "PP-OCRv5_mobile_rec");
   assert.equal("lang" in model, false);

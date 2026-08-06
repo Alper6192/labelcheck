@@ -1,33 +1,34 @@
-# LabelCheck PaddleOCR 0.5.5
+# LabelCheck PaddleOCR 0.5.6
 
-Statische GitHub-Pages-Anwendung zum Erfassen und Vergleichen von Produkt- und VDA-Etiketten mit PP-OCRv5.
+LabelCheck erkennt Produkt- und VDA-Labels lokal im Browser und enthält einen Profileditor für Anker und Feldzonen.
 
-## Scanner
+## OCR-Laufzeit
 
-Der Scanner verwendet PaddleOCR im Web Worker mit WASM/SIMD und verarbeitet Produkt- und VDA-Bilder vollständig lokal im Browser.
+Scanner und Profileditor verwenden dieselbe gemeinsame Engine:
+
+- dedizierter Web Worker
+- `backend: "auto"`
+- WebGPU, sofern PaddleOCR/ONNX Runtime diesen Provider erfolgreich auswählt
+- WASM als Fallback
+- automatische WASM-Threadzahl (`numThreads: 0`)
+- PP-OCRv5 mobile detection und recognition
+
+Die Oberfläche zeigt nach der ersten Analyse die tatsächlich gemeldeten Provider getrennt für Detektor und Erkennung. Eine bloße vorhandene WebGPU-API wird nicht mehr als erfolgreicher GPU-Einsatz ausgegeben.
 
 ## Profileditor
 
-Der Profileditor verwendet ab Version 0.5.5 denselben schnellen OCR-Pfad wie der Scanner:
+`editor.html` verwaltet für jedes Profil ein separates Masterbild und OCR-Ergebnis. Eine kombinierte Zeile wie
 
-- genau ein Web Worker
-- Canvas wird direkt an PaddleOCR übergeben
-- Recognition-Batch 8
-- kein langsamer Hauptfensterbetrieb
-- kein automatischer Timeout- oder Parallel-Fallback
+`D562707978 / 0001`
 
-Während der Analyse bleibt die Oberfläche bedienbar und zeigt die verstrichene Zeit an. „Analyse abbrechen“ beendet den Worker. Danach muss das Modell einmal neu geladen werden.
+wird ausgewählt und mit **Batch + Fassnummer** beiden Feldern zugeordnet. Der Scanner trennt daraus Batch und vierstellige Fassnummer über die Feldregeln.
 
-Masterbilder und OCR-Ergebnisse werden getrennt pro Profil nur im aktuellen Browser-Tab gehalten. Sie werden nicht in `label-profiles.json` eingebettet und nicht hochgeladen.
-
-## Entwicklung
+## Deployment
 
 ```bash
 npm install
-npm test
+npm run test
 npm run build
 ```
 
-
-## Editor 0.5.5
-Bei langsamer Desktop-WASM-Ausführung kann ein auf dem schnellen Scanner erzeugtes Debug-JSON direkt im Profileditor importiert werden. Kombinierte Batch-/Fasszeilen werden über „Batch + Fassnummer“ doppelt zugeordnet und beim Scannen automatisch getrennt.
+GitHub Pages veröffentlicht den erzeugten `dist`-Ordner über GitHub Actions.

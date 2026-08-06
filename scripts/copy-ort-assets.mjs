@@ -37,6 +37,13 @@ if (!runtimeFiles.some((name) => name.endsWith(".wasm"))) {
   throw new Error("Keine ONNX-Runtime-WASM-Dateien gefunden.");
 }
 
+// Das automatische Backend benötigt für WebGPU die JSEP-Laufzeit von
+// ONNX Runtime Web. So schlägt der Build sichtbar fehl, statt später
+// unbemerkt auf einen unvollständigen Runtime-Ordner zu deployen.
+if (!runtimeFiles.some((name) => name.includes(".jsep.") && name.endsWith(".wasm"))) {
+  throw new Error("Keine ONNX-Runtime-JSEP-Datei für WebGPU gefunden.");
+}
+
 for (const name of runtimeFiles) {
   await cp(path.join(sourceDir, name), path.join(targetDir, name));
 }

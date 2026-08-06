@@ -2,38 +2,34 @@ import { PaddleOCR } from "@paddleocr/paddleocr-js";
 import { MODEL_OPTIONS } from "./config.js";
 import { safeError } from "./utils.js";
 
-const DEFAULT_PREDICT_TIMEOUT_MS = 60000;
-const DEFAULT_PROBE_TIMEOUT_MS = 15000;
-const DISPOSE_TIMEOUT_MS = 4000;
+const DISPOSE_TIMEOUT_MS = 5000;
 
-const PROBE_PARAMS = {
-  textDetLimitSideLen: 640,
-  textDetLimitType: "max",
-  textDetMaxSideLimit: 960,
-  textDetThresh: 0.2,
-  textDetBoxThresh: 0.3,
-  textDetUnclipRatio: 1.4,
-  textRecScoreThresh: 0.1
-};
-
+/**
+ * Gemeinsame PaddleOCR-Laufzeit für Scanner und Profileditor.
+ *
+ * - genau ein dedizierter Worker
+ * - Backend "auto": WebGPU wird bevorzugt, WASM bleibt Fallback
+ * - WASM-Threadzahl 0: ONNX Runtime bestimmt die mögliche Threadzahl selbst
+ * - keine künstliche Inferenz-Zeitüberschreitung; ein Timeout beendet predict()
+ *   nicht zuverlässig und kann sonst eine zweite konkurrierende Instanz erzeugen
+ */
 export class PaddleOcrEngine {
   #ocr = null;
   #modelKey = null;
-  #mode = null;
-  #initSummary = null;
-  #verified = false;
-  #queue = Promise.resolve();
   #initPromise = null;
-  #requestedInitializationKey = null;
+  #queue = Promise.resolve();
+  #pendingCount = 0;
   #generation = 0;
-  #activeAborters = new Set();
+  #summary = null;
+  #lastRuntime = null;
+  #mode = "Web Worker · Backend automatisch";
 
   get ready() {
     return Boolean(this.#ocr);
   }
 
-  get verified() {
-    return this.#verified;
+  get busy() {
+    return this.#pendingCount > 0;
   }
 
   get modelKey() {
@@ -45,198 +41,102 @@ export class PaddleOcrEngine {
   }
 
   get summary() {
-    return this.#initSummary;
+    return this.#summary;
   }
 
-  async initialize(modelKey, onStatus = () => {}) {
-    const model = getModel(modelKey);
-    if (this.#matchesRuntime(modelKey, "auto")) return this.#reuseInfo();
-    return this.#startInitialization(modelKey, model, onStatus, "auto");
+  get runtime() {
+    return this.#lastRuntime;
   }
 
-  async initializeMainThread(modelKey, onStatus = () => {}) {
-    const model = getModel(modelKey);
-    if (this.#matchesRuntime(modelKey, "main")) return this.#reuseInfo();
-    return this.#startInitialization(modelKey, model, onStatus, "main");
+  get diagnostics() {
+    return createRuntimeDiagnostics(this.#summary, this.#lastRuntime);
   }
 
-  /**
-   * Lädt PaddleOCR und führt anschließend einen echten kleinen OCR-Auftrag aus.
-   * Ein Worker, der sich nur initialisieren lässt, aber bei predict() hängen bleibt,
-   * wird automatisch verworfen und durch eine Hauptfenster-Instanz ersetzt.
-   */
-  async initializeVerified(modelKey, onStatus = () => {}, options = {}) {
-    const probeTimeoutMs = Math.max(5000, Number(options.probeTimeoutMs || DEFAULT_PROBE_TIMEOUT_MS));
-    let info = await this.initialize(modelKey, onStatus);
-
-    if (this.#verified) return { ...info, verified: true, probeMs: 0 };
-
-    const attemptedMode = this.#mode || "unbekannter Modus";
-    try {
-      onStatus(`${attemptedMode} wird mit einem Testbild geprüft …`);
-      const probe = await this.#verifyCurrent(probeTimeoutMs);
-      return { ...info, mode: this.#mode, verified: true, probeMs: probe.wallMs };
-    } catch (workerError) {
-      if (!attemptedMode.startsWith("Web Worker")) {
-        throw new Error(`PaddleOCR-Test im Hauptfenster fehlgeschlagen: ${safeError(workerError)}`);
-      }
-
-      onStatus("Web Worker reagiert nicht. Wechsel ins Hauptfenster …");
-      info = await this.initializeMainThread(modelKey, onStatus);
-
-      try {
-        onStatus("Hauptfenster wird mit einem Testbild geprüft …");
-        const probe = await this.#verifyCurrent(Math.max(probeTimeoutMs, 30000));
-        return {
-          ...info,
-          mode: this.#mode,
-          verified: true,
-          probeMs: probe.wallMs,
-          fallbackFrom: attemptedMode,
-          workerError: safeError(workerError)
-        };
-      } catch (mainError) {
-        throw new Error(
-          `Worker-Test: ${safeError(workerError)}. Hauptfenster-Test: ${safeError(mainError)}`
-        );
-      }
+  async initialize(modelKey, onStatus = () => {}, force = false) {
+    if (!force && this.ready && this.#modelKey === modelKey) {
+      return this.#reuseInfo();
     }
-  }
+    if (this.#initPromise) return this.#initPromise;
+    if (this.busy) throw new Error("PaddleOCR verarbeitet bereits ein Bild.");
 
-  async #verifyCurrent(timeoutMs) {
-    const probeCanvas = createProbeCanvas();
-    return this.predict(probeCanvas, PROBE_PARAMS, { timeoutMs });
-  }
-
-  async #startInitialization(modelKey, model, onStatus, runtime) {
-    const requestKey = `${modelKey}:${runtime}`;
-
-    if (this.#initPromise && this.#requestedInitializationKey === requestKey) {
-      return this.#initPromise;
-    }
-
-    if (this.#initPromise) {
-      try {
-        await this.#initPromise;
-      } catch {
-        // Der folgende Versuch liefert den relevanten Fehler.
-      }
-      if (this.#matchesRuntime(modelKey, runtime)) return this.#reuseInfo();
-    }
-
-    this.#requestedInitializationKey = requestKey;
-    const operation = this.#initializeInternal(modelKey, model, onStatus, runtime);
+    const operation = this.#initializeInternal(modelKey, onStatus, force);
     this.#initPromise = operation;
     try {
       return await operation;
     } finally {
-      if (this.#initPromise === operation) {
-        this.#initPromise = null;
-        this.#requestedInitializationKey = null;
-      }
+      if (this.#initPromise === operation) this.#initPromise = null;
     }
   }
 
-  #matchesRuntime(modelKey, runtime) {
-    if (!this.ready || this.#modelKey !== modelKey) return false;
-    if (runtime === "main") return this.#mode?.startsWith("Hauptfenster");
-    return true;
-  }
+  async #initializeInternal(modelKey, onStatus, force) {
+    const model = MODEL_OPTIONS[modelKey];
+    if (!model) throw new Error(`Unbekanntes Modell: ${modelKey}`);
 
-  #reuseInfo() {
-    return {
-      reused: true,
-      mode: this.#mode,
-      summary: this.#initSummary,
-      verified: this.#verified,
-      initMs: 0
-    };
-  }
+    if (force || (this.ready && this.#modelKey !== modelKey)) {
+      await this.dispose();
+    }
+    if (this.ready && this.#modelKey === modelKey) return this.#reuseInfo();
 
-  async #initializeInternal(modelKey, model, onStatus, runtime) {
-    await this.dispose();
     const startedAt = performance.now();
-    const common = createCommonOptions(model);
-    let workerError = null;
+    const options = createCommonOptions(model);
+    onStatus("PaddleOCR lädt im Web Worker · Backend wird automatisch gewählt …");
 
-    if (runtime !== "main") {
-      try {
-        onStatus("PaddleOCR wird im Web Worker geladen …");
-        this.#ocr = await PaddleOCR.create({ ...common, worker: true });
-        this.#mode = "Web Worker · WASM/SIMD";
-      } catch (error) {
-        workerError = error;
-        this.#ocr = null;
-        onStatus("Worker nicht verfügbar. PaddleOCR startet im Hauptfenster …");
-      }
-    }
-
-    if (!this.#ocr) {
-      try {
-        onStatus("PaddleOCR wird im Hauptfenster geladen …");
-        this.#ocr = await PaddleOCR.create({ ...common, worker: false });
-        this.#mode = "Hauptfenster · WASM/SIMD";
-      } catch (mainError) {
-        const workerText = workerError ? `Worker: ${safeError(workerError)}. ` : "";
-        throw new Error(`${workerText}Hauptfenster: ${safeError(mainError)}`);
-      }
+    try {
+      this.#ocr = await PaddleOCR.create({ ...options, worker: true });
+    } catch (error) {
+      this.#ocr = null;
+      throw new Error(`Web-Worker konnte nicht initialisiert werden: ${safeError(error)}`);
     }
 
     this.#generation += 1;
     this.#modelKey = modelKey;
-    this.#verified = false;
-    this.#initSummary = this.#ocr.getInitializationSummary?.() ?? null;
+    this.#summary = this.#ocr.getInitializationSummary?.() ?? null;
+    this.#lastRuntime = null;
+    this.#mode = describeRuntimeMode(this.#summary, null);
+
     return {
       reused: false,
       mode: this.#mode,
-      summary: this.#initSummary,
-      verified: false,
+      summary: this.#summary,
+      diagnostics: this.diagnostics,
       initMs: performance.now() - startedAt
     };
   }
 
-  predict(image, params, options = {}) {
-    const timeoutMs = Math.max(5000, Number(options.timeoutMs || DEFAULT_PREDICT_TIMEOUT_MS));
+  predict(image, params = {}) {
     const requestedGeneration = this.#generation;
+    this.#pendingCount += 1;
 
     const task = async () => {
       const ocr = this.#ocr;
       if (!ocr) throw new Error("PaddleOCR wurde noch nicht initialisiert.");
-      if (requestedGeneration !== this.#generation) throw createAbortError("OCR-Auftrag wurde verworfen.");
+      if (requestedGeneration !== this.#generation) {
+        throw createAbortError("OCR-Auftrag wurde verworfen.");
+      }
 
       const startedAt = performance.now();
-      let timer = null;
-      let aborter = null;
-      const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(createTimeoutError(timeoutMs)), timeoutMs);
-      });
-      const aborted = new Promise((_, reject) => {
-        aborter = (message = "OCR-Auftrag abgebrochen") => reject(createAbortError(message));
-        this.#activeAborters.add(aborter);
-      });
-
-      try {
-        const [result] = await Promise.race([ocr.predict(image, params), timeout, aborted]);
-        if (requestedGeneration !== this.#generation) throw createAbortError("OCR-Auftrag wurde verworfen.");
-        this.#verified = true;
-        return {
-          result,
-          wallMs: performance.now() - startedAt
-        };
-      } catch (error) {
-        if (error?.name === "TimeoutError") {
-          this.#detachAndDispose(ocr);
-        }
-        throw error;
-      } finally {
-        if (timer) clearTimeout(timer);
-        if (aborter) this.#activeAborters.delete(aborter);
+      const [result] = await ocr.predict(image, params);
+      if (!result) throw new Error("PaddleOCR hat kein Ergebnis zurückgegeben.");
+      if (requestedGeneration !== this.#generation) {
+        throw createAbortError("OCR-Auftrag wurde verworfen.");
       }
+
+      this.#lastRuntime = result.runtime ?? null;
+      this.#mode = describeRuntimeMode(this.#summary, this.#lastRuntime);
+      return {
+        result,
+        wallMs: performance.now() - startedAt,
+        mode: this.#mode,
+        runtime: this.#lastRuntime,
+        diagnostics: this.diagnostics
+      };
     };
 
     const queued = this.#queue.then(task, task);
     this.#queue = queued.catch(() => undefined);
-    return queued;
+    return queued.finally(() => {
+      this.#pendingCount = Math.max(0, this.#pendingCount - 1);
+    });
   }
 
   async abortCurrent(message = "OCR-Auftrag abgebrochen") {
@@ -252,31 +152,29 @@ export class PaddleOcrEngine {
     if (current) await disposeWithTimeout(current, DISPOSE_TIMEOUT_MS);
   }
 
-  #detachAndDispose(instance) {
-    if (this.#ocr === instance) this.#detachCurrent();
-    void disposeWithTimeout(instance, DISPOSE_TIMEOUT_MS);
-  }
-
   #detachCurrent() {
     this.#generation += 1;
-    for (const abort of this.#activeAborters) abort("OCR-Worker wurde verworfen.");
-    this.#activeAborters.clear();
     this.#ocr = null;
     this.#modelKey = null;
-    this.#mode = null;
-    this.#initSummary = null;
-    this.#verified = false;
+    this.#summary = null;
+    this.#lastRuntime = null;
+    this.#mode = "Web Worker · Backend automatisch";
     this.#queue = Promise.resolve();
+    this.#pendingCount = 0;
+  }
+
+  #reuseInfo() {
+    return {
+      reused: true,
+      mode: this.#mode,
+      summary: this.#summary,
+      diagnostics: this.diagnostics,
+      initMs: 0
+    };
   }
 }
 
-function getModel(modelKey) {
-  const model = MODEL_OPTIONS[modelKey];
-  if (!model) throw new Error(`Unbekanntes Modell: ${modelKey}`);
-  return model;
-}
-
-function createCommonOptions(model) {
+export function createCommonOptions(model) {
   const wasmPaths = new URL("./ort/", window.location.href).href;
   return {
     textDetectionModelName: model.textDetectionModelName,
@@ -284,26 +182,62 @@ function createCommonOptions(model) {
     textDetectionBatchSize: 1,
     textRecognitionBatchSize: 8,
     ortOptions: {
-      backend: "wasm",
+      backend: "auto",
       wasmPaths,
-      numThreads: 1,
+      numThreads: 0,
       simd: true
     }
   };
 }
 
-function createProbeCanvas() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 180;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = "#000000";
-  context.font = "700 72px Arial, sans-serif";
-  context.textBaseline = "middle";
-  context.fillText("TEST 1234", 28, canvas.height / 2);
-  return canvas;
+export function createRuntimeDiagnostics(summary = null, runtime = null) {
+  const requestedBackend = runtime?.requestedBackend ?? summary?.backend ?? "auto";
+  const detProvider = runtime?.detProvider ?? summary?.detProvider ?? null;
+  const recProvider = runtime?.recProvider ?? summary?.recProvider ?? null;
+  return {
+    requestedBackend,
+    detProvider,
+    recProvider,
+    webgpuAvailable: runtime?.webgpuAvailable ?? summary?.webgpuAvailable ?? Boolean(globalThis.navigator?.gpu),
+    hardwareConcurrency: Number(globalThis.navigator?.hardwareConcurrency || 0) || null,
+    crossOriginIsolated: globalThis.crossOriginIsolated === true,
+    configuredThreads: 0,
+    simdRequested: true
+  };
+}
+
+export function describeRuntimeMode(summary = null, runtime = null) {
+  const info = createRuntimeDiagnostics(summary, runtime);
+  const det = formatProvider(info.detProvider);
+  const rec = formatProvider(info.recProvider);
+
+  if (det && rec) {
+    const provider = det === rec ? det : `${det}/${rec}`;
+    return `Web Worker · ${provider}`;
+  }
+  return "Web Worker · Backend automatisch";
+}
+
+export function formatRuntimeDetails(summary = null, runtime = null) {
+  const info = createRuntimeDiagnostics(summary, runtime);
+  const parts = [];
+  if (info.detProvider) parts.push(`Detektor ${formatProvider(info.detProvider)}`);
+  if (info.recProvider) parts.push(`Erkennung ${formatProvider(info.recProvider)}`);
+  parts.push(`Backend-Anfrage ${String(info.requestedBackend).toUpperCase()}`);
+  parts.push(`CPU-Kerne ${info.hardwareConcurrency ?? "unbekannt"}`);
+  parts.push(`Threads automatisch${info.crossOriginIsolated ? " · Mehrthread möglich" : " · derzeit Einzelthread-Fallback möglich"}`);
+  parts.push(`WebGPU-API ${info.webgpuAvailable ? "verfügbar" : "nicht verfügbar"}`);
+  return parts.join(" · ");
+}
+
+function formatProvider(provider) {
+  const value = String(provider || "").trim().toLowerCase();
+  if (!value) return "";
+  if (value === "webgpu") return "WebGPU";
+  if (value === "wasm" || value === "cpu") return "WASM";
+  if (value === "webnn") return "WebNN";
+  if (value === "webgl") return "WebGL";
+  return value.toUpperCase();
 }
 
 async function disposeWithTimeout(instance, timeoutMs) {
@@ -314,14 +248,8 @@ async function disposeWithTimeout(instance, timeoutMs) {
       new Promise((resolve) => setTimeout(resolve, timeoutMs))
     ]);
   } catch {
-    // Ein defekter Worker darf den Neustart nicht verhindern.
+    // Ein defekter Worker darf einen Neustart nicht verhindern.
   }
-}
-
-function createTimeoutError(timeoutMs) {
-  const error = new Error(`OCR-Analyse nach ${Math.round(timeoutMs / 1000)} Sekunden beendet.`);
-  error.name = "TimeoutError";
-  return error;
 }
 
 function createAbortError(message) {
