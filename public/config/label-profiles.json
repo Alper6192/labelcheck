@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 2,
+  "appVersion": "0.5.0",
+  "profiles": [
+    {
+      "id": "PRODUCT_TEROSON_1511",
+      "name": "Produktlabel TEROSON PU 1511",
+      "role": "product",
+      "active": true,
+      "anchor": {
+        "aliases": ["TEROSON"],
+        "poly": [[0.16555556,0.07502468],[0.47833333,0.06712734],[0.47888889,0.17769003],[0.16611111,0.1846002]]
+      },
+      "fields": [
+        {"key":"batch","label":"Batch","poly":[[0.47666667,0.3988154],[0.57888889,0.39486673],[0.57944444,0.4284304],[0.47666667,0.43139191]],"required":true,"compare":true,"regex":"^D\\d{8,10}$","sourceRegex":"^D\\d{8,10}(?:\\s*[/|I1]\\s*\\d{4})?$","normalizer":"batch"},
+        {"key":"drum_number","label":"Fassnummer","poly":[[0.59277778,0.39387957],[0.64166667,0.39387957],[0.64166667,0.42744324],[0.59277778,0.42744324]],"required":true,"compare":false,"regex":"^\\d{4}$","sourceRegex":"^(?:[/|I1]?\\s*)?\\d{4}$","normalizer":"last_digits","digits":4,"adjacentTo":"batch"},
+        {"key":"idh","label":"IDH","poly":[[0.53055556,0.27344521],[0.64333333,0.26752221],[0.64444444,0.31688055],[0.53111111,0.32379072]],"required":true,"compare":true,"regex":"^\\d{7}$","sourceRegex":"^\\d{7}$","normalizer":"digits"},
+        {"key":"weight","label":"Gewicht","poly":[[0.55777778,0.32872655],[0.64277778,0.32477789],[0.64388889,0.3751234],[0.55833333,0.37907206]],"required":true,"compare":true,"regex":"^\\d+(?:[.,]\\d+)?\\s*(?:KG|G|L|LTR)$","sourceRegex":"^\\d+(?:[.,]\\d+)?\\s*(?:KG|G|L|LTR)$","normalizer":"weight"}
+      ]
+    },
+    {
+      "id": "FORMAT_007_MERCEDES",
+      "name": "Format_007 – Mercedes-Benz",
+      "role": "vda",
+      "active": true,
+      "anchor": {
+        "aliases": ["MERCEDES-BENZ AG", "MERCEDES BENZ AG"],
+        "poly": [[0.12777778,0.12635735],[0.29,0.12635735],[0.29,0.15794669],[0.12777778,0.15794669]]
+      },
+      "fields": [
+        {"key":"batch","label":"Batch","poly":[[0.65111111,0.83613031],[0.78166667,0.83316881],[0.78166667,0.87265548],[0.65166667,0.87660415]],"required":true,"compare":true,"regex":"^D\\d{8,10}$","sourceRegex":"^D\\d{8,10}$","normalizer":"batch"},
+        {"key":"idh","label":"IDH","poly":[[0.45666667,0.5893386],[0.53944444,0.5893386],[0.53944444,0.62586377],[0.45666667,0.62586377]],"required":true,"compare":true,"regex":"^\\d{6,8}$","sourceRegex":"^\\d{6,8}$","normalizer":"digits"},
+        {"key":"weight","label":"Gewicht","poly":[[0.31611111,0.51036525],[0.44611111,0.51036525],[0.44611111,0.56071076],[0.31611111,0.56071076]],"required":true,"compare":true,"regex":"^\\d+(?:[.,]\\d+)?\\s*(?:KG|G|L|LTR)$","sourceRegex":"^\\d+(?:[.,]\\d+)?\\s*(?:KG|G|L|LTR)$","normalizer":"weight"},
+        {"key":"delivery_note","label":"Lieferscheinnummer","poly":[[0.32222222,0.25074038],[0.435,0.24876604],[0.43555556,0.29318855],[0.32277778,0.29516288]],"required":true,"compare":false,"regex":"^\\d{7,9}$","sourceRegex":"^\\d{7,9}$","normalizer":"digits"}
+      ]
+    }
+  ]
+}
