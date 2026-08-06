@@ -1,0 +1,125 @@
+# Changelog
+
+## 0.5.9
+
+- Vollständiges Paket enthält nun die aktuelle produktive `label-profiles.json` mit HENKEL, MERCEDES, STELLANTIS und BMW.
+- Angezeigte App-Version auf 0.5.9 korrigiert.
+- Einzelne CHANGELOG-Dateien zu einer Datei zusammengeführt.
+
+# 0.5.8
+
+- GitHub-Pages-Deployments werden bei einem neuen Push nicht mehr abgebrochen (`cancel-in-progress: false`).
+- Das Zeitlimit von `actions/deploy-pages` wurde auf 20 Minuten erhöht.
+- Profiländerungen bleiben weiterhin automatisch über Push auf `main` veröffentlichbar.
+
+
+
+# Änderungen 0.5.7
+
+- Automatische Extraktionstests verwenden jetzt eine feste Test-Fixture statt der produktiven `public/config/label-profiles.json`.
+- Eigene, im Profileditor exportierte Profile dürfen Produktnamen, Reihenfolge, Koordinaten und Feldzonen ändern, ohne die TEROSON-Testfälle zu zerstören.
+- Die produktive Profildatei wird weiterhin auf gültiges JSON, eindeutige Profil-IDs, bekannte Feldtypen und gültige reguläre Ausdrücke geprüft.
+- Der Patch enthält keine produktive `label-profiles.json` und überschreibt daher keine Benutzerprofile.
+
+
+
+# Änderungen 0.5.6
+
+- Scanner und Profileditor verwenden dieselbe `PaddleOcrEngine`.
+- ONNX Runtime wird mit `backend: "auto"` gestartet: WebGPU wird bevorzugt, WASM bleibt Fallback.
+- `numThreads: 1` wurde entfernt; `numThreads: 0` überlässt die mögliche Threadzahl ONNX Runtime.
+- Die fest codierte Anzeige „WASM/SIMD“ wurde entfernt.
+- Nach einer Analyse werden die tatsächlich gemeldeten Provider für Detektion und Erkennung angezeigt.
+- Detektions- und Erkennungszeit werden getrennt dargestellt.
+- Keine künstliche 60-Sekunden-Inferenz-Zeitüberschreitung mehr, da sie den laufenden `predict()`-Aufruf nicht zuverlässig beendet.
+- Der Build prüft, ob die JSEP-WASM-Datei für WebGPU nach `public/ort` kopiert wurde.
+- Batch und Fassnummer können weiterhin über „Batch + Fassnummer“ aus derselben OCR-Zeile zugewiesen werden.
+
+
+
+# Änderungen 0.5.5
+
+- Profileditor analysiert für OCR nur noch eine auf maximal 1200 px verkleinerte Kopie.
+- Recognition-Batch im Editor von 8 auf 2 reduziert, um sehr lange Textzeilen auf langsamen WASM-Systemen weniger stark aufzublähen.
+- Detektions-, Erkennungs- und Gesamtlaufzeit werden getrennt angezeigt.
+- OCR-Ergebnisse aus Scanner-/Prototyp-Debug-JSON können in den Editor importiert werden.
+- Eine kombinierte OCR-Zeile wie `D562707978 / 0001` kann mit einem Klick gleichzeitig Batch und Fassnummer zugeordnet werden.
+- Importierte OCR-Polygone werden automatisch auf die Größe des geladenen Masterbilds skaliert.
+
+
+
+# Änderungen 0.5.4
+
+- Profileditor verwendet wieder einen einzelnen PaddleOCR-Web-Worker.
+- OCR-Pfad entspricht dem bereits schnellen Scanner: Canvas direkt, Recognition-Batch 8, WASM/SIMD.
+- Kein Hauptfensterbetrieb und kein automatischer Timeout-Fallback.
+- Laufzeit wird sekundengenau angezeigt.
+- „Analyse abbrechen“ beendet den Worker; anschließend kann das Modell manuell neu geladen werden.
+- Masterbilder und OCR-Ergebnisse bleiben weiterhin je Profil getrennt.
+
+
+
+# Änderungen 0.5.3
+
+- Ursache des Editor-Hängers beseitigt: Ein `Promise.race`-Timeout hatte nur das Warten beendet, nicht den laufenden PaddleOCR-Worker.
+- Keine Worker-zu-Hauptfenster-Umschaltung mehr im Profileditor.
+- Der Profileditor verwendet genau eine PaddleOCR-Instanz im Hauptfenster.
+- Das verkleinerte Masterbild wird als JPEG-Blob an PaddleOCR übergeben.
+- Kein automatischer Parallel-Neustart während ein alter OCR-Auftrag noch laufen könnte.
+- Scanner bleibt unverändert im bewährten Worker-Modus.
+- Masterbilder und OCR-Ergebnisse bleiben weiterhin strikt pro Profil getrennt.
+
+
+
+# Version 0.5.2
+
+## Profileditor
+
+- Nach dem Modellladen wird ein echter kleiner OCR-Auftrag ausgeführt.
+- Ein Worker, der nur „bereit“ meldet, aber bei `predict()` nicht antwortet, wird automatisch erkannt.
+- Automatischer Wechsel auf PaddleOCR im Hauptfenster.
+- Worker-Zeitlimit bei Masterbildern: 30 Sekunden.
+- Ein fehlgeschlagener Worker-Auftrag wird automatisch einmal im Hauptfenster wiederholt.
+- Status zeigt den tatsächlich geprüften Ausführungsmodus an.
+- Getrennte Masterbilder und OCR-Zustände je Profil aus Version 0.5.1 bleiben bestehen.
+
+
+
+# LabelCheck PaddleOCR 0.5.1
+
+## Behoben
+
+- PaddleOCR-Analysen im Profileditor besitzen jetzt ein festes Zeitlimit von 60 Sekunden.
+- Ein hängender OCR-Worker wird verworfen, statt den Editor dauerhaft bei „analysiert …“ zu blockieren.
+- Neue Schaltfläche „Analyse abbrechen“ mit anschließendem Modellneustart.
+- Der Editor verarbeitet Masterbilder mit der bereits erfolgreich getesteten Maximalgröße von 1800 Pixeln.
+- Masterbild, OCR-Ergebnis und aktuelle OCR-Auswahl werden getrennt pro Profil im Browser gehalten.
+- Beim Profilwechsel wird nur das zu diesem Profil gehörende Masterbild angezeigt.
+- Neue Schaltfläche „Masterbild entfernen“ löscht ausschließlich das Bild des ausgewählten Profils.
+
+## Hinweise
+
+- Masterbilder bleiben weiterhin nur flüchtig im Browser und werden nicht in `label-profiles.json` exportiert.
+- Nach einem Neuladen der Webseite müssen die Masterbilder erneut ausgewählt werden.
+
+
+
+# 0.5.0
+
+- PaddleOCR-Profileditor als zweite GitHub-Pages-Seite ergänzt.
+- Multi-Page-Vite-Build für Scanner und Editor.
+- Direkte Bearbeitung von Anker- und Feldzonen.
+- Feldregeln und Bereinigungen im Editor konfigurierbar.
+- Fassnummern-Erkennung neben bzw. nach dem Produkt-Batch.
+- `/0001` und OCR-Variante `10001` werden zu `0001` normalisiert.
+- Fassnummer in Protokoll und Excel ergänzt.
+
+
+
+# 0.3.1
+
+- Fehler `Unsupported lang/ocrVersion combination: lang="de", ocrVersion="PP-OCRv5"` behoben.
+- Sprachkürzel-basierte Modellauswahl entfernt.
+- Offizielle eingebaute Modellnamen `PP-OCRv5_mobile_det` und `PP-OCRv5_mobile_rec` werden direkt verwendet.
+- Oberfläche auf eine eindeutige Standardmodell-Option reduziert.
+- Test ergänzt, der verhindert, dass erneut `lang: de` in die Browserkonfiguration gelangt.
