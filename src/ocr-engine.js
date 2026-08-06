@@ -78,8 +78,11 @@ export class PaddleOcrEngine {
     const startedAt = performance.now();
     const wasmPaths = new URL("./ort/", window.location.href).href;
     const common = {
-      lang: model.lang,
-      ocrVersion: "PP-OCRv5",
+      // Das Browser-SDK 0.4.x akzeptiert PP-OCRv5 nicht mit lang: "de".
+      // Die offiziellen eingebauten Modellnamen umgehen diese eingeschränkte
+      // Sprachzuordnung und sind in der Browser-Dokumentation vorgesehen.
+      textDetectionModelName: model.textDetectionModelName,
+      textRecognitionModelName: model.textRecognitionModelName,
       textDetectionBatchSize: 1,
       textRecognitionBatchSize: 8,
       ortOptions: {

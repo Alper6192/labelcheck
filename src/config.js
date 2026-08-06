@@ -1,17 +1,12 @@
-export const APP_VERSION = "0.3.0";
+export const APP_VERSION = "0.3.1";
 
 export const MODEL_OPTIONS = {
-  latin: {
-    key: "latin",
-    label: "Lateinisch/Deutsch (empfohlen)",
-    lang: "de",
-    description: "PP-OCRv5 Latin-Modell für Deutsch und weitere lateinische Sprachen."
-  },
-  english: {
-    key: "english",
-    label: "Englisch/Zahlen (Vergleichstest)",
-    lang: "en",
-    description: "Kleineres englisches PP-OCRv5-Modell für englische Texte und Zahlen."
+  standard: {
+    key: "standard",
+    label: "PP-OCRv5 Standard (Zahlen/lateinische Zeichen)",
+    textDetectionModelName: "PP-OCRv5_mobile_det",
+    textRecognitionModelName: "PP-OCRv5_mobile_rec",
+    description: "Offizielles eingebautes PP-OCRv5-Browsermodell. Für den ersten Machbarkeitstest mit Artikelnummern, Chargen, Gewichten und Kundennamen."
   }
 };
 

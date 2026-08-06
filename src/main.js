@@ -80,7 +80,7 @@ function populateOptions() {
     option.textContent = model.label;
     elements.modelSelect.append(option);
   }
-  elements.modelSelect.value = "latin";
+  elements.modelSelect.value = "standard";
 
   for (const preset of Object.values(QUALITY_PRESETS)) {
     const option = document.createElement("option");
@@ -106,7 +106,7 @@ async function initializeEngine(force = false) {
     return true;
   } catch (error) {
     setEngineStatus(`PaddleOCR nicht bereit: ${safeError(error)}`, "bad");
-    elements.engineDetails.textContent = "Die erste Initialisierung lädt die offiziellen PP-OCRv5-Modelle. Prüfe Netzwerk und Browserkonsole.";
+    elements.engineDetails.textContent = "Die erste Initialisierung lädt die offiziellen PP-OCRv5-Modelle. Prüfe Netzwerk und Browserkonsole. Ein deutsches lang-Kürzel wird bewusst nicht mehr an das Browser-SDK übergeben.";
     return false;
   } finally {
     elements.initializeButton.disabled = false;

@@ -1,33 +1,29 @@
-# Start hier – Umstieg auf PaddleOCR
+# Start mit Version 0.3.1
 
-## Wichtig
-
-Dies ist kein Patch für Florence, sondern ein vollständiger Neuaufbau. Sichere dein bisheriges Repository zunächst als ZIP oder behalte den letzten Florence-Commit in GitHub.
-
-## Bestehendes Repository ersetzen
+## Update installieren
 
 1. ZIP entpacken.
 2. In GitHub Desktop `Repository → Show in Explorer` öffnen.
-3. Im lokalen Repository alles außer dem versteckten Ordner `.git` entfernen.
-4. Den gesamten Inhalt dieses Projektordners in das Repository kopieren.
-5. In GitHub Desktop als Summary eintragen: `Auf PaddleOCR Prototyp 0.3.0 umstellen`.
-6. `Commit to main` und danach `Push origin`.
-7. Unter GitHub `Actions` warten, bis Build und Deploy grün sind.
-8. Öffnen: `https://DEIN-NAME.github.io/DEIN-REPOSITORY/?v=030`
+3. Den gesamten Inhalt des neuen Projektordners in den Repository-Ordner kopieren.
+4. Vorhandene Dateien ersetzen; den versteckten Ordner `.git` nicht löschen.
+5. In GitHub Desktop committen und `Push origin` drücken.
+6. Unter GitHub Actions warten, bis Build und Deployment grün sind.
 
-## Testablauf
+Danach öffnen:
 
-1. Warten, bis `PaddleOCR bereit` erscheint.
-2. Zunächst `Lateinisch/Deutsch` und `Ausgewogen` verwenden.
-3. Produkt- und VDA-Foto aufnehmen.
-4. Laufzeit, erkannte Texte und Konfidenzen prüfen.
-5. Ergebnisse als JSON speichern.
-6. Danach das Modell auf `Englisch/Zahlen` wechseln, `Modell neu laden` drücken und dieselben Bilder erneut testen.
-7. Beide JSON-Dateien aufbewahren.
+```text
+https://alper6192.github.io/labelcheck/?v=031
+```
 
-## Was ich für die nächste Stufe brauche
+Oben muss `v0.3.1` stehen.
 
-- Screenshot der beiden OCR-Tabellen,
-- Laufzeiten für beide Bilder,
-- die exportierte JSON-Datei des lateinischen Tests,
-- optional die JSON-Datei des englischen Vergleichstests.
+## Test
+
+1. Auf `PaddleOCR bereit` warten.
+2. Qualität `Ausgewogen` verwenden.
+3. Produktlabel aufnehmen.
+4. VDA-Label aufnehmen.
+5. Laufzeiten und OCR-Zeilen kontrollieren.
+6. `Ergebnisse als JSON speichern` drücken.
+
+Die Modellauswahl enthält in dieser Version bewusst nur das eingebaute PP-OCRv5-Standardmodell. Das deutsche `lang: de` wurde entfernt, weil diese Kombination vom aktuellen Browser-SDK nicht akzeptiert wird.

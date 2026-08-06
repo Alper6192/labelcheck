@@ -1,49 +1,46 @@
-# LabelCheck PaddleOCR-Prototyp 0.3.0
+# LabelCheck PaddleOCR-Test 0.3.1
 
-Dieser Stand ist bewusst ein isolierter Machbarkeitstest. Er enthält noch keinen Editor, keine Feldprofile, keinen Produkt-/VDA-Vergleich und keinen Excel-Export.
+Diese Stufe prüft ausschließlich die OCR-Basis im Smartphone-Browser. Es gibt noch keinen Profilvergleich und keinen Excel-Export.
 
-## Ziel dieses Tests
+## Korrektur gegenüber 0.3.0
 
-Auf dem privaten und dem verwalteten Firmenhandy messen:
+PaddleOCR.js 0.4.x akzeptiert die Kombination `lang: "de"` und `ocrVersion: "PP-OCRv5"` im Browser derzeit nicht. Die Anwendung verwendet deshalb die von der offiziellen Browser-Dokumentation vorgesehenen eingebauten Modellnamen direkt:
+
+- `PP-OCRv5_mobile_det`
+- `PP-OCRv5_mobile_rec`
+
+Damit startet der Browser-Prototyp ohne die fehlerhafte Sprachzuordnung. Für die spätere produktive Stufe soll das spezielle `latin_PP-OCRv5_mobile_rec` als eigenes Modellarchiv über GitHub Pages ausgeliefert und mit den echten Etiketten verglichen werden.
+
+## Testziel
 
 - Welche Texte erkennt PP-OCRv5?
-- Welche Polygonkoordinaten und Konfidenzen werden geliefert?
-- Wie lange dauern Detektion und Erkennung?
-- Funktioniert der offizielle Web-Worker oder wird der Hauptfenster-Fallback verwendet?
-- Ist das lateinische oder das englische Erkennungsmodell für die Etiketten besser?
+- Welche Textboxen und Konfidenzwerte werden geliefert?
+- Wie lange dauern Detektion und Erkennung auf Privat- und Firmenhandy?
+- Reicht das Standardmodell bereits für Batch, IDH, Gewicht und Kundennamen?
 
 ## Technik
 
-- `@paddleocr/paddleocr-js` 0.4.2
-- PP-OCRv5 Mobile Detektion
-- standardmäßig lateinisches PP-OCRv5-Erkennungsmodell (`lang: de`)
-- zuverlässiges WASM/SIMD-Backend mit einem Thread
-- Web-Worker mit automatischem Hauptfenster-Fallback
-- GitHub Pages und GitHub Actions
+- offizielles Paket `@paddleocr/paddleocr-js`
+- PP-OCRv5 Mobile Detektion und Standarderkennung
+- WASM/SIMD, bevorzugt im Web Worker
+- lokale Verarbeitung der Fotos
+- JSON-Export der Messergebnisse
 
-## Datenschutz in dieser Teststufe
+## Bedienung
 
-Die Fotos werden lokal im Browser verarbeitet und nicht hochgeladen. Beim ersten Initialisieren lädt das offizielle PaddleOCR.js-SDK die gewählten Modellarchive von der offiziellen PaddleOCR-Modellquelle. Nach erfolgreichem Gerätetest werden diese Modellarchive in der nächsten Stufe in die GitHub-Pages-Ausgabe gespiegelt, sodass auch die Modellversorgung über die eigene GitHub-Adresse läuft.
+1. Seite öffnen und auf `PaddleOCR bereit` warten.
+2. Qualität zunächst auf `Ausgewogen` lassen.
+3. Produkt- und VDA-Label aufnehmen.
+4. Text, Konfidenz, Boxen und Laufzeiten prüfen.
+5. Ergebnisse als JSON exportieren.
 
-## Lokale Entwicklung
+## Nächste Stufe
 
-```bash
-npm install
-npm run dev
-```
+Nach dem erfolgreichen Gerätetest folgen:
 
-## Build
-
-```bash
-npm test
-npm run build
-```
-
-## Nächste Stufe nach erfolgreichem Test
-
-1. Modellarchive auf GitHub Pages spiegeln.
-2. Aufnahmehilfe mit festem Rahmen ergänzen.
-3. Neuer Zonen-Editor ohne OCR im Editor.
-4. Produktprofil fest, VDA-Profil über Kundenname.
-5. Batch, IDH und Gewicht per Zone + Regex zuordnen.
-6. Vergleich, lokales Protokoll und XLSX-Export ergänzen.
+- Vergleich Standardmodell gegen `latin_PP-OCRv5_mobile_rec`
+- fester Aufnahmebereich
+- Profil-Editor mit großzügigen Feldzonen
+- Feldzuordnung über Zone, Regex und Konfidenz
+- Produkt-/VDA-Vergleich
+- Excel-Export
