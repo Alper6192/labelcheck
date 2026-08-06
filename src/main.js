@@ -2,298 +2,38 @@ import "./styles.css";
 import { APP_VERSION, MODEL_OPTIONS, QUALITY_PRESETS } from "./config.js";
 import { PaddleOcrEngine } from "./ocr-engine.js";
 import { prepareImage } from "./image-tools.js";
-import { renderItemsTable, renderPreview } from "./render.js";
+import { renderComparison, renderFieldEditor, renderPreview } from "./render.js";
+import { applyManualValue, autoSelectProfile, extractProfileFields, loadProfiles } from "./profile-engine.js";
+import { compareExtractions } from "./comparison.js";
+import { clearRecords, loadRecords, saveRecord } from "./storage.js";
+import { exportRecords } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
-const engine = new PaddleOcrEngine();
-const slots = {
-  product: createSlot("product"),
-  vda: createSlot("vda")
-};
+const engine=new PaddleOcrEngine();let profiles=[];let records=loadRecords();let comparison=null;
+const slots={product:createSlot("product"),vda:createSlot("vda")};
+const el=id=>document.getElementById(id);
+el("version").textContent=`v${APP_VERSION}`;
+setupOptions();setupSlot("product");setupSlot("vda");setupActions();renderAll();
+Promise.all([loadProfiles().then(p=>{profiles=p;populateProfiles();}),initializeEngine()]).catch(()=>{});
 
-const elements = {
-  version: document.getElementById("version"),
-  engineBadge: document.getElementById("engineBadge"),
-  engineDetails: document.getElementById("engineDetails"),
-  modelSelect: document.getElementById("modelSelect"),
-  qualitySelect: document.getElementById("qualitySelect"),
-  autoAnalyze: document.getElementById("autoAnalyze"),
-  initializeButton: document.getElementById("initializeButton"),
-  analyzeAllButton: document.getElementById("analyzeAllButton"),
-  exportButton: document.getElementById("exportButton"),
-  resetButton: document.getElementById("resetButton"),
-  deviceInfo: document.getElementById("deviceInfo")
-};
-
-elements.version.textContent = `v${APP_VERSION}`;
-populateOptions();
-renderDeviceInfo();
-setupSlot("product");
-setupSlot("vda");
-renderAll();
-
-navigator.storage?.persist?.().catch(() => false);
-
-setTimeout(() => initializeEngine().catch(() => undefined), 100);
-
-elements.initializeButton.addEventListener("click", () => initializeEngine(true));
-elements.analyzeAllButton.addEventListener("click", analyzeAll);
-elements.exportButton.addEventListener("click", exportResults);
-elements.resetButton.addEventListener("click", resetAll);
-elements.modelSelect.addEventListener("change", () => {
-  setEngineStatus("Modellwechsel gewählt. Neu initialisieren.", "warn");
-});
-
-elements.qualitySelect.addEventListener("change", () => {
-  for (const slot of Object.values(slots)) {
-    if (slot.file) loadSlotFile(slot.key, slot.file, false);
-  }
-});
-
-function createSlot(key) {
-  return {
-    key,
-    file: null,
-    prepared: null,
-    result: null,
-    wallMs: null,
-    error: "",
-    state: "empty"
-  };
-}
-
-function setupSlot(key) {
-  const input = document.getElementById(`${key}Input`);
-  const analyzeButton = document.getElementById(`${key}Analyze`);
-  input.addEventListener("change", async () => {
-    const file = input.files?.[0];
-    input.value = "";
-    if (file) await loadSlotFile(key, file, true);
-  });
-  analyzeButton.addEventListener("click", () => analyzeSlot(key));
-}
-
-function populateOptions() {
-  for (const model of Object.values(MODEL_OPTIONS)) {
-    const option = document.createElement("option");
-    option.value = model.key;
-    option.textContent = model.label;
-    elements.modelSelect.append(option);
-  }
-  elements.modelSelect.value = "standard";
-
-  for (const preset of Object.values(QUALITY_PRESETS)) {
-    const option = document.createElement("option");
-    option.value = preset.key;
-    option.textContent = preset.label;
-    elements.qualitySelect.append(option);
-  }
-  elements.qualitySelect.value = "balanced";
-}
-
-async function initializeEngine(force = false) {
-  const modelKey = elements.modelSelect.value;
-  if (!force && engine.ready && engine.modelKey === modelKey) return true;
-
-  elements.initializeButton.disabled = true;
-  setEngineStatus("PaddleOCR wird vorbereitet …", "wait");
-  try {
-    const info = await engine.initialize(modelKey, (message) => setEngineStatus(message, "wait"));
-    const model = MODEL_OPTIONS[modelKey];
-    setEngineStatus(`PaddleOCR bereit · ${info.mode}`, "ok");
-    elements.engineDetails.textContent = `${model.description} Initialisierung: ${formatMilliseconds(info.initMs)}.`;
-    renderAll();
-    return true;
-  } catch (error) {
-    setEngineStatus(`PaddleOCR nicht bereit: ${safeError(error)}`, "bad");
-    elements.engineDetails.textContent = "Die erste Initialisierung lädt die offiziellen PP-OCRv5-Modelle. Prüfe Netzwerk und Browserkonsole. Ein deutsches lang-Kürzel wird bewusst nicht mehr an das Browser-SDK übergeben.";
-    return false;
-  } finally {
-    elements.initializeButton.disabled = false;
-  }
-}
-
-async function loadSlotFile(key, file, mayAnalyze) {
-  const slot = slots[key];
-  slot.file = file;
-  slot.result = null;
-  slot.error = "";
-  slot.state = "preparing";
-  renderSlot(key);
-
-  try {
-    const preset = QUALITY_PRESETS[elements.qualitySelect.value];
-    slot.prepared = await prepareImage(file, preset.maxImageSide);
-    slot.state = "ready";
-  } catch (error) {
-    slot.error = safeError(error);
-    slot.state = "error";
-  }
-  renderSlot(key);
-
-  if (mayAnalyze && slot.state === "ready" && elements.autoAnalyze.checked) {
-    await analyzeSlot(key);
-  }
-}
-
-async function analyzeSlot(key) {
-  const slot = slots[key];
-  if (!slot.prepared) return;
-  const ready = await initializeEngine();
-  if (!ready) return;
-
-  slot.state = "analyzing";
-  slot.error = "";
-  renderSlot(key);
-  try {
-    const preset = QUALITY_PRESETS[elements.qualitySelect.value];
-    const { result, wallMs } = await engine.predict(slot.prepared.canvas, {
-      textDetLimitSideLen: preset.textDetLimitSideLen,
-      textDetLimitType: "min",
-      textDetMaxSideLimit: 2400,
-      textDetThresh: 0.25,
-      textDetBoxThresh: preset.textDetBoxThresh,
-      textDetUnclipRatio: 1.55,
-      textRecScoreThresh: preset.textRecScoreThresh
-    });
-    slot.result = result;
-    slot.wallMs = wallMs;
-    slot.state = "done";
-  } catch (error) {
-    slot.error = safeError(error);
-    slot.state = "error";
-  }
-  renderSlot(key);
-  updateActions();
-}
-
-async function analyzeAll() {
-  elements.analyzeAllButton.disabled = true;
-  try {
-    for (const key of ["product", "vda"]) {
-      if (slots[key].prepared) await analyzeSlot(key);
-    }
-  } finally {
-    elements.analyzeAllButton.disabled = false;
-  }
-}
-
-function renderAll() {
-  renderSlot("product");
-  renderSlot("vda");
-  updateActions();
-}
-
-function renderSlot(key) {
-  const slot = slots[key];
-  const preview = document.getElementById(`${key}Preview`);
-  const status = document.getElementById(`${key}Status`);
-  const metrics = document.getElementById(`${key}Metrics`);
-  const tbody = document.getElementById(`${key}Items`);
-  const raw = document.getElementById(`${key}Raw`);
-  const analyzeButton = document.getElementById(`${key}Analyze`);
-
-  renderPreview(preview, slot.prepared, slot.result);
-  analyzeButton.disabled = !slot.prepared || slot.state === "analyzing";
-
-  if (!slot.prepared) {
-    status.textContent = "Noch kein Bild ausgewählt.";
-    status.className = "slot-status";
-    metrics.textContent = "–";
-    renderItemsTable(tbody, []);
-    raw.textContent = "";
-    return;
-  }
-
-  const quality = slot.prepared.quality;
-  const qualityText = `Bild ${slot.prepared.width} × ${slot.prepared.height} · Schärfe ${quality.sharpness} · Helligkeit ${quality.brightness} · Qualität ${quality.rating.text}`;
-
-  if (slot.state === "analyzing") {
-    status.textContent = "PaddleOCR analysiert das vollständige Bild …";
-    status.className = "slot-status wait";
-  } else if (slot.state === "error") {
-    status.textContent = `Fehler: ${slot.error}`;
-    status.className = "slot-status bad";
-  } else if (slot.state === "done") {
-    status.textContent = `${qualityText} · ${slot.result?.items?.length || 0} Textzeilen`;
-    status.className = `slot-status ${quality.rating.level}`;
-  } else {
-    status.textContent = qualityText;
-    status.className = `slot-status ${quality.rating.level}`;
-  }
-
-  const m = slot.result?.metrics;
-  metrics.textContent = slot.result
-    ? `Gesamt ${formatMilliseconds(slot.wallMs)} · Detektion ${formatMilliseconds(m?.detMs)} · Erkennung ${formatMilliseconds(m?.recMs)} · Boxen ${m?.detectedBoxes ?? "–"} · erkannt ${m?.recognizedCount ?? "–"}`
-    : "Noch nicht analysiert";
-  renderItemsTable(tbody, slot.result?.items || []);
-  raw.textContent = slot.result ? JSON.stringify(serializableResult(slot.result), null, 2) : "";
-}
-
-function setEngineStatus(text, state) {
-  elements.engineBadge.textContent = text;
-  elements.engineBadge.className = `engine-badge ${state}`;
-}
-
-function updateActions() {
-  elements.analyzeAllButton.disabled = !Object.values(slots).some((slot) => slot.prepared);
-  elements.exportButton.disabled = !Object.values(slots).some((slot) => slot.result);
-}
-
-function exportResults() {
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    appVersion: APP_VERSION,
-    model: MODEL_OPTIONS[elements.modelSelect.value],
-    qualityPreset: QUALITY_PRESETS[elements.qualitySelect.value],
-    engine: {
-      mode: engine.mode,
-      summary: engine.summary
-    },
-    userAgent: navigator.userAgent,
-    product: exportSlot(slots.product),
-    vda: exportSlot(slots.vda)
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `paddleocr-test-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function exportSlot(slot) {
-  return {
-    fileName: slot.file?.name || null,
-    image: slot.prepared
-      ? {
-          width: slot.prepared.width,
-          height: slot.prepared.height,
-          quality: slot.prepared.quality
-        }
-      : null,
-    wallMs: slot.wallMs,
-    result: serializableResult(slot.result),
-    error: slot.error || null
-  };
-}
-
-function resetAll() {
-  for (const slot of Object.values(slots)) {
-    slot.file = null;
-    slot.prepared = null;
-    slot.result = null;
-    slot.wallMs = null;
-    slot.error = "";
-    slot.state = "empty";
-  }
-  renderAll();
-}
-
-function renderDeviceInfo() {
-  const memory = navigator.deviceMemory ? `${navigator.deviceMemory} GB geschätzt` : "nicht gemeldet";
-  const cores = navigator.hardwareConcurrency || "nicht gemeldet";
-  const isolated = window.crossOriginIsolated ? "ja" : "nein";
-  elements.deviceInfo.textContent = `Browser: ${navigator.userAgent} | Kerne: ${cores} | Gerätespeicher: ${memory} | Cross-Origin-isoliert: ${isolated} | Backend: WASM/SIMD, 1 Thread`;
-}
+function createSlot(key){return{key,file:null,prepared:null,result:null,wallMs:null,error:"",state:"empty",profile:null,extraction:null,manual:false};}
+function setupOptions(){for(const m of Object.values(MODEL_OPTIONS))el("modelSelect").append(new Option(m.label,m.key));for(const p of Object.values(QUALITY_PRESETS))el("qualitySelect").append(new Option(p.label,p.key));el("modelSelect").value="standard";el("qualitySelect").value="balanced";}
+function setupSlot(key){el(`${key}Input`).addEventListener("change",async e=>{const f=e.target.files?.[0];e.target.value="";if(f)await loadFile(key,f);});el(`${key}Profile`).addEventListener("change",()=>selectProfile(key,el(`${key}Profile`).value));}
+function setupActions(){el("initializeButton").onclick=()=>initializeEngine(true);el("analyzeAllButton").onclick=analyzeAll;el("saveButton").onclick=storeCurrent;el("excelButton").onclick=()=>exportRecords(records);el("clearButton").onclick=()=>{if(confirm("Lokales Protokoll wirklich leeren?")){records=clearRecords();renderLog();}};el("debugButton").onclick=exportDebug;}
+function populateProfiles(){for(const key of ["product","vda"]){const select=el(`${key}Profile`);select.replaceChildren(new Option("Automatisch",""));profiles.filter(p=>p.role===key).forEach(p=>select.append(new Option(p.name,p.id)));}}
+async function initializeEngine(force=false){if(!force&&engine.ready)return true;setEngineStatus("PaddleOCR wird vorbereitet …","wait");try{const info=await engine.initialize("standard",m=>setEngineStatus(m,"wait"));setEngineStatus(`PaddleOCR bereit · ${info.mode}`,"ok");el("engineDetails").textContent=`Initialisierung ${formatMilliseconds(info.initMs)} · PP-OCRv5 mobile.`;return true;}catch(e){setEngineStatus(`PaddleOCR nicht bereit: ${safeError(e)}`,"bad");return false;}}
+async function loadFile(key,file){const s=slots[key];Object.assign(s,{file,result:null,extraction:null,error:"",state:"preparing",manual:false});renderSlot(key);try{s.prepared=await prepareImage(file,QUALITY_PRESETS.balanced.maxImageSide);s.state="ready";renderSlot(key);await analyzeSlot(key);}catch(e){s.error=safeError(e);s.state="error";renderSlot(key);}}
+async function analyzeSlot(key){const s=slots[key];if(!s.prepared||!(await initializeEngine()))return;s.state="analyzing";renderSlot(key);try{const p=QUALITY_PRESETS.balanced;const out=await engine.predict(s.prepared.canvas,{textDetLimitSideLen:p.textDetLimitSideLen,textDetLimitType:"min",textDetMaxSideLimit:2400,textDetThresh:.25,textDetBoxThresh:p.textDetBoxThresh,textDetUnclipRatio:1.55,textRecScoreThresh:p.textRecScoreThresh});s.result=out.result;s.wallMs=out.wallMs;s.state="done";resolveProfile(key);}catch(e){s.error=safeError(e);s.state="error";}renderAll();}
+async function analyzeAll(){for(const k of ["product","vda"])if(slots[k].prepared)await analyzeSlot(k);}
+function resolveProfile(key){const s=slots[key];if(!s.result)return;let profile=s.profile;if(!profile){const match=autoSelectProfile(s.result.items,profiles,key);profile=match?.profile||null;}s.profile=profile;s.extraction=profile?extractProfileFields(s.result.items,profile,s.result.image):null;el(`${key}Profile`).value=profile?.id||"";comparison=slots.product.extraction&&slots.vda.extraction?compareExtractions(slots.product.extraction,slots.vda.extraction):null;}
+function selectProfile(key,id){const s=slots[key];s.profile=profiles.find(p=>p.id===id)||null;if(s.result){s.extraction=s.profile?extractProfileFields(s.result.items,s.profile,s.result.image):null;comparison=slots.product.extraction&&slots.vda.extraction?compareExtractions(slots.product.extraction,slots.vda.extraction):null;}renderAll();}
+function editField(key,field,value){const s=slots[key];applyManualValue(s.extraction,field,value);s.manual=true;comparison=slots.product.extraction&&slots.vda.extraction?compareExtractions(slots.product.extraction,slots.vda.extraction):null;renderAll();}
+function renderAll(){renderSlot("product");renderSlot("vda");renderComparison(el("comparison"),comparison);renderLog();el("saveButton").disabled=!comparison;el("excelButton").disabled=!records.length;}
+function renderSlot(key){const s=slots[key];renderPreview(el(`${key}Preview`),s.prepared,s.extraction?.overlays||[]);const st=el(`${key}Status`);if(s.state==="analyzing"){st.textContent="PaddleOCR analysiert …";st.className="slot-status wait";}else if(s.state==="error"){st.textContent=`Fehler: ${s.error}`;st.className="slot-status bad";}else if(s.state==="done"){st.textContent=`${formatMilliseconds(s.wallMs)} · ${s.result?.items?.length||0} Textzeilen · ${s.profile?.name||"Profil nicht erkannt"}${s.extraction?.warning?` · ${s.extraction.warning}`:""}`;st.className=`slot-status ${s.profile?"ok":"warn"}`;}else{st.textContent=s.prepared?"Bild vorbereitet":"Noch kein Bild";st.className="slot-status";}renderFieldEditor(el(`${key}Fields`),s.extraction,(f,v)=>editField(key,f,v));}
+function storeCurrent(){if(!comparison)return;const rec={timestamp:new Date().toISOString(),result:comparison.message,productProfile:slots.product.profile?.name||"",vdaProfile:slots.vda.profile?.name||"",product:values(slots.product.extraction),vda:values(slots.vda.extraction),manual:slots.product.manual||slots.vda.manual};records=saveRecord(rec);renderAll();}
+function values(e){const o={};for(const [k,v] of Object.entries(e?.fields||{}))o[k]=v.value||"";return o;}
+function renderLog(){el("logCount").textContent=`${records.length} Datensätze`;const body=el("logBody");body.replaceChildren();records.slice(0,30).forEach(r=>{const tr=document.createElement("tr");tr.innerHTML=`<td>${new Date(r.timestamp).toLocaleString()}</td><td>${r.product.batch||"–"}</td><td>${r.vda.batch||"–"}</td><td>${r.result}</td>`;body.append(tr);});}
+function exportDebug(){const payload={exportedAt:new Date().toISOString(),appVersion:APP_VERSION,product:debugSlot(slots.product),vda:debugSlot(slots.vda),comparison};download(JSON.stringify(payload,null,2),`labelcheck-debug-${Date.now()}.json`,`application/json`);}
+function debugSlot(s){return{profile:s.profile,extraction:s.extraction,result:serializableResult(s.result),wallMs:s.wallMs};}
+function download(content,name,type){const u=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement("a");a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
+function setEngineStatus(t,c){el("engineBadge").textContent=t;el("engineBadge").className=`engine-badge ${c}`;}

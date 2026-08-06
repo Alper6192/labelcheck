@@ -1,91 +1,11 @@
-<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#061423">
-  <link rel="manifest" href="./manifest.webmanifest">
-  <title>LabelCheck – PaddleOCR Test</title>
-</head>
-<body>
-  <header>
-    <h1>LabelCheck PaddleOCR-Test <small id="version"></small></h1>
-    <p>Machbarkeitstest: Text, Konfidenz, Position und Laufzeit – noch ohne Profilvergleich oder Excel.</p>
-    <div class="privacy">Die Bilder werden im Browser verarbeitet. In dieser Teststufe lädt das SDK die offiziellen PP-OCRv5-Modelle beim ersten Start von der PaddleOCR-Modellquelle; die Fotos werden nicht hochgeladen.</div>
-  </header>
-
-  <main>
-    <section class="card">
-      <div class="card-head"><h2>OCR-System</h2></div>
-      <div class="card-body engine-grid">
-        <div>
-          <div id="engineBadge" class="engine-badge wait">PaddleOCR wird vorbereitet …</div>
-          <div id="engineDetails">Erster Start kann wegen Modelldownload länger dauern.</div>
-          <div id="deviceInfo"></div>
-        </div>
-        <div>
-          <div class="settings">
-            <label>Erkennungsmodell
-              <select id="modelSelect"></select>
-            </label>
-            <label>OCR-Qualität
-              <select id="qualitySelect"></select>
-            </label>
-            <label class="checkbox"><input id="autoAnalyze" type="checkbox" checked> Nach Foto automatisch analysieren</label>
-          </div>
-          <div class="actions">
-            <button id="initializeButton">Modell neu laden</button>
-            <button id="analyzeAllButton" class="primary" disabled>Beide Bilder analysieren</button>
-            <button id="exportButton" class="good" disabled>Ergebnisse als JSON</button>
-            <button id="resetButton">Zurücksetzen</button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="scan-grid">
-      <article class="card">
-        <div class="card-head"><h2>Bild 1 – Produktlabel</h2></div>
-        <div class="card-body">
-          <div class="slot-actions">
-            <label class="capture primary">Foto aufnehmen / auswählen<input id="productInput" type="file" accept="image/*" capture="environment"></label>
-            <button id="productAnalyze" disabled>Analysieren</button>
-          </div>
-          <div id="productPreview" class="preview"><div class="placeholder">Noch kein Bild</div></div>
-          <div id="productStatus" class="slot-status">Noch kein Bild ausgewählt.</div>
-          <div id="productMetrics" class="metrics">–</div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>#</th><th>Erkannter Text</th><th>Sicherheit</th><th>Position x/y</th><th>Größe</th></tr></thead>
-              <tbody id="productItems"></tbody>
-            </table>
-          </div>
-          <details><summary>Rohdaten</summary><pre id="productRaw"></pre></details>
-        </div>
-      </article>
-
-      <article class="card">
-        <div class="card-head"><h2>Bild 2 – VDA-Label</h2></div>
-        <div class="card-body">
-          <div class="slot-actions">
-            <label class="capture primary">Foto aufnehmen / auswählen<input id="vdaInput" type="file" accept="image/*" capture="environment"></label>
-            <button id="vdaAnalyze" disabled>Analysieren</button>
-          </div>
-          <div id="vdaPreview" class="preview"><div class="placeholder">Noch kein Bild</div></div>
-          <div id="vdaStatus" class="slot-status">Noch kein Bild ausgewählt.</div>
-          <div id="vdaMetrics" class="metrics">–</div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>#</th><th>Erkannter Text</th><th>Sicherheit</th><th>Position x/y</th><th>Größe</th></tr></thead>
-              <tbody id="vdaItems"></tbody>
-            </table>
-          </div>
-          <details><summary>Rohdaten</summary><pre id="vdaRaw"></pre></details>
-        </div>
-      </article>
-    </section>
-  </main>
-
-  <script type="module" src="/src/main.js"></script>
-</body>
-</html>
+<!doctype html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#061423"><link rel="manifest" href="./manifest.webmanifest"><title>LabelCheck – PaddleOCR</title></head><body>
+<header><h1>LabelCheck PaddleOCR <small id="version"></small></h1><p>Produkt- und VDA-Label lokal erkennen, profilbasiert zuordnen, vergleichen und als Excel protokollieren.</p><div class="privacy">Fotos und Ergebnisse bleiben im Browser. Diese Version enthält zunächst nur die anhand deines Tests validierten Profile: TEROSON PU 1511 und Mercedes Format_007.</div></header>
+<main>
+<section class="card"><div class="card-head"><h2>OCR-System</h2></div><div class="card-body engine-grid"><div><div id="engineBadge" class="engine-badge wait">PaddleOCR wird vorbereitet …</div><div id="engineDetails">Erster Start lädt die PP-OCRv5-Modelle.</div></div><div><div class="settings"><label>Modell<select id="modelSelect"></select></label><label>Qualität<select id="qualitySelect"></select></label></div><div class="actions"><button id="initializeButton">Modell neu laden</button><button id="analyzeAllButton">Erneut analysieren</button><button id="debugButton">Debug-JSON</button></div></div></div></section>
+<section class="scan-grid">
+<article class="card"><div class="card-head"><h2>Etikett 1 – Produktlabel</h2></div><div class="card-body"><label class="capture primary">Foto aufnehmen / auswählen<input id="productInput" type="file" accept="image/*" capture="environment"></label><label class="profile-label">Layoutprofil<select id="productProfile"></select></label><div id="productPreview" class="preview"></div><div id="productStatus" class="slot-status">Noch kein Bild</div><div id="productFields" class="field-grid"></div></div></article>
+<article class="card"><div class="card-head"><h2>Etikett 2 – VDA-Label</h2></div><div class="card-body"><label class="capture primary">Foto aufnehmen / auswählen<input id="vdaInput" type="file" accept="image/*" capture="environment"></label><label class="profile-label">Layoutprofil<select id="vdaProfile"></select></label><div id="vdaPreview" class="preview"></div><div id="vdaStatus" class="slot-status">Noch kein Bild</div><div id="vdaFields" class="field-grid"></div></div></article>
+</section>
+<section class="card"><div class="card-head"><h2>Analyse und Vergleich</h2></div><div class="card-body"><div id="comparison"></div><div class="actions"><button id="saveButton" class="good" disabled>Datensatz übernehmen</button></div></div></section>
+<section class="card"><div class="card-head"><h2>Lokales Scanprotokoll</h2><span id="logCount">0 Datensätze</span></div><div class="card-body"><div class="actions"><button id="excelButton" class="good" disabled>Excel speichern</button><button id="clearButton">Protokoll leeren</button></div><div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Batch Produkt</th><th>Batch VDA</th><th>Ergebnis</th></tr></thead><tbody id="logBody"></tbody></table></div></div></section>
+</main><script type="module" src="/src/main.js"></script></body></html>
