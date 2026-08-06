@@ -1,5 +1,0 @@
-PATCH 0.2.2
-
-Den gesamten Inhalt dieses Ordners in den lokalen Repository-Ordner kopieren und vorhandene Dateien ersetzen.
-Die eigene Datei public/config/label-profiles.json wird durch diesen Patch bewusst NICHT ersetzt.
-Danach in GitHub Desktop committen und Push origin ausführen.
