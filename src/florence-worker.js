@@ -5,7 +5,7 @@ import {
   env,
   load_image,
 } from "@huggingface/transformers";
-import { FLORENCE_TASK, MODEL_ID } from "./config.js";
+import { FLORENCE_MAX_TOKENS, FLORENCE_TASK, MODEL_ID } from "./config.js";
 
 const baseUrl = new URL(import.meta.env.BASE_URL, self.location.origin);
 const localOnly = import.meta.env.VITE_MODEL_SOURCE !== "remote";
@@ -68,8 +68,8 @@ self.addEventListener("message", async (event) => {
         ...textInputs,
         ...visionInputs,
         max_new_tokens: payload.editor
-          ? (payload.role === "product" ? 224 : 384)
-          : (payload.role === "product" ? 384 : 576),
+          ? (payload.role === "product" ? FLORENCE_MAX_TOKENS.editorProduct : FLORENCE_MAX_TOKENS.editorVda)
+          : (payload.role === "product" ? FLORENCE_MAX_TOKENS.product : FLORENCE_MAX_TOKENS.vda),
         num_beams: 1,
         do_sample: false,
       });

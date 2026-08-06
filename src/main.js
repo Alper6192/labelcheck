@@ -16,8 +16,13 @@ const FIELD_DEFINITIONS = [
 
 const state = {
   client: null,
+  modelLoadPromise: null,
   config: null,
   busy: false,
+  analysisQueue: Promise.resolve(),
+  pendingAnalyses: 0,
+  imageRevision: { product: 0, vda: 0 },
+  timings: { model: 0, product: 0, vda: 0 },
   product: emptyLabel("product"),
   vda: emptyLabel("vda"),
   comparison: null,
@@ -27,7 +32,7 @@ const state = {
 
 document.querySelector("#app").innerHTML = `
   <header>
-    <div><h1>LabelCheck Florence <small class="small">v${APP_VERSION}</small></h1><p>Ein Florence-Durchlauf je Etikett · Kundenanker und feste Profilpositionen.</p></div>
+    <div><h1>LabelCheck Florence <small class="small">v${APP_VERSION}</small></h1><p>Florence wird vorab geladen und jedes Foto direkt nach der Aufnahme analysiert.</p></div>
     <a class="header-link" href="./editor.html">Profileditor öffnen</a>
   </header>
   <main>
@@ -37,7 +42,7 @@ document.querySelector("#app").innerHTML = `
       <span id="configBadge" class="badge warn">Profile werden geladen …</span>
       <span id="storageBadge" class="badge">Lokales Protokoll</span>
     </div>
-    <div class="privacy">Die Fotos verlassen das Smartphone nicht. Florence liest jedes vollständige Foto genau einmal. Es findet keine Randerkennung und kein automatischer Zuschnitt statt.</div>
+    <div class="privacy">Die Fotos verlassen das Smartphone nicht. Das Produktlabel wird bereits analysiert, während du das VDA-Label aufnimmst. Es findet keine Randerkennung und kein automatischer Zuschnitt statt.</div>
 
     <section class="grid">
       ${labelCard("product", "Etikett 1 – Produktlabel")}
@@ -51,7 +56,7 @@ document.querySelector("#app").innerHTML = `
         <div id="profileWarning" class="editor-message hidden"></div>
         <div id="progressWrap" class="progress-wrap"><progress id="progress" max="100" value="0"></progress><div id="progressText" class="progress-text">Vorbereitung …</div></div>
         <div class="actions">
-          <button id="analyzeButton" class="primary" disabled>Beide Etiketten analysieren</button>
+          <button id="analyzeButton" class="primary" disabled>Beide Etiketten erneut analysieren</button>
           <button id="saveButton" class="good" disabled>Datensatz übernehmen</button>
           <button id="demoButton" class="secondary">Demo-Daten laden</button>
           <button id="resetButton" class="danger">Aufnahmen zurücksetzen</button>
@@ -91,7 +96,7 @@ async function initialize() {
     document.getElementById(`${role}Input`).addEventListener("change", (event) => handleFile(role, event));
     document.getElementById(`${role}Profile`).addEventListener("change", () => remapRole(role));
   }
-  elements.analyzeButton.addEventListener("click", analyzeBoth);
+  elements.analyzeButton.addEventListener("click", reanalyzeBoth);
   elements.saveButton.addEventListener("click", persistCurrentRecord);
   elements.demoButton.addEventListener("click", loadDemo);
   elements.resetButton.addEventListener("click", resetCurrent);
@@ -104,6 +109,15 @@ async function initialize() {
   renderLog();
   registerServiceWorker();
   updateButtons();
+
+  // Das große Modell wird sofort im Hintergrund vorbereitet. So fällt die
+  // Initialisierung nicht erst nach beiden Kameraaufnahmen an.
+  void preloadModel().catch((error) => {
+    console.error(error);
+    elements.modelBadge.textContent = `Florence nicht bereit: ${error.message || error}`;
+    elements.modelBadge.className = "badge bad";
+    showProgress(false);
+  });
 }
 
 function labelCard(role, title) {
@@ -129,60 +143,188 @@ function populateProfileSelectors() {
 }
 
 async function handleFile(role, event) {
-  const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
-  await runAction(async () => {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  const revision = ++state.imageRevision[role];
+  try {
     setLabelStatus(role, "Bild wird vorbereitet …");
     const prepared = await prepareImage(file);
-    state[role] = { ...emptyLabel(role), image: prepared, preferredProfileId: document.getElementById(`${role}Profile`).value };
+    if (revision !== state.imageRevision[role]) return;
+
+    state[role] = {
+      ...emptyLabel(role),
+      image: prepared,
+      revision,
+      preferredProfileId: document.getElementById(`${role}Profile`).value,
+    };
     renderImage(role);
     const quality = document.getElementById(`${role}Quality`);
-    quality.textContent = prepared.quality.warnings.length ? prepared.quality.warnings.join(" ") : `Bildqualität plausibel · Schärfewert ${prepared.quality.sharpness}`;
+    quality.textContent = prepared.quality.warnings.length
+      ? prepared.quality.warnings.join(" ")
+      : `Bildqualität plausibel · Schärfewert ${prepared.quality.sharpness}`;
     quality.className = `quality ${prepared.quality.acceptable ? "ok" : "warn"}`;
-    setLabelStatus(role, `${prepared.width} × ${prepared.height}px`);
-    state.comparison = null; state.currentSaved = false; renderComparison(); updateButtons();
-  });
+    setLabelStatus(role, "Wartet auf Florence …");
+    state.comparison = null;
+    state.currentSaved = false;
+    renderComparison();
+    updateButtons();
+
+    scheduleRoleAnalysis(role);
+  } catch (error) {
+    console.error(error);
+    setLabelStatus(role, `Fehler: ${error.message || error}`);
+    elements.overall.textContent = `Bild konnte nicht vorbereitet werden: ${error.message || error}`;
+    elements.overall.className = "overall rejected";
+  }
 }
 
-async function analyzeBoth() {
-  if (!state.product.image || !state.vda.image) return;
-  await runAction(async () => {
-    showProgress(true, "Florence-2 wird vorbereitet …", 2);
-    const client = getClient();
-    await client.load();
-    elements.modelBadge.textContent = `Florence-2 bereit · ${MODEL_ID}`; elements.modelBadge.className = "badge ok";
-    let totalMs = 0;
-    for (const [index, role] of ["product", "vda"].entries()) {
-      const label = role === "product" ? "Produktlabel" : "VDA-Label";
-      showProgress(true, `${label} wird einmal vollständig gelesen …`, index === 0 ? 25 : 62);
-      const response = await client.analyze(state[role].image.dataUrl, role);
-      totalMs += Number(response.elapsedMs || 0);
-      const entries = parseFlorenceEntries(response.result, response.imageSize);
-      state[role].ocr = response;
-      state[role].entries = entries;
-      state[role].mapping = resolveLabelProfile(
-        state.config,
-        role,
-        entries,
-        response.imageSize,
-        document.getElementById(`${role}Profile`).value,
-      );
-      state[role].fields = state[role].mapping.fields;
-      if (state[role].mapping.profile?.codeRegions?.length) {
-        const codeResult = await readConfiguredCodes(state[role].image.dataUrl, state[role].mapping.profile);
-        state[role].codeResult = codeResult;
-        state[role].fields = { ...state[role].fields, ...codeResult.fields };
-        if (codeResult.warning) state[role].mapping.warning = [state[role].mapping.warning, codeResult.warning].filter(Boolean).join(" ");
+function preloadModel() {
+  if (state.modelLoadPromise) return state.modelLoadPromise;
+  if (!navigator.gpu) return Promise.reject(new Error("WebGPU ist nicht verfügbar."));
+
+  const started = performance.now();
+  elements.modelBadge.textContent = "Florence-2 wird im Hintergrund geladen …";
+  elements.modelBadge.className = "badge warn";
+  showProgress(true, "Florence-2 wird im Hintergrund vorbereitet …", 2);
+
+  state.modelLoadPromise = getClient().load().then((result) => {
+    state.timings.model = performance.now() - started;
+    elements.modelBadge.textContent = `Florence-2 bereit · ${MODEL_ID}`;
+    elements.modelBadge.className = "badge ok";
+    if (state.pendingAnalyses === 0) showProgress(false);
+    renderAnalysisTiming();
+    return result;
+  }).catch((error) => {
+    state.modelLoadPromise = null;
+    throw error;
+  });
+
+  return state.modelLoadPromise;
+}
+
+function scheduleRoleAnalysis(role, { force = false } = {}) {
+  const label = state[role];
+  if (!label.image?.dataUrl) return;
+  if (!force && ["queued", "running"].includes(label.analysisStatus)) return;
+
+  const revision = label.revision;
+  const jobId = crypto.randomUUID();
+  label.analysisStatus = "queued";
+  label.analysisJobId = jobId;
+  state.pendingAnalyses += 1;
+  setLabelStatus(role, "Analyse vorgemerkt …");
+  renderComparison();
+  updateButtons();
+
+  const run = async () => {
+    try {
+      await analyzeRole(role, revision, jobId);
+    } catch (error) {
+      console.error(error);
+      if (state[role].analysisJobId === jobId) {
+        state[role].analysisStatus = "error";
+        setLabelStatus(role, `Florence-Fehler: ${error.message || error}`);
+        elements.overall.textContent = `Fehler: ${error.message || error}`;
+        elements.overall.className = "overall rejected";
       }
-      if (state[role].mapping.profile) document.getElementById(`${role}Profile`).value = state[role].mapping.profile.id;
-      renderProfileInfo(role);
-      drawOverlay(role);
-      setLabelStatus(role, `Florence ${formatDuration(response.elapsedMs)} · ${state[role].mapping.profile?.name || "Profil offen"}`);
+    } finally {
+      state.pendingAnalyses = Math.max(0, state.pendingAnalyses - 1);
+      if (state.pendingAnalyses === 0) showProgress(false);
+      renderComparison();
+      updateButtons();
     }
+  };
+
+  state.analysisQueue = state.analysisQueue.catch(() => {}).then(run);
+}
+
+async function analyzeRole(role, revision, jobId) {
+  if (!isCurrentJob(role, revision, jobId)) return;
+  state[role].analysisStatus = "running";
+  const labelName = role === "product" ? "Produktlabel" : "VDA-Label";
+  setLabelStatus(role, "Florence läuft …");
+  showProgress(true, `${labelName}: Florence wird vorbereitet …`, role === "product" ? 28 : 68);
+
+  await preloadModel();
+  if (!isCurrentJob(role, revision, jobId)) return;
+
+  showProgress(true, `${labelName} wird vollständig gelesen …`, role === "product" ? 35 : 72);
+  const response = await getClient().analyze(state[role].image.dataUrl, role);
+  if (!isCurrentJob(role, revision, jobId)) return;
+
+  applyOcrResult(role, response);
+  await applyConfiguredCodes(role);
+  if (!isCurrentJob(role, revision, jobId)) return;
+  state[role].analysisStatus = "done";
+  state.timings[role] = Number(response.elapsedMs || 0);
+  setLabelStatus(role, `Florence ${formatDuration(response.elapsedMs)} · ${state[role].mapping.profile?.name || "Profil offen"}`);
+  renderAnalysisTiming();
+
+  if (state.product.fields && state.vda.fields) {
     state.comparison = compareLabels(state.product.fields, state.vda.fields);
     state.currentSaved = false;
-    elements.analysisTime.textContent = `Gesamt ${formatDuration(totalMs)} · 2 Florence-Läufe`;
-    showProgress(false); renderComparison(); renderRawOutput(); renderWarnings(); updateButtons();
-  });
+  }
+  renderComparison();
+  renderRawOutput();
+  renderWarnings();
+  updateButtons();
+}
+
+function applyOcrResult(role, response) {
+  const entries = parseFlorenceEntries(response.result, response.imageSize);
+  state[role].ocr = response;
+  state[role].entries = entries;
+  state[role].mapping = resolveLabelProfile(
+    state.config,
+    role,
+    entries,
+    response.imageSize,
+    document.getElementById(`${role}Profile`).value,
+  );
+  state[role].fields = state[role].mapping.fields;
+
+  // Barcodefelder werden später im selben Job ergänzt. Der Florence-Lauf
+  // selbst bleibt weiterhin genau einmal pro Etikett.
+  if (state[role].mapping.profile) {
+    document.getElementById(`${role}Profile`).value = state[role].mapping.profile.id;
+  }
+  renderProfileInfo(role);
+  drawOverlay(role);
+}
+
+async function applyConfiguredCodes(role) {
+  const profile = state[role].mapping?.profile;
+  if (!profile?.codeRegions?.length) return;
+  const codeResult = await readConfiguredCodes(state[role].image.dataUrl, profile);
+  state[role].codeResult = codeResult;
+  state[role].fields = { ...state[role].fields, ...codeResult.fields };
+  if (codeResult.warning) {
+    state[role].mapping.warning = [state[role].mapping.warning, codeResult.warning].filter(Boolean).join(" ");
+  }
+}
+
+function isCurrentJob(role, revision, jobId) {
+  const label = state[role];
+  return label.revision === revision && label.analysisJobId === jobId;
+}
+
+function reanalyzeBoth() {
+  if (!state.product.image || !state.vda.image || state.pendingAnalyses > 0) return;
+  state.product.fields = null;
+  state.vda.fields = null;
+  state.comparison = null;
+  scheduleRoleAnalysis("product", { force: true });
+  scheduleRoleAnalysis("vda", { force: true });
+}
+
+function renderAnalysisTiming() {
+  const parts = [];
+  if (state.timings.product) parts.push(`Produkt ${formatDuration(state.timings.product)}`);
+  if (state.timings.vda) parts.push(`VDA ${formatDuration(state.timings.vda)}`);
+  if (!parts.length && state.timings.model) parts.push(`Modellstart ${formatDuration(state.timings.model)}`);
+  elements.analysisTime.textContent = parts.length ? parts.join(" · ") : "—";
 }
 
 function remapRole(role) {
@@ -263,7 +405,11 @@ function drawQuad(context, quad, scale, offsetX, offsetY, stroke, fill, text = "
 
 function renderComparison() {
   if (!state.product.fields || !state.vda.fields) {
-    elements.overall.textContent = state.product.image && state.vda.image ? "Beide Bilder sind bereit. Analyse starten." : "Bitte beide Etiketten fotografieren.";
+    elements.overall.textContent = state.pendingAnalyses > 0
+      ? "Florence analysiert die Aufnahmen automatisch im Hintergrund."
+      : state.product.image && state.vda.image
+        ? "Beide Bilder sind vorhanden. Falls nötig, Analyse erneut starten."
+        : "Bitte beide Etiketten fotografieren.";
     elements.overall.className = "overall review"; elements.comparisonBody.innerHTML = ""; return;
   }
   if (!state.comparison) state.comparison = compareLabels(state.product.fields, state.vda.fields);
@@ -324,7 +470,10 @@ function demoLabel(role, profileId, values) { const profile = state.config.profi
 function renderDemoPreview(role, text) { document.getElementById(`${role}Preview`).innerHTML = `<div class="placeholder"><strong>${text}</strong></div>`; document.getElementById(`${role}Quality`).textContent = "Demo-Daten aktiv"; setLabelStatus(role, "Demo"); }
 
 function resetCurrent() {
+  state.imageRevision.product += 1;
+  state.imageRevision.vda += 1;
   state.product = emptyLabel("product"); state.vda = emptyLabel("vda"); state.comparison = null; state.currentSaved = false;
+  state.timings.product = 0; state.timings.vda = 0;
   for (const role of ["product", "vda"]) {
     document.getElementById(`${role}Preview`).innerHTML = '<div class="placeholder">Etikett vollständig, möglichst gerade und ohne Reflexion fotografieren.</div>';
     document.getElementById(`${role}Quality`).textContent = "Bereit."; document.getElementById(`${role}ProfileInfo`).textContent = "Noch nicht bestimmt."; document.getElementById(`${role}Profile`).value = ""; setLabelStatus(role, "Noch kein Bild");
@@ -339,11 +488,14 @@ function renderRawOutput() {
 }
 function rawLabel(label) { return { profile: label.mapping?.profile?.name || null, profileScore: label.mapping?.profileScore || 0, anchor: label.mapping?.anchor ? { alias: label.mapping.anchor.alias, score: label.mapping.anchor.score, text: label.mapping.anchor.entry?.text } : null, geometryRefinement: label.mapping?.refinement || null, codeResult: label.codeResult || null, fields: label.fields, blocks: label.entries.map((entry) => ({ text: entry.text, box: entry.box })) }; }
 
-function updateButtons() { elements.analyzeButton.disabled = state.busy || !navigator.gpu || !state.product.image?.dataUrl || !state.vda.image?.dataUrl; elements.saveButton.disabled = state.busy || !state.comparison || state.currentSaved; }
+function updateButtons() {
+  elements.analyzeButton.disabled = state.busy || state.pendingAnalyses > 0 || !navigator.gpu || !state.product.image?.dataUrl || !state.vda.image?.dataUrl;
+  elements.saveButton.disabled = state.busy || state.pendingAnalyses > 0 || !state.comparison || state.currentSaved;
+}
 async function runAction(action) { if (state.busy) return; state.busy = true; updateButtons(); try { await action(); } catch (error) { console.error(error); showProgress(false); elements.overall.textContent = `Fehler: ${error.message || error}`; elements.overall.className = "overall rejected"; } finally { state.busy = false; updateButtons(); } }
 function showProgress(visible, text = "", value = 0) { elements.progressWrap.classList.toggle("visible", visible); if (text) elements.progressText.textContent = text; if (Number.isFinite(Number(value))) elements.progress.value = Math.max(0, Math.min(100, Number(value))); }
 function setLabelStatus(role, text) { document.getElementById(`${role}Status`).textContent = text; }
-function emptyLabel(role) { return { role, image: null, ocr: null, fields: null, entries: [], mapping: null, codeResult: null, preferredProfileId: "" }; }
+function emptyLabel(role) { return { role, image: null, revision: 0, ocr: null, fields: null, entries: [], mapping: null, codeResult: null, preferredProfileId: "", analysisStatus: "idle", analysisJobId: "" }; }
 function valuesOnly(fields) { return Object.fromEntries(FIELD_DEFINITIONS.map(([key]) => [key, fields?.[key]?.value || ""])); }
 function hasManualFields(fields) { return Object.values(fields || {}).some((field) => field.manual); }
 function formatDuration(milliseconds) { const seconds = Math.max(0, Number(milliseconds || 0)) / 1000; return seconds < 60 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`; }

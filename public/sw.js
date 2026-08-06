@@ -1,4 +1,4 @@
-const CACHE_NAME = "labelcheck-shell-v0.2.3";
+const CACHE_NAME = "labelcheck-shell-v0.2.4";
 const APP_SHELL = ["./", "./editor.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
