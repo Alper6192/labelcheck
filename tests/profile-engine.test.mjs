@@ -127,6 +127,37 @@ test("Kundenname-Box darf bei anderer Zeilenbreite die Felder nicht zusammenzieh
   assert.ok(Math.min(batchQuad[0],batchQuad[2],batchQuad[4],batchQuad[6]) > 900);
 });
 
+
+test("Produktprofil kalibriert sich ohne lesbaren Henkel-Anker aus den Wertfeldern", () => {
+  const profile = {
+    id:"PRODUCT",name:"Produktlabel",role:"product",active:true,configured:true,manualOnly:false,
+    anchor:{aliases:["HENKEL"],masterQuad:[.715,.795,.96,.795,.96,.92,.715,.92]},
+    master:{width:1000,height:966,geometry:[]},
+    fields:[
+      {key:"idh",label:"IDH",rect:{x:.721,y:.247,width:.27,height:.055},pattern:"^[0-9]{6,8}$",extractor:"idh",required:true,compare:true},
+      {key:"weight",label:"Gewicht",rect:{x:.778,y:.314,width:.209,height:.052},pattern:"^[0-9]+\\s*KG$",extractor:"weight",required:true,compare:true},
+      {key:"batch",label:"Batch",rect:{x:.63,y:.377,width:.354,height:.053},pattern:"^D[0-9]{8,10}$",extractor:"batch",required:true,compare:true},
+    ],
+  };
+  // Florence liest das Logo nicht, erkennt die drei Wertboxen jedoch korrekt.
+  const labels=["TEROSON","2210485","25 KG","D562900431 /0001","24-JUL-26"];
+  const boxes=[
+    quad(120,90,260,45),
+    quad(760,190,155,34),
+    quad(790,245,120,32),
+    quad(665,300,250,34),
+    quad(785,355,130,30),
+  ];
+  const entries=parseFlorenceEntries({"<OCR_WITH_REGION>":{labels,quad_boxes:boxes}},[1000,700]);
+  const result=mapWithProfile(profile,entries,[1000,700],{forced:true});
+  assert.equal(result.anchor.synthetic,true);
+  assert.equal(result.fields.idh.value,"2210485");
+  assert.equal(result.fields.weight.value,"25 KG");
+  assert.equal(result.fields.batch.value,"D562900431");
+  assert.ok(result.refinement.fieldInliers >= 2);
+  assert.ok(result.profileScore >= 50);
+});
+
 test("Vergleich gibt nur bei identischen Pflichtwerten frei", () => {
   const f=(value)=>({value});
   const product={batch:f("D123456789"),idh:f("2847365"),weight:f("200 KG")};

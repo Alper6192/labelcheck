@@ -1,0 +1,7 @@
+1. Repository in GitHub Desktop über Repository > Show in Explorer öffnen.
+2. Den gesamten Inhalt dieses Patch-Ordners in den Repository-Ordner kopieren.
+3. Vorhandene Dateien ersetzen.
+4. public/config/label-profiles.json wird von diesem Patch nicht verändert.
+5. Commit to main, danach Push origin.
+6. GitHub Actions bis zum grünen Deploy abwarten.
+7. App mit ?v=027 öffnen und prüfen, dass v0.2.7 angezeigt wird.

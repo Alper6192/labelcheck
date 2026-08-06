@@ -43,10 +43,33 @@ export function resolveLabelProfile(config, role, entries, imageSize, preferredP
 
 export function mapWithProfile(profile, entries, imageSize, options = {}) {
   const candidates = buildTextCandidates(entries);
-  const calibration = calibrateProfile(profile, candidates, imageSize);
-  const anchor = calibration?.anchor || findAnchor(profile, candidates);
+  let calibration = calibrateProfile(profile, candidates, imageSize);
+  let anchor = calibration?.anchor || findAnchor(profile, candidates);
 
-  if (!anchor?.matched) {
+  /*
+   * Produktlabels besitzen in der Praxis nicht immer einen von Florence
+   * lesbaren Logoanker. Das Henkel-Logo kann als Grafik erkannt werden, obwohl
+   * IDH, Gewicht und Batch korrekt als Textboxen vorhanden sind. Da das
+   * Produktprofil fest vorgegeben ist, darf ein fehlender Logo-Text die
+   * Zuordnung nicht blockieren. In diesem Fall wird die Transformation aus der
+   * gemeinsamen geometrischen Konstellation mindestens zweier Wertfelder
+   * bestimmt. Es werden weiterhin keine Bildbereiche ausgeschnitten und keine
+   * Beschriftungen neben den Werten ausgewertet.
+   */
+  if (!anchor?.matched && options.forced && profile?.role === "product") {
+    const fieldCalibration = calibrateWithoutAnchor(profile, candidates, imageSize);
+    if (fieldCalibration) {
+      calibration = fieldCalibration;
+      anchor = {
+        matched: false,
+        synthetic: true,
+        score: 0,
+        alias: "Wertgeometrie",
+      };
+    }
+  }
+
+  if (!anchor?.matched && !anchor?.synthetic) {
     return {
       resolved: false,
       profile,
@@ -58,7 +81,7 @@ export function mapWithProfile(profile, entries, imageSize, options = {}) {
     };
   }
 
-  const initialTransform = calibration?.matrix || homographyFromAnchor(profile, anchor.entry, imageSize);
+  const initialTransform = calibration?.matrix || (anchor?.entry ? homographyFromAnchor(profile, anchor.entry, imageSize) : null);
   if (!initialTransform) {
     return {
       resolved: false,
@@ -95,9 +118,13 @@ export function mapWithProfile(profile, entries, imageSize, options = {}) {
   const anonymousInliers = Number(anonymousRefinement?.inliers || 0);
   const geometryBonus = Math.min(18, fieldConsensusInliers * 3 + anonymousInliers * 1.2);
   const fieldAverage = fieldScoreCount ? fieldScoreSum / fieldScoreCount : 0;
-  const profileScore = Math.round(anchor.score * 0.62 + Math.min(100, fieldAverage) * 0.22 + geometryBonus);
+  const anchorContribution = anchor?.synthetic
+    ? Math.min(70, 22 + fieldConsensusInliers * 18)
+    : Number(anchor?.score || 0) * 0.62;
+  const profileScore = Math.min(100, Math.round(anchorContribution + Math.min(100, fieldAverage) * 0.22 + geometryBonus));
   const warningParts = [];
-  if (calibration?.fallback) warningParts.push("Profilgeometrie nur aus Bildmaß und Anker geschätzt.");
+  if (anchor?.synthetic) warningParts.push("Produktprofil ohne lesbaren Logoanker über die Wertgeometrie kalibriert.");
+  if (calibration?.fallback && !anchor?.synthetic) warningParts.push("Profilgeometrie nur aus Bildmaß und Anker geschätzt.");
   if (anonymousRefinement?.rejected) warningParts.push("Anonyme Geometrie-Feinjustierung wurde verworfen.");
 
   return {
@@ -193,6 +220,60 @@ function calibrateProfile(profile, candidates, imageSize) {
   return {
     ...best,
     fallback: best.inliers < 2,
+  };
+}
+
+function calibrateWithoutAnchor(profile, candidates, imageSize) {
+  const fields = (profile?.fields || []).filter((field) =>
+    field?.rect && field.extractor !== "drumAfterSlash" && ["batch", "idh", "weight"].includes(field.key)
+  );
+  if (fields.length < 2) return null;
+
+  let best = null;
+  for (let firstIndex = 0; firstIndex < fields.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < fields.length; secondIndex += 1) {
+      const firstField = fields[firstIndex];
+      const secondField = fields[secondIndex];
+      const firstSource = rectCenterInMaster(firstField.rect, profile.master);
+      const secondSource = rectCenterInMaster(secondField.rect, profile.master);
+      if (!firstSource || !secondSource || pointDistance(firstSource, secondSource) < 12) continue;
+
+      const firstCandidates = validCandidatesForField(firstField, candidates).slice(0, 14);
+      const secondCandidates = validCandidatesForField(secondField, candidates).slice(0, 14);
+      for (const firstLive of firstCandidates) {
+        for (const secondLive of secondCandidates) {
+          const firstKey = firstLive.entry.indices?.join(",") || String(firstLive.entry.index);
+          const secondKey = secondLive.entry.indices?.join(",") || String(secondLive.entry.index);
+          if (firstKey === secondKey) continue;
+
+          const matrix = similarityFromTwoPairs(
+            firstSource,
+            secondSource,
+            [firstLive.entry.centerX, firstLive.entry.centerY],
+            [secondLive.entry.centerX, secondLive.entry.centerY],
+          );
+          if (!matrix || !anchorTransformIsSane(matrix, profile.master, imageSize)) continue;
+
+          const syntheticAnchor = { matched: false, synthetic: true, score: 0, alias: "Wertgeometrie" };
+          const scored = scoreCalibration(
+            profile,
+            candidates,
+            imageSize,
+            syntheticAnchor,
+            matrix,
+            `fields:${firstField.key}+${secondField.key}`,
+          );
+          best = chooseCalibration(best, scored);
+        }
+      }
+    }
+  }
+
+  if (!best || best.inliers < 2) return null;
+  return {
+    ...best,
+    fallback: best.inliers < 3,
+    anchorless: true,
   };
 }
 

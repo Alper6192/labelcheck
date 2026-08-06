@@ -388,7 +388,10 @@ function renderProfileInfo(role) {
     return;
   }
   const refinement = mapping.refinement?.used ? ` · Geometrie ${mapping.refinement.inliers} Treffer` : "";
-  element.textContent = `${mapping.profile.name} · Profilscore ${mapping.profileScore} · Anker ${Math.round(mapping.anchor.score)}${refinement}`;
+  const anchorText = mapping.anchor?.synthetic
+    ? " · ohne Logoanker"
+    : ` · Anker ${Math.round(mapping.anchor?.score || 0)}`;
+  element.textContent = `${mapping.profile.name} · Profilscore ${mapping.profileScore}${anchorText}${refinement}`;
   element.className = `profile-info ${mapping.resolved ? "ok" : "warn"}`;
 }
 
