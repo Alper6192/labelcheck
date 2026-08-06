@@ -25,20 +25,19 @@ import {
   scaledPoly,
   updateAssignmentRect
 } from "./editor-geometry.js";
+import { EditorProfileSessionStore } from "./editor-session.js";
 
 const engine = new PaddleOcrEngine();
 const el = (id) => document.getElementById(id);
 const state = {
   config: normalizeProfileConfig({ profiles: [] }, APP_VERSION),
   selectedProfileId: "",
-  prepared: null,
-  ocrResult: null,
-  selection: null,
+  sessions: new EditorProfileSessionStore(),
   selectedAssignment: null,
   mode: "select",
   drag: null,
   dirty: false,
-  masterFileName: ""
+  ocrRun: null
 };
 
 el("version").textContent = `v${APP_VERSION}`;
@@ -61,13 +60,20 @@ function setupEvents() {
 
   el("masterInput").addEventListener("change", loadMasterImage);
   el("runOcrButton").onclick = runOcr;
-  el("initializeEditorButton").onclick = () => initializeEngine(true);
+  el("cancelOcrButton").onclick = () => cancelOcrAnalysis(false);
+  el("initializeEditorButton").onclick = async () => {
+    await cancelOcrAnalysis(true);
+    await initializeEngine(true);
+  };
   el("clearOcrButton").onclick = () => {
-    state.ocrResult = null;
-    state.selection = null;
+    const session = currentSession(false);
+    if (!session) return;
+    session.ocrResult = null;
+    session.selection = null;
     drawOverlay();
     renderSelectionInfo();
   };
+  el("clearMasterButton").onclick = clearMasterImage;
 
   el("selectModeButton").onclick = () => setMode("select");
   el("drawModeButton").onclick = () => setMode("draw");
@@ -106,6 +112,7 @@ async function loadRepositoryConfig(confirmReplace = false) {
     const response = await fetch(new URL(`./config/label-profiles.json?t=${Date.now()}`, window.location.href), { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     state.config = normalizeProfileConfig(await response.json(), APP_VERSION);
+    state.sessions.clear();
     state.dirty = false;
     const first = state.config.profiles[0]?.id || "";
     renderProfileList();
@@ -122,6 +129,7 @@ async function importConfig(event) {
   if (!file) return;
   try {
     state.config = normalizeProfileConfig(JSON.parse(await file.text()), APP_VERSION);
+    state.sessions.clear();
     state.dirty = true;
     renderProfileList();
     selectProfile(state.config.profiles[0]?.id || "");
@@ -191,6 +199,7 @@ function deleteProfile() {
   if (!current || !confirm(`Profil „${current.name}“ wirklich löschen?`)) return;
   const index = state.config.profiles.findIndex((profile) => profile.id === current.id);
   state.config.profiles.splice(index, 1);
+  state.sessions.delete(current.id);
   markDirty();
   renderProfileList();
   selectProfile(state.config.profiles[Math.max(0, index - 1)]?.id || "");
@@ -210,14 +219,20 @@ function renderProfileList() {
 
 function selectProfile(id) {
   syncProfileMeta();
+  if (state.ocrRun && state.ocrRun.profileId !== id) cancelOcrAnalysis(true);
   state.selectedProfileId = id;
   state.selectedAssignment = null;
-  state.selection = null;
+  state.drag = null;
+  const session = currentSession();
+  if (session) session.selection = null;
   el("profileSelect").value = id;
   renderProfileMeta();
   renderAssignments();
   renderProperties();
+  drawBaseImage();
   drawOverlay();
+  renderSelectionInfo();
+  refreshMasterControls();
 }
 
 function renderProfileMeta() {
@@ -241,7 +256,10 @@ function updateProfileMeta() {
   profile.role = el("profileRole").value === "product" ? "product" : "vda";
   profile.active = el("profileActive").checked;
   profile.anchor.aliases = el("anchorAliases").value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
-  if (profile.id !== previousId) state.selectedProfileId = profile.id;
+  if (profile.id !== previousId) {
+    state.sessions.rename(previousId, profile.id);
+    state.selectedProfileId = profile.id;
+  }
   markDirty();
   renderProfileList();
   renderAssignments();
@@ -270,47 +288,134 @@ async function loadMasterImage(event) {
   const file = event.target.files?.[0];
   event.target.value = "";
   if (!file) return;
+  const session = currentSession();
+  if (!session) return;
+
+  await cancelOcrAnalysis(true);
   try {
-    state.prepared = await prepareImage(file, 2200);
-    state.masterFileName = file.name;
-    state.ocrResult = null;
-    state.selection = null;
+    const preset = QUALITY_PRESETS.balanced;
+    session.prepared = await prepareImage(file, preset.maxImageSide);
+    session.masterFileName = file.name;
+    session.imageRevision += 1;
+    session.ocrResult = null;
+    session.selection = null;
     state.selectedAssignment = null;
-    el("runOcrButton").disabled = false;
     drawBaseImage();
     drawOverlay();
     renderSelectionInfo();
-    el("editorHint").textContent = `Masterbild „${file.name}“ geladen. PaddleOCR starten oder freie Zonen zeichnen.`;
+    refreshMasterControls();
+    el("editorHint").textContent = `Masterbild „${file.name}“ ist nur diesem Profil zugeordnet. PaddleOCR starten oder freie Zonen zeichnen.`;
   } catch (error) {
     el("editorHint").textContent = `Masterbild konnte nicht geladen werden: ${safeError(error)}`;
   }
 }
 
 async function runOcr() {
-  if (!state.prepared || !(await initializeEngine())) return;
-  el("runOcrButton").disabled = true;
+  const session = currentSession(false);
+  if (!session?.prepared || state.ocrRun || !(await initializeEngine())) return;
+
+  const run = {
+    id: Symbol("editor-ocr"),
+    profileId: state.selectedProfileId,
+    imageRevision: session.imageRevision,
+    cancelled: false
+  };
+  let restartAfterFailure = false;
+  state.ocrRun = run;
+  refreshMasterControls();
   setEditorEngine("PaddleOCR analysiert das Masterbild …", "wait");
+  el("editorEngineDetails").textContent = "Zeitlimit 60 Sekunden · getestete Bildgröße maximal 1800 px.";
+
   try {
     const preset = QUALITY_PRESETS.balanced;
-    const output = await engine.predict(state.prepared.canvas, {
+    const output = await engine.predict(session.prepared.canvas, {
       textDetLimitSideLen: preset.textDetLimitSideLen,
       textDetLimitType: "min",
-      textDetMaxSideLimit: 2400,
+      textDetMaxSideLimit: 2000,
       textDetThresh: 0.25,
       textDetBoxThresh: preset.textDetBoxThresh,
       textDetUnclipRatio: 1.55,
       textRecScoreThresh: preset.textRecScoreThresh
-    });
-    state.ocrResult = output.result;
-    state.selection = null;
-    setEditorEngine(`PaddleOCR bereit · ${output.result.items?.length || 0} Textzeilen`, "ok");
-    el("editorEngineDetails").textContent = `Masterbild in ${formatMilliseconds(output.wallMs)} analysiert.`;
-    drawOverlay();
-    renderSelectionInfo();
+    }, { timeoutMs: 60000 });
+
+    if (run.cancelled || state.ocrRun?.id !== run.id) return;
+    const targetSession = state.sessions.get(run.profileId, false);
+    if (!targetSession || targetSession.imageRevision !== run.imageRevision) return;
+
+    targetSession.ocrResult = output.result;
+    targetSession.selection = null;
+    if (state.selectedProfileId === run.profileId) {
+      setEditorEngine(`PaddleOCR bereit · ${output.result.items?.length || 0} Textzeilen`, "ok");
+      el("editorEngineDetails").textContent = `Masterbild in ${formatMilliseconds(output.wallMs)} analysiert.`;
+      drawOverlay();
+      renderSelectionInfo();
+    }
   } catch (error) {
-    setEditorEngine(`OCR fehlgeschlagen: ${safeError(error)}`, "bad");
+    if (run.cancelled || error?.name === "AbortError") {
+      if (state.selectedProfileId === run.profileId) {
+        setEditorEngine("OCR-Analyse abgebrochen", "warn");
+        el("editorEngineDetails").textContent = "Der laufende Worker wurde beendet.";
+      }
+    } else {
+      restartAfterFailure = true;
+      setEditorEngine(`OCR fehlgeschlagen: ${safeError(error)}`, "bad");
+      el("editorEngineDetails").textContent = error?.name === "TimeoutError"
+        ? "Die Analyse wurde nach 60 Sekunden beendet. Der OCR-Worker wird automatisch neu geladen."
+        : "Der OCR-Worker wird nach dem Fehler automatisch neu geladen.";
+    }
   } finally {
-    el("runOcrButton").disabled = false;
+    if (state.ocrRun?.id === run.id) state.ocrRun = null;
+    refreshMasterControls();
+  }
+
+  if (restartAfterFailure) await initializeEngine(true);
+}
+
+async function cancelOcrAnalysis(silent = false) {
+  const run = state.ocrRun;
+  if (!run) return;
+  run.cancelled = true;
+  state.ocrRun = null;
+  refreshMasterControls();
+  if (!silent) {
+    setEditorEngine("OCR-Analyse wird abgebrochen …", "wait");
+    el("editorEngineDetails").textContent = "Der laufende Worker wird verworfen.";
+  }
+  await engine.abortCurrent("OCR-Analyse abgebrochen");
+  if (!silent) await initializeEngine(true);
+}
+
+async function clearMasterImage() {
+  await cancelOcrAnalysis(true);
+  const session = currentSession(false);
+  if (!session) return;
+  session.prepared = null;
+  session.ocrResult = null;
+  session.selection = null;
+  session.masterFileName = "";
+  session.imageRevision += 1;
+  state.selectedAssignment = null;
+  drawBaseImage();
+  drawOverlay();
+  renderSelectionInfo();
+  renderProperties();
+  refreshMasterControls();
+  el("editorHint").textContent = "Für dieses Profil ist kein Masterbild geladen.";
+}
+
+function refreshMasterControls() {
+  const session = currentSession(false);
+  const running = Boolean(state.ocrRun);
+  el("runOcrButton").disabled = running || !session?.prepared;
+  el("cancelOcrButton").disabled = !running;
+  el("initializeEditorButton").disabled = running;
+  el("clearMasterButton").disabled = running || !session?.prepared;
+
+  if (!session?.prepared) {
+    el("editorHint").textContent = "Für dieses Profil ein eigenes Masterbild laden. Danach PaddleOCR starten oder direkt eine freie Zone zeichnen.";
+  } else if (!running) {
+    const suffix = session.ocrResult ? ` · ${session.ocrResult.items?.length || 0} OCR-Textzeilen vorhanden` : "";
+    el("editorHint").textContent = `Masterbild „${session.masterFileName || "ohne Dateiname"}“ gehört nur zu diesem Profil${suffix}.`;
   }
 }
 
@@ -329,12 +434,13 @@ function setMode(mode) {
 }
 
 function pointerDown(event) {
-  if (!state.prepared) return;
+  const session = currentSession(false);
+  if (!session?.prepared) return;
   const point = pointerToNormalized(event, el("editorOverlayCanvas"));
   if (state.mode === "select") {
     const item = findOcrItem(point);
-    state.selection = item ? {
-      poly: polyFromPixelPoly(item.poly, state.prepared.width, state.prepared.height),
+    session.selection = item ? {
+      poly: polyFromPixelPoly(item.poly, session.prepared.width, session.prepared.height),
       text: item.text,
       score: Number(item.score || 0),
       source: "ocr"
@@ -348,7 +454,7 @@ function pointerDown(event) {
 
   if (state.mode === "draw") {
     state.drag = { type: "draw", start: point, current: point };
-    state.selection = { poly: rectToPoly({ x: point.x, y: point.y, width: 0, height: 0 }), text: "", score: 0, source: "draw" };
+    session.selection = { poly: rectToPoly({ x: point.x, y: point.y, width: 0, height: 0 }), text: "", score: 0, source: "draw" };
     event.currentTarget.setPointerCapture(event.pointerId);
     return;
   }
@@ -367,10 +473,12 @@ function pointerDown(event) {
 
 function pointerMove(event) {
   if (!state.drag) return;
+  const session = currentSession(false);
+  if (!session) return;
   const point = pointerToNormalized(event, el("editorOverlayCanvas"));
   if (state.drag.type === "draw") {
     state.drag.current = point;
-    state.selection.poly = rectToPoly(rectFromPoints(state.drag.start, point));
+    session.selection.poly = rectToPoly(rectFromPoints(state.drag.start, point));
     drawOverlay();
     return;
   }
@@ -395,14 +503,15 @@ function pointerUp(event) {
 
 function assignAnchor() {
   const profile = selectedProfile();
-  if (!profile || !state.selection?.poly?.length) return alert("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.");
-  profile.anchor.poly = state.selection.poly;
-  if (!profile.anchor.aliases.length && state.selection.text) {
-    profile.anchor.aliases = [state.selection.text.trim()];
+  const session = currentSession(false);
+  if (!profile || !session?.selection?.poly?.length) return alert("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.");
+  profile.anchor.poly = session.selection.poly;
+  if (!profile.anchor.aliases.length && session.selection.text) {
+    profile.anchor.aliases = [session.selection.text.trim()];
     el("anchorAliases").value = profile.anchor.aliases.join("\n");
   }
   state.selectedAssignment = { type: "anchor", key: "anchor" };
-  state.selection = null;
+  session.selection = null;
   markDirty();
   setMode("edit");
   renderAssignments();
@@ -411,14 +520,15 @@ function assignAnchor() {
 
 function assignField(key) {
   const profile = selectedProfile();
-  if (!profile || !state.selection?.poly?.length) return alert("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.");
+  const session = currentSession(false);
+  if (!profile || !session?.selection?.poly?.length) return alert("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.");
   const existing = findField(profile, key);
   const field = existing || createField(key);
-  const padding = state.selection.source === "ocr" ? Number(el("paddingInput").value) / 100 : 0;
-  field.poly = padding ? expandPoly(state.selection.poly, padding) : state.selection.poly;
+  const padding = session.selection.source === "ocr" ? Number(el("paddingInput").value) / 100 : 0;
+  field.poly = padding ? expandPoly(session.selection.poly, padding) : session.selection.poly;
   upsertField(profile, field);
   state.selectedAssignment = { type: "field", key };
-  state.selection = null;
+  session.selection = null;
   markDirty();
   setMode("edit");
   renderAssignments();
@@ -449,7 +559,8 @@ function renderAssignments() {
 
 function selectAssignment(type, key) {
   state.selectedAssignment = { type, key };
-  state.selection = null;
+  const session = currentSession(false);
+  if (session) session.selection = null;
   renderAssignments();
   renderProperties();
   drawOverlay();
@@ -535,33 +646,39 @@ function drawBaseImage() {
   const stage = el("editorStage");
   const base = el("editorImageCanvas");
   const overlay = el("editorOverlayCanvas");
-  if (!state.prepared) {
+  const session = currentSession(false);
+  if (!session?.prepared) {
     stage.classList.add("empty");
     el("editorPlaceholder").classList.remove("hidden");
+    base.width = base.height = 1;
+    overlay.width = overlay.height = 1;
+    base.getContext("2d").clearRect(0, 0, 1, 1);
+    overlay.getContext("2d").clearRect(0, 0, 1, 1);
     return;
   }
   stage.classList.remove("empty");
   el("editorPlaceholder").classList.add("hidden");
   for (const canvas of [base, overlay]) {
-    canvas.width = state.prepared.width;
-    canvas.height = state.prepared.height;
+    canvas.width = session.prepared.width;
+    canvas.height = session.prepared.height;
   }
-  base.getContext("2d").drawImage(state.prepared.canvas, 0, 0);
+  base.getContext("2d").drawImage(session.prepared.canvas, 0, 0);
 }
 
 function drawOverlay() {
   const canvas = el("editorOverlayCanvas");
   const context = canvas.getContext("2d");
   context.clearRect(0, 0, canvas.width, canvas.height);
-  if (!state.prepared) return;
-  const width = state.prepared.width;
-  const height = state.prepared.height;
+  const session = currentSession(false);
+  if (!session?.prepared) return;
+  const width = session.prepared.width;
+  const height = session.prepared.height;
   const line = Math.max(2, Math.round(width / 800));
   context.lineWidth = line;
   context.font = `700 ${Math.max(15, Math.round(width / 65))}px system-ui`;
   context.textBaseline = "bottom";
 
-  for (const item of state.ocrResult?.items || []) {
+  for (const item of session.ocrResult?.items || []) {
     drawPoly(context, item.poly, "rgba(255,173,51,.82)", "", false);
   }
 
@@ -573,8 +690,8 @@ function drawOverlay() {
     drawLabeledNormalizedPoly(context, field.poly, width, height, "#4cc9f0", field.label, isSelected("field", field.key));
   }
 
-  if (state.selection?.poly?.length) {
-    drawLabeledNormalizedPoly(context, state.selection.poly, width, height, "#ffd166", state.selection.text || "AUSWAHL", true);
+  if (session.selection?.poly?.length) {
+    drawLabeledNormalizedPoly(context, session.selection.poly, width, height, "#ffd166", session.selection.text || "AUSWAHL", true);
   }
 }
 
@@ -612,23 +729,25 @@ function drawPoly(context, points, color, label, handles) {
 
 function renderSelectionInfo() {
   const info = el("selectionInfo");
-  if (!state.selection) {
+  const selection = currentSession(false)?.selection || null;
+  if (!selection) {
     info.textContent = "Keine OCR-Box oder freie Zone ausgewählt.";
     return;
   }
-  if (state.selection.source === "ocr") {
-    info.innerHTML = `<strong>${escapeHtml(state.selection.text || "(leer)")}</strong><br>OCR-Konfidenz ${(state.selection.score * 100).toFixed(1)} %`;
+  if (selection.source === "ocr") {
+    info.innerHTML = `<strong>${escapeHtml(selection.text || "(leer)")}</strong><br>OCR-Konfidenz ${(selection.score * 100).toFixed(1)} %`;
   } else {
     info.textContent = "Freie Zone ausgewählt. Ordne sie jetzt als Anker oder Feld zu.";
   }
 }
 
 function findOcrItem(point) {
-  if (!state.prepared) return null;
-  const x = point.x * state.prepared.width;
-  const y = point.y * state.prepared.height;
+  const session = currentSession(false);
+  if (!session?.prepared) return null;
+  const x = point.x * session.prepared.width;
+  const y = point.y * session.prepared.height;
   let best = null;
-  for (const item of state.ocrResult?.items || []) {
+  for (const item of session.ocrResult?.items || []) {
     const bounds = boundsFromPoly(item.poly);
     const inside = x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height;
     const cx = bounds.x + bounds.width / 2;
@@ -663,6 +782,10 @@ function currentAssignment() {
 
 function isSelected(type, key) {
   return state.selectedAssignment?.type === type && state.selectedAssignment?.key === key;
+}
+
+function currentSession(create = true) {
+  return state.sessions.get(state.selectedProfileId, create);
 }
 
 function selectedProfile() {

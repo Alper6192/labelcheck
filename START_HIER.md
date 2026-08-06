@@ -1,31 +1,29 @@
-# Update auf 0.5.0
+# Start – LabelCheck PaddleOCR 0.5.1
 
-## Installation
+## Update installieren
 
-1. ZIP entpacken.
-2. In GitHub Desktop `Repository → Show in Explorer` öffnen.
-3. Den gesamten Inhalt dieses Ordners in den Repository-Ordner kopieren.
+1. Repository in GitHub Desktop öffnen.
+2. `Repository → Show in Explorer` auswählen.
+3. Inhalt des Patch-Ordners in den Repository-Ordner kopieren.
 4. Vorhandene Dateien ersetzen.
-5. Commit-Nachricht: `PaddleOCR Profileditor und Fassnummer ergänzen`
-6. `Commit to main` und danach `Push origin`.
+5. Commit-Nachricht: `Profileditor OCR-Timeout und getrennte Masterbilder`.
+6. Committen und zu GitHub pushen.
 7. Unter GitHub Actions warten, bis Build und Deployment grün sind.
 
-Danach:
+## Seiten öffnen
 
-- Scanner: `https://DEIN-NAME.github.io/labelcheck/?v=050`
-- Editor: `https://DEIN-NAME.github.io/labelcheck/editor.html?v=050`
+```text
+Scanner:      https://alper6192.github.io/labelcheck/?v=051
+Profileditor: https://alper6192.github.io/labelcheck/editor.html?v=051
+```
 
-## Fassnummer
+## Profileditor testen
 
-Beim vorhandenen Produktprofil ist bereits eine Fassnummer konfiguriert. PaddleOCR hatte `/0001` als `10001` gelesen. Die neue Bereinigung übernimmt die letzten vier Ziffern und liefert deshalb korrekt `0001`.
+1. Produktprofil auswählen und Produkt-Masterbild laden.
+2. VDA-Profil auswählen: Dort darf das Produktbild nicht erscheinen.
+3. Eigenes VDA-Masterbild laden.
+4. Zwischen den Profilen wechseln: Jedes Profil muss sein eigenes Bild behalten.
+5. PaddleOCR starten. Die Analyse wird spätestens nach 60 Sekunden beendet.
+6. Bei Bedarf „Analyse abbrechen“ verwenden.
 
-## Neues Profil einrichten
-
-1. Editor öffnen.
-2. `Neues Profil` oder `Profil duplizieren` wählen.
-3. Profilname, Rolle und Anker-Aliase eintragen.
-4. Masterbild laden und PaddleOCR starten.
-5. Kundennamen bzw. stabilen Produktnamen als Anker zuweisen.
-6. Wertboxen den Feldern zuordnen.
-7. Zonen im Bearbeitungsmodus verschieben oder an den weißen Eckpunkten ändern.
-8. JSON exportieren und unter `public/config/label-profiles.json` ablegen.
+Masterbilder sind nur für die aktuelle Browsersitzung gespeichert. Nach einem Neuladen der Seite müssen sie erneut geladen werden.
