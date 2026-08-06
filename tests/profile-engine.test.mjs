@@ -76,6 +76,57 @@ test("manuell gewähltes Profil wird ohne zweiten Florence-Lauf neu zugeordnet",
   assert.equal(result.fields.idh.value,"1845762");
 });
 
+
+
+test("wählt bei mehrfach vorhandenem HENKEL den geometrisch passenden Anker", () => {
+  const profile = {
+    id:"PRODUCT",name:"Produkt",role:"product",active:true,configured:true,manualOnly:false,
+    anchor:{aliases:["HENKEL"],masterQuad:[.715,.795,.96,.795,.96,.92,.715,.92]},
+    master:{width:1000,height:966,geometry:[]},
+    fields:[
+      {key:"idh",label:"IDH",rect:{x:.721,y:.247,width:.27,height:.055},pattern:"^[0-9]{6,8}$",extractor:"idh",required:true,compare:true},
+      {key:"weight",label:"Gewicht",rect:{x:.778,y:.314,width:.209,height:.052},pattern:"^[0-9]+\\s*KG$",extractor:"weight",required:true,compare:true},
+      {key:"batch",label:"Batch",rect:{x:.63,y:.377,width:.354,height:.053},pattern:"^D[0-9]{8,10}$",extractor:"batch",required:true,compare:true},
+    ],
+  };
+  // Zwei HENKEL-Treffer: links in der Adresse und rechts das Logo.
+  const labels=["HENKEL","HENKEL","2210485","25 KG","D562900431 /0001"];
+  const boxes=[
+    quad(145,560,80,22),
+    quad(1110,620,210,80),
+    quad(1050,185,180,38),
+    quad(1110,245,135,36),
+    quad(920,305,300,40),
+  ];
+  const entries=parseFlorenceEntries({"<OCR_WITH_REGION>":{labels,quad_boxes:boxes}},[1400,760]);
+  const result=mapWithProfile(profile,entries,[1400,760],{forced:true});
+  assert.ok(result.anchor.entry.centerX > 900);
+  assert.equal(result.fields.idh.value,"2210485");
+  assert.equal(result.fields.weight.value,"25 KG");
+  assert.equal(result.fields.batch.value,"D562900431");
+  assert.ok(result.refinement.fieldInliers >= 2);
+});
+
+test("Kundenname-Box darf bei anderer Zeilenbreite die Felder nicht zusammenziehen", () => {
+  const profile=sampleProfile();
+  // Masteranker ist breit und zweizeilig; live erkennt Florence nur die kurze erste Zeile.
+  const labels=["MERCEDES-BENZ AG","12981531","1845762","1300 KG","D561707374"];
+  const boxes=[
+    quad(70,55,150,24),
+    quad(180,185,145,34),
+    quad(810,500,130,38),
+    quad(470,405,150,48),
+    quad(1220,700,210,48),
+  ];
+  const entries=parseFlorenceEntries({"<OCR_WITH_REGION>":{labels,quad_boxes:boxes}},[1500,820]);
+  const result=mapWithProfile(profile,entries,[1500,820],{forced:true});
+  assert.equal(result.fields.idh.value,"1845762");
+  assert.equal(result.fields.weight.value,"1300 KG");
+  assert.equal(result.fields.batch.value,"D561707374");
+  const batchQuad=result.fields.batch.expectedQuad;
+  assert.ok(Math.min(batchQuad[0],batchQuad[2],batchQuad[4],batchQuad[6]) > 900);
+});
+
 test("Vergleich gibt nur bei identischen Pflichtwerten frei", () => {
   const f=(value)=>({value});
   const product={batch:f("D123456789"),idh:f("2847365"),weight:f("200 KG")};

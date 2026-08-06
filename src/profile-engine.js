@@ -43,8 +43,10 @@ export function resolveLabelProfile(config, role, entries, imageSize, preferredP
 
 export function mapWithProfile(profile, entries, imageSize, options = {}) {
   const candidates = buildTextCandidates(entries);
-  const anchor = findAnchor(profile, candidates);
-  if (!anchor.matched) {
+  const calibration = calibrateProfile(profile, candidates, imageSize);
+  const anchor = calibration?.anchor || findAnchor(profile, candidates);
+
+  if (!anchor?.matched) {
     return {
       resolved: false,
       profile,
@@ -56,7 +58,7 @@ export function mapWithProfile(profile, entries, imageSize, options = {}) {
     };
   }
 
-  const initialTransform = homographyFromAnchor(profile, anchor.entry, imageSize);
+  const initialTransform = calibration?.matrix || homographyFromAnchor(profile, anchor.entry, imageSize);
   if (!initialTransform) {
     return {
       resolved: false,
@@ -69,8 +71,8 @@ export function mapWithProfile(profile, entries, imageSize, options = {}) {
     };
   }
 
-  const refinement = refineWithAnonymousGeometry(profile, entries, imageSize, initialTransform);
-  const transform = refinement?.matrix || initialTransform;
+  const anonymousRefinement = refineWithAnonymousGeometry(profile, entries, imageSize, initialTransform);
+  const transform = anonymousRefinement?.matrix || initialTransform;
   const fields = {};
   let fieldScoreSum = 0;
   let fieldScoreCount = 0;
@@ -89,34 +91,218 @@ export function mapWithProfile(profile, entries, imageSize, options = {}) {
     }
   }
 
-  const geometryBonus = Math.min(14, Number(refinement?.inliers || 0) * 1.2);
+  const fieldConsensusInliers = Number(calibration?.inliers || 0);
+  const anonymousInliers = Number(anonymousRefinement?.inliers || 0);
+  const geometryBonus = Math.min(18, fieldConsensusInliers * 3 + anonymousInliers * 1.2);
   const fieldAverage = fieldScoreCount ? fieldScoreSum / fieldScoreCount : 0;
-  const profileScore = Math.round(anchor.score * 0.72 + Math.min(100, fieldAverage) * 0.18 + geometryBonus);
+  const profileScore = Math.round(anchor.score * 0.62 + Math.min(100, fieldAverage) * 0.22 + geometryBonus);
+  const warningParts = [];
+  if (calibration?.fallback) warningParts.push("Profilgeometrie nur aus Bildmaß und Anker geschätzt.");
+  if (anonymousRefinement?.rejected) warningParts.push("Anonyme Geometrie-Feinjustierung wurde verworfen.");
+
   return {
     resolved: options.forced || profileScore >= 54,
     profile,
     profileScore,
     anchor,
     transform,
-    refinement,
+    refinement: {
+      method: calibration?.method || "anchor-image-fit",
+      inliers: fieldConsensusInliers + anonymousInliers,
+      fieldInliers: fieldConsensusInliers,
+      anonymousInliers,
+      used: Boolean(fieldConsensusInliers || anonymousRefinement?.used),
+      rms: anonymousRefinement?.rms,
+    },
     fields,
     entries,
-    warning: refinement?.rejected ? "Geometrische Feinjustierung wurde wegen zu großer Abweichung verworfen." : "",
+    warning: warningParts.join(" "),
   };
 }
 
 export function findAnchor(profile, candidates) {
-  const aliases = (profile?.anchor?.aliases || []).map(normalizeText).filter(Boolean);
-  if (!aliases.length) return { matched: false, score: 0, reason: "Keine Anker-Aliase konfiguriert." };
+  return findAnchorCandidates(profile, candidates)[0] || { matched: false, score: 0 };
+}
 
-  let best = null;
+function findAnchorCandidates(profile, candidates) {
+  const aliases = (profile?.anchor?.aliases || []).map(normalizeText).filter(Boolean);
+  if (!aliases.length) return [];
+
+  const ranked = [];
   for (const entry of candidates) {
     for (const alias of aliases) {
       const score = textSimilarity(alias, entry.normalizedText);
-      if (!best || score > best.score) best = { matched: score >= 46, score, alias, entry };
+      if (score >= 46) ranked.push({ matched: true, score, alias, entry });
     }
   }
-  return best || { matched: false, score: 0 };
+
+  ranked.sort((a, b) => b.score - a.score || a.entry.indices.length - b.entry.indices.length);
+  const seen = new Set();
+  return ranked.filter((item) => {
+    const key = `${item.entry.indices?.join(",")}|${item.alias}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 10);
+}
+
+/*
+ * Ein Kundenname identifiziert das Profil, seine OCR-Box darf aber nicht die
+ * Skalierung des gesamten Labels bestimmen. Im Master kann der Anker manuell
+ * um zwei Zeilen gezeichnet sein, während Florence live nur eine Zeile liefert.
+ * Außerdem kann derselbe Text (z. B. HENKEL) mehrfach vorkommen.
+ *
+ * Deshalb werden mehrere Ankerkandidaten und mehrere Feldhypothesen getestet.
+ * Der Gewinner ist die Transformation, bei der die konfigurierten Wertmuster
+ * gemeinsam an ihren erwarteten Positionen liegen. Beschriftungstexte werden
+ * dabei nicht verwendet.
+ */
+function calibrateProfile(profile, candidates, imageSize) {
+  const anchors = findAnchorCandidates(profile, candidates);
+  if (!anchors.length) return null;
+
+  let best = null;
+  for (const anchor of anchors) {
+    const base = homographyFromAnchor(profile, anchor.entry, imageSize);
+    if (base) best = chooseCalibration(best, scoreCalibration(profile, candidates, imageSize, anchor, base, "anchor-image-fit"));
+
+    const sourceAnchor = normalizedQuadCenter(profile?.anchor?.masterQuad, profile?.master);
+    const targetAnchor = quadBounds(anchor.entry.box);
+    if (!sourceAnchor || !targetAnchor) continue;
+
+    for (const field of profile.fields || []) {
+      if (!field?.rect || field.key === "drum" && field.extractor === "drumAfterSlash") continue;
+      const sourceField = rectCenterInMaster(field.rect, profile.master);
+      if (!sourceField || pointDistance(sourceAnchor, sourceField) < 12) continue;
+
+      const liveOptions = validCandidatesForField(field, candidates).slice(0, 18);
+      for (const live of liveOptions) {
+        const matrix = similarityFromTwoPairs(
+          sourceAnchor,
+          sourceField,
+          [targetAnchor.centerX, targetAnchor.centerY],
+          [live.entry.centerX, live.entry.centerY],
+        );
+        if (!matrix || !anchorTransformIsSane(matrix, profile.master, imageSize)) continue;
+        best = chooseCalibration(best, scoreCalibration(profile, candidates, imageSize, anchor, matrix, `anchor+${field.key}`));
+      }
+    }
+  }
+
+  if (!best) return null;
+  return {
+    ...best,
+    fallback: best.inliers < 2,
+  };
+}
+
+function validCandidatesForField(field, candidates) {
+  const ranked = [];
+  for (const entry of candidates) {
+    for (const parsed of extractValues(field, entry.text)) {
+      if (!validatePattern(parsed.value, field.pattern)) continue;
+      ranked.push({
+        entry,
+        value: parsed.value,
+        structure: structureBonus(field.key, parsed.value),
+      });
+    }
+  }
+  ranked.sort((a, b) => b.structure - a.structure || b.entry.width - a.entry.width);
+  return ranked;
+}
+
+function scoreCalibration(profile, candidates, imageSize, anchor, matrix, method) {
+  const diagonal = Math.max(1, Math.hypot(Number(imageSize?.[0] || 1), Number(imageSize?.[1] || 1)));
+  let inliers = 0;
+  let fieldScore = 0;
+  const matched = [];
+  const usedEntryKeys = new Set();
+
+  for (const field of profile.fields || []) {
+    if (!field?.rect || field.key === "drum" && field.extractor === "drumAfterSlash") continue;
+    const expected = quadBounds(transformRect(field.rect, profile.master, matrix));
+    let best = null;
+
+    for (const item of validCandidatesForField(field, candidates)) {
+      const entryKey = item.entry.indices?.join(",") || String(item.entry.index);
+      if (usedEntryKeys.has(entryKey)) continue;
+      const distance = Math.hypot(item.entry.centerX - expected.centerX, item.entry.centerY - expected.centerY);
+      const normalizedDistance = distance / diagonal;
+      if (normalizedDistance > 0.16) continue;
+      const sizePenalty = Math.abs(Math.log(Math.max(1, item.entry.width) / Math.max(1, expected.width)))
+        + Math.abs(Math.log(Math.max(1, item.entry.height) / Math.max(1, expected.height)));
+      const score = 100 - normalizedDistance * 520 - sizePenalty * 7 + item.structure;
+      if (!best || score > best.score) best = { ...item, score, distance, entryKey };
+    }
+
+    if (best && best.score >= 34) {
+      inliers += 1;
+      fieldScore += best.score;
+      matched.push({ field: field.key, value: best.value, entryIndices: best.entry.indices, score: Math.round(best.score) });
+      usedEntryKeys.add(best.entryKey);
+    }
+  }
+
+  const mappedCorners = masterCorners(profile.master).map((point) => applyHomography(matrix, point));
+  const outsidePenalty = mappedCorners.reduce((sum, point) => {
+    const x = point[0], y = point[1];
+    const width = Number(imageSize?.[0] || 1), height = Number(imageSize?.[1] || 1);
+    const dx = x < -width * 0.25 ? -width * 0.25 - x : x > width * 1.25 ? x - width * 1.25 : 0;
+    const dy = y < -height * 0.25 ? -height * 0.25 - y : y > height * 1.25 ? y - height * 1.25 : 0;
+    return sum + Math.hypot(dx, dy) / diagonal;
+  }, 0);
+
+  const score = inliers * 110 + fieldScore + anchor.score * 0.7 - outsidePenalty * 400;
+  return { matrix, anchor, method, inliers, matched, score };
+}
+
+function chooseCalibration(current, candidate) {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  if (candidate.inliers !== current.inliers) return candidate.inliers > current.inliers ? candidate : current;
+  return candidate.score > current.score ? candidate : current;
+}
+
+function similarityFromTwoPairs(sourceA, sourceB, targetA, targetB) {
+  const sourceVector = [sourceB[0] - sourceA[0], sourceB[1] - sourceA[1]];
+  const targetVector = [targetB[0] - targetA[0], targetB[1] - targetA[1]];
+  const sourceLength = Math.hypot(...sourceVector);
+  const targetLength = Math.hypot(...targetVector);
+  if (sourceLength < 8 || targetLength < 8) return null;
+
+  const scale = targetLength / sourceLength;
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  const angle = Math.atan2(targetVector[1], targetVector[0]) - Math.atan2(sourceVector[1], sourceVector[0]);
+  const cosine = Math.cos(angle) * scale;
+  const sine = Math.sin(angle) * scale;
+  const tx = targetA[0] - cosine * sourceA[0] + sine * sourceA[1];
+  const ty = targetA[1] - sine * sourceA[0] - cosine * sourceA[1];
+  return [cosine, -sine, tx, sine, cosine, ty, 0, 0, 1];
+}
+
+function normalizedQuadCenter(quad, master) {
+  if (!Array.isArray(quad) || quad.length !== 8) return null;
+  const width = Number(master?.width || 1);
+  const height = Number(master?.height || 1);
+  return [
+    (quad[0] + quad[2] + quad[4] + quad[6]) / 4 * width,
+    (quad[1] + quad[3] + quad[5] + quad[7]) / 4 * height,
+  ];
+}
+
+function rectCenterInMaster(rect, master) {
+  if (!rect) return null;
+  return [
+    (Number(rect.x || 0) + Number(rect.width || 0) / 2) * Number(master?.width || 1),
+    (Number(rect.y || 0) + Number(rect.height || 0) / 2) * Number(master?.height || 1),
+  ];
+}
+
+function masterCorners(master) {
+  const width = Number(master?.width || 1);
+  const height = Number(master?.height || 1);
+  return [[0, 0], [width, 0], [width, height], [0, height]];
 }
 
 export function mapField(field, candidates, profile, imageSize, transform) {
@@ -195,36 +381,23 @@ export function homographyFromAnchor(profile, targetEntry, imageSize = null) {
   const target = [];
   for (let index = 0; index < 8; index += 2) target.push([targetEntry.box[index], targetEntry.box[index + 1]]);
 
-  /*
-   * Ein einzelner OCR-Anker darf keine Projektivtransformation bestimmen.
-   * Die vier OCR-Ecken entsprechen nie exakt denselben physischen Ecken wie
-   * im Masterbild. Eine Homographie extrapoliert diesen kleinen Fehler über
-   * das gesamte Label und kann entfernte Felder in eine Ecke zusammenziehen.
-   *
-   * Deshalb verwenden wir aus genau einem Anker nur die stabil bestimmbaren
-   * Freiheitsgrade: Mittelpunkt, Drehung und eine einheitliche Skalierung.
-   * Eine spätere anonyme Geometrie-Feinjustierung darf daraus bei genügend
-   * Treffern noch eine affine Korrektur ableiten.
-   */
   const sourceFrame = quadFrame(source);
   const targetFrame = quadFrame(target);
   if (!sourceFrame || !targetFrame) return null;
 
-  const widthScale = targetFrame.width / Math.max(1, sourceFrame.width);
-  const heightScale = targetFrame.height / Math.max(1, sourceFrame.height);
+  /*
+   * Der Anker liefert nur Mittelpunkt und Drehung. Seine OCR-Box ist kein
+   * verlässlicher Maßstab, weil Master und Live-OCR unterschiedliche Wörter
+   * oder Zeilen umfassen können. Als neutrale Startskalierung dient deshalb
+   * ausschließlich das Verhältnis der vollständigen Bildabmessungen.
+   */
   const fitScale = imageSize
     ? Math.min(
         Number(imageSize?.[0] || 1) / Math.max(1, Number(master.width || 1)),
         Number(imageSize?.[1] || 1) / Math.max(1, Number(master.height || 1)),
       )
-    : widthScale;
-
-  let scale = widthScale;
-  const ratio = widthScale / Math.max(1e-9, heightScale);
-  if (ratio >= 0.62 && ratio <= 1.62) scale = Math.sqrt(widthScale * heightScale);
-  if (!Number.isFinite(scale) || scale <= 0) scale = fitScale;
-  scale = clamp(scale, Math.max(0.04, fitScale * 0.18), Math.max(0.08, fitScale * 4.5));
-
+    : 1;
+  const scale = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
   const angle = targetFrame.angle - sourceFrame.angle;
   const cosine = Math.cos(angle) * scale;
   const sine = Math.sin(angle) * scale;
