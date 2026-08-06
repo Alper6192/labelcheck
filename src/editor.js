@@ -37,7 +37,8 @@ const state = {
   mode: "select",
   drag: null,
   dirty: false,
-  ocrRun: null
+  ocrRun: null,
+  engineInitPromise: null
 };
 
 el("version").textContent = `v${APP_VERSION}`;
@@ -270,16 +271,41 @@ function syncProfileMeta() {
 }
 
 async function initializeEngine(force = false) {
-  if (!force && engine.ready) return true;
+  if (!force && engine.ready && engine.verified) return true;
+  if (state.engineInitPromise) {
+    if (!force) return state.engineInitPromise;
+    try { await state.engineInitPromise; } catch {}
+  }
+
+  const operation = initializeEngineInternal(force);
+  state.engineInitPromise = operation;
+  refreshMasterControls();
+  try {
+    return await operation;
+  } finally {
+    if (state.engineInitPromise === operation) state.engineInitPromise = null;
+    refreshMasterControls();
+  }
+}
+
+async function initializeEngineInternal(force) {
   setEditorEngine("PaddleOCR wird vorbereitet …", "wait");
   try {
     if (force) await engine.dispose();
-    const info = await engine.initialize("standard", (message) => setEditorEngine(message, "wait"));
-    setEditorEngine(`PaddleOCR bereit · ${info.mode}`, "ok");
-    el("editorEngineDetails").textContent = `Initialisierung ${formatMilliseconds(info.initMs)} · PP-OCRv5 mobile.`;
+    const info = await engine.initializeVerified(
+      "standard",
+      (message) => setEditorEngine(message, "wait"),
+      { probeTimeoutMs: 15000 }
+    );
+    setEditorEngine(`PaddleOCR bereit · ${info.mode} · praktisch geprüft`, "ok");
+    const fallback = info.fallbackFrom
+      ? ` · Worker verworfen, automatischer Hauptfenster-Fallback`
+      : "";
+    el("editorEngineDetails").textContent = `Initialisierung ${formatMilliseconds(info.initMs)} · Funktionstest ${formatMilliseconds(info.probeMs)}${fallback}.`;
     return true;
   } catch (error) {
     setEditorEngine(`PaddleOCR nicht bereit: ${safeError(error)}`, "bad");
+    el("editorEngineDetails").textContent = "Weder Worker noch Hauptfenster konnten einen echten OCR-Test abschließen.";
     return false;
   }
 }
@@ -324,28 +350,21 @@ async function runOcr() {
   state.ocrRun = run;
   refreshMasterControls();
   setEditorEngine("PaddleOCR analysiert das Masterbild …", "wait");
-  el("editorEngineDetails").textContent = "Zeitlimit 60 Sekunden · getestete Bildgröße maximal 1800 px.";
+  el("editorEngineDetails").textContent = engine.mode?.startsWith("Web Worker")
+    ? "Worker-Zeitlimit 30 Sekunden · bei Ausfall automatische Wiederholung im Hauptfenster."
+    : "Hauptfenster-Zeitlimit 60 Sekunden · Bildgröße maximal 1800 px.";
 
   try {
-    const preset = QUALITY_PRESETS.balanced;
-    const output = await engine.predict(session.prepared.canvas, {
-      textDetLimitSideLen: preset.textDetLimitSideLen,
-      textDetLimitType: "min",
-      textDetMaxSideLimit: 2000,
-      textDetThresh: 0.25,
-      textDetBoxThresh: preset.textDetBoxThresh,
-      textDetUnclipRatio: 1.55,
-      textRecScoreThresh: preset.textRecScoreThresh
-    }, { timeoutMs: 60000 });
+    const output = await predictMasterImageWithFallback(session, run);
 
-    if (run.cancelled || state.ocrRun?.id !== run.id) return;
+    if (!isRunActive(run)) return;
     const targetSession = state.sessions.get(run.profileId, false);
     if (!targetSession || targetSession.imageRevision !== run.imageRevision) return;
 
     targetSession.ocrResult = output.result;
     targetSession.selection = null;
     if (state.selectedProfileId === run.profileId) {
-      setEditorEngine(`PaddleOCR bereit · ${output.result.items?.length || 0} Textzeilen`, "ok");
+      setEditorEngine(`PaddleOCR bereit · ${engine.mode} · ${output.result.items?.length || 0} Textzeilen`, "ok");
       el("editorEngineDetails").textContent = `Masterbild in ${formatMilliseconds(output.wallMs)} analysiert.`;
       drawOverlay();
       renderSelectionInfo();
@@ -354,14 +373,14 @@ async function runOcr() {
     if (run.cancelled || error?.name === "AbortError") {
       if (state.selectedProfileId === run.profileId) {
         setEditorEngine("OCR-Analyse abgebrochen", "warn");
-        el("editorEngineDetails").textContent = "Der laufende Worker wurde beendet.";
+        el("editorEngineDetails").textContent = "Der laufende OCR-Modus wurde beendet.";
       }
     } else {
       restartAfterFailure = true;
       setEditorEngine(`OCR fehlgeschlagen: ${safeError(error)}`, "bad");
       el("editorEngineDetails").textContent = error?.name === "TimeoutError"
-        ? "Die Analyse wurde nach 60 Sekunden beendet. Der OCR-Worker wird automatisch neu geladen."
-        : "Der OCR-Worker wird nach dem Fehler automatisch neu geladen.";
+        ? "Auch der aktive OCR-Modus hat sein Zeitlimit überschritten. PaddleOCR wird neu gestartet."
+        : "PaddleOCR wird nach dem Fehler automatisch neu gestartet.";
     }
   } finally {
     if (state.ocrRun?.id === run.id) state.ocrRun = null;
@@ -369,6 +388,50 @@ async function runOcr() {
   }
 
   if (restartAfterFailure) await initializeEngine(true);
+}
+
+async function predictMasterImageWithFallback(session, run) {
+  const preset = QUALITY_PRESETS.balanced;
+  const params = {
+    textDetLimitSideLen: preset.textDetLimitSideLen,
+    textDetLimitType: "min",
+    textDetMaxSideLimit: 2000,
+    textDetThresh: 0.25,
+    textDetBoxThresh: preset.textDetBoxThresh,
+    textDetUnclipRatio: 1.55,
+    textRecScoreThresh: preset.textRecScoreThresh
+  };
+  const initialMode = engine.mode || "";
+
+  try {
+    return await engine.predict(
+      session.prepared.canvas,
+      params,
+      { timeoutMs: initialMode.startsWith("Web Worker") ? 30000 : 60000 }
+    );
+  } catch (error) {
+    if (run.cancelled || error?.name === "AbortError" || !initialMode.startsWith("Web Worker")) throw error;
+
+    setEditorEngine("Worker antwortet nicht. Analyse wechselt ins Hauptfenster …", "warn");
+    el("editorEngineDetails").textContent = `Worker-Fehler: ${safeError(error)}`;
+    await engine.initializeMainThread("standard", (message) => setEditorEngine(message, "wait"));
+    assertRunActive(run);
+
+    setEditorEngine("PaddleOCR analysiert im Hauptfenster …", "wait");
+    el("editorEngineDetails").textContent = "Automatische Wiederholung · Zeitlimit 60 Sekunden.";
+    return engine.predict(session.prepared.canvas, params, { timeoutMs: 60000 });
+  }
+}
+
+function isRunActive(run) {
+  return !run.cancelled && state.ocrRun?.id === run.id;
+}
+
+function assertRunActive(run) {
+  if (isRunActive(run)) return;
+  const error = new Error("OCR-Analyse abgebrochen");
+  error.name = "AbortError";
+  throw error;
 }
 
 async function cancelOcrAnalysis(silent = false) {
@@ -406,9 +469,10 @@ async function clearMasterImage() {
 function refreshMasterControls() {
   const session = currentSession(false);
   const running = Boolean(state.ocrRun);
-  el("runOcrButton").disabled = running || !session?.prepared;
+  const initializing = Boolean(state.engineInitPromise);
+  el("runOcrButton").disabled = running || initializing || !session?.prepared;
   el("cancelOcrButton").disabled = !running;
-  el("initializeEditorButton").disabled = running;
+  el("initializeEditorButton").disabled = running || initializing;
   el("clearMasterButton").disabled = running || !session?.prepared;
 
   if (!session?.prepared) {

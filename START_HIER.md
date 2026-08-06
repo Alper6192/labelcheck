@@ -1,4 +1,4 @@
-# Start – LabelCheck PaddleOCR 0.5.1
+# Start – LabelCheck PaddleOCR 0.5.2
 
 ## Update installieren
 
@@ -6,15 +6,15 @@
 2. `Repository → Show in Explorer` auswählen.
 3. Inhalt des Patch-Ordners in den Repository-Ordner kopieren.
 4. Vorhandene Dateien ersetzen.
-5. Commit-Nachricht: `Profileditor OCR-Timeout und getrennte Masterbilder`.
+5. Commit-Nachricht: `Profileditor Worker-Test und Hauptfenster-Fallback`.
 6. Committen und zu GitHub pushen.
 7. Unter GitHub Actions warten, bis Build und Deployment grün sind.
 
 ## Seiten öffnen
 
 ```text
-Scanner:      https://alper6192.github.io/labelcheck/?v=051
-Profileditor: https://alper6192.github.io/labelcheck/editor.html?v=051
+Scanner:      https://alper6192.github.io/labelcheck/?v=052
+Profileditor: https://alper6192.github.io/labelcheck/editor.html?v=052
 ```
 
 ## Profileditor testen
@@ -23,7 +23,8 @@ Profileditor: https://alper6192.github.io/labelcheck/editor.html?v=051
 2. VDA-Profil auswählen: Dort darf das Produktbild nicht erscheinen.
 3. Eigenes VDA-Masterbild laden.
 4. Zwischen den Profilen wechseln: Jedes Profil muss sein eigenes Bild behalten.
-5. PaddleOCR starten. Die Analyse wird spätestens nach 60 Sekunden beendet.
-6. Bei Bedarf „Analyse abbrechen“ verwenden.
+5. Warten, bis „praktisch geprüft“ erscheint.
+6. PaddleOCR starten. Ein blockierter Worker wechselt automatisch ins Hauptfenster.
+7. Bei Bedarf „Analyse abbrechen“ verwenden.
 
 Masterbilder sind nur für die aktuelle Browsersitzung gespeichert. Nach einem Neuladen der Seite müssen sie erneut geladen werden.
