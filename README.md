@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.5.6
+# LabelCheck PaddleOCR 0.5.7
 
 LabelCheck erkennt Produkt- und VDA-Labels lokal im Browser und enthält einen Profileditor für Anker und Feldzonen.
 
@@ -32,3 +32,7 @@ npm run build
 ```
 
 GitHub Pages veröffentlicht den erzeugten `dist`-Ordner über GitHub Actions.
+
+## Eigene Profile und Build-Tests
+
+Ab Version 0.5.7 sind die fachlichen Extraktionstests von `public/config/label-profiles.json` getrennt. Die im Editor exportierte Profildatei darf daher beliebige eigene Kunden- und Produktprofile enthalten. Der Build prüft nur noch die technische Gültigkeit der produktiven JSON-Datei.

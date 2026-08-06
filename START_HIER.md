@@ -1,4 +1,4 @@
-# Start mit Version 0.5.6
+# Start mit Version 0.5.7
 
 1. Projektinhalt in das bestehende Repository kopieren.
 2. Commit und Push ausführen.

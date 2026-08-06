@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { extractProfileFields, normalizeFieldValue } from "../src/profile-engine.js";
 import { compareExtractions } from "../src/comparison.js";
 
-const config = JSON.parse(fs.readFileSync(new URL("../public/config/label-profiles.json", import.meta.url), "utf8"));
+const config = JSON.parse(fs.readFileSync(new URL("./fixtures/extraction-profiles.json", import.meta.url), "utf8"));
 const product = config.profiles.find((profile) => profile.role === "product");
 const vda = config.profiles.find((profile) => profile.role === "vda");
 const item = (text, score, poly) => ({ text, score, poly });
