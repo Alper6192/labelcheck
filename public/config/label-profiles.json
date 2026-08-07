@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "appVersion": "0.6.7",
-  "exportedAt": "2026-08-07T10:56:00.000Z",
+  "exportedAt": "2026-08-07T11:11:13.203Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -29,7 +29,9 @@
             0.11583333333333333,
             0.1511111111111111
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -171,7 +173,9 @@
             0.17833333333333334,
             0.2588888888888889
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -311,7 +315,9 @@
             0.6,
             0.8655555555555555
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -455,7 +461,9 @@
             0.11833333333333333,
             0.24555555555555555
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -597,7 +605,9 @@
             0.155,
             0.21777777777777776
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -738,7 +748,9 @@
             0.31833333333333336,
             0.27555555555555555
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -878,7 +890,9 @@
             0.2966666666666667,
             0.11444444444444445
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -1019,7 +1033,9 @@
             0.31,
             0.20666666666666667
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -1086,20 +1102,20 @@
           "normalizer": "weight",
           "poly": [
             [
-              0.6630762866229474,
-              0.5314077448747152
+              0.8016212121212121,
+              0.5253333333333333
             ],
             [
-              0.7823621404440727,
-              0.5314077448747152
+              0.8834545454545454,
+              0.5253333333333333
             ],
             [
-              0.7823621404440727,
-              0.5996045952567389
+              0.8834545454545454,
+              0.5965858277600223
             ],
             [
-              0.6630762866229474,
-              0.5996045952567389
+              0.8016212121212121,
+              0.5965858277600223
             ]
           ],
           "digits": 4
@@ -1141,7 +1157,9 @@
       "anchor": {
         "aliases": [
           "Volkswagen",
-          "Volkswagen Sachsen GmbH"
+          "Volkswagen Sachsen GmbH",
+          "VOLKSWAGEN AG",
+          "Volkswagen AG"
         ],
         "poly": [
           [
@@ -1160,7 +1178,9 @@
             0.2966666666666667,
             0.1988888888888889
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -1275,13 +1295,13 @@
       ]
     },
     {
-      "id": "SERGO",
-      "name": "Sergo",
+      "id": "SEGRO",
+      "name": "Segro",
       "role": "vda",
       "active": true,
       "anchor": {
         "aliases": [
-          "SERGO LOGISTICS PARK",
+          "SEGRO LOGISTICS PARK",
           "SERGO"
         ],
         "poly": [
@@ -1301,7 +1321,9 @@
             0.31666666666666665,
             0.12111111111111111
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -1416,7 +1438,9 @@
             0.3625,
             0.15888888888888889
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -1556,7 +1580,9 @@
             0.21583333333333332,
             0.42
           ]
-        ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -1675,6 +1701,18 @@
       "name": "Intern2",
       "role": "vda",
       "active": true,
+      "detection": {
+        "evidenceAliases": [
+          "Prüflos",
+          "Referenzbeleg",
+          "Transportauftrag - Position"
+        ],
+        "minEvidenceMatches": 2,
+        "excludeAliases": [
+          "Alte Materialnummer"
+        ],
+        "minScore": 0.62
+      },
       "anchor": {
         "aliases": [
           "Prüflos"
@@ -1859,19 +1897,7 @@
             ]
           ]
         }
-      ],
-      "detection": {
-        "evidenceAliases": [
-          "Prüflos",
-          "Referenzbeleg",
-          "Transportauftrag - Position"
-        ],
-        "minEvidenceMatches": 2,
-        "excludeAliases": [
-          "Alte Materialnummer"
-        ],
-        "minScore": 0.62
-      }
+      ]
     },
     {
       "id": "TESLA",
@@ -1887,7 +1913,9 @@
         "aliases": [
           "Tesla"
         ],
-        "poly": []
+        "poly": [],
+        "localizeAlias": false,
+        "fallbacks": []
       },
       "fields": [
         {
@@ -1920,6 +1948,149 @@
           "sourceRegex": "^\\d{7,12}$",
           "normalizer": "digits",
           "poly": []
+        }
+      ]
+    },
+    {
+      "id": "SEAT",
+      "name": "Seat",
+      "role": "vda",
+      "active": true,
+      "anchor": {
+        "aliases": [
+          "SEAT",
+          "SEAT, S.A. - SEAT COMPONENTES",
+          "SEAT COMPONENTES"
+        ],
+        "poly": [
+          [
+            0.2875,
+            0.18333333333333332
+          ],
+          [
+            0.6533333333333333,
+            0.19333333333333333
+          ],
+          [
+            0.6525,
+            0.22666666666666666
+          ],
+          [
+            0.2866666666666667,
+            0.21666666666666667
+          ]
+        ],
+        "localizeAlias": false,
+        "fallbacks": []
+      },
+      "fields": [
+        {
+          "key": "batch",
+          "label": "Batch",
+          "required": true,
+          "compare": true,
+          "regex": "^D\\d{8,10}$",
+          "sourceRegex": "^D\\d{8,10}(?:\\s*[/|I1]\\s*\\d{4})?$",
+          "normalizer": "batch",
+          "poly": [
+            [
+              0.6613030303030303,
+              0.6300404040404041
+            ],
+            [
+              0.7848333333333334,
+              0.6300404040404041
+            ],
+            [
+              0.7848333333333334,
+              0.7067272727272728
+            ],
+            [
+              0.6613030303030303,
+              0.7067272727272728
+            ]
+          ]
+        },
+        {
+          "key": "idh",
+          "label": "IDH",
+          "required": true,
+          "compare": true,
+          "regex": "^\\d{6,8}$",
+          "sourceRegex": "^\\d{6,8}$",
+          "normalizer": "digits",
+          "poly": [
+            [
+              0.2287576219963305,
+              0.4192525869041982
+            ],
+            [
+              0.31556065229936076,
+              0.4192525869041982
+            ],
+            [
+              0.31556065229936076,
+              0.4643839616871844
+            ],
+            [
+              0.2287576219963305,
+              0.4643839616871844
+            ]
+          ]
+        },
+        {
+          "key": "weight",
+          "label": "Gewicht",
+          "required": true,
+          "compare": true,
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "normalizer": "weight",
+          "poly": [
+            [
+              0.741030303030303,
+              0.4338585858585859
+            ],
+            [
+              0.787,
+              0.4338585858585859
+            ],
+            [
+              0.787,
+              0.48644444444444446
+            ],
+            [
+              0.741030303030303,
+              0.48644444444444446
+            ]
+          ]
+        },
+        {
+          "key": "delivery_note",
+          "label": "Lieferscheinnummer",
+          "required": false,
+          "compare": false,
+          "regex": "^\\d{7,12}$",
+          "sourceRegex": "^\\d{7,12}$",
+          "normalizer": "digits",
+          "poly": [
+            [
+              0.20189393939393938,
+              0.35759595959595963
+            ],
+            [
+              0.308787832549124,
+              0.35759595959595963
+            ],
+            [
+              0.308787832549124,
+              0.4078585858585858
+            ],
+            [
+              0.20189393939393938,
+              0.4078585858585858
+            ]
+          ]
         }
       ]
     }
