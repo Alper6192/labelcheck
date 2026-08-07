@@ -157,7 +157,7 @@ test("VW-Geometrie skaliert nicht mit der Länge des erkannten Ankertexts", () =
 
 test("Getrennte OCR-Boxen können gemeinsam einen Textanker bilden", () => {
   const profile = {
-    id: "INTERN2", name: "Intern2", role: "vda", active: true,
+    id: "TEST", name: "Test", role: "vda", active: true,
     anchor: { aliases: ["Stor.Cl./WPC"], poly: [[0.50,0.50],[0.65,0.50],[0.65,0.55],[0.50,0.55]] },
     fields: []
   };
@@ -165,24 +165,118 @@ test("Getrennte OCR-Boxen können gemeinsam einen Textanker bilden", () => {
     item("Stor.Cl.", .96, [[500,500],[570,500],[570,540],[500,540]]),
     item("/ WPC", .94, [[575,502],[645,502],[645,542],[575,542]])
   ], [profile], "vda");
-  assert.equal(result?.profile?.id, "INTERN2");
+  assert.equal(result?.profile?.id, "TEST");
   assert.equal(result?.anchorMatch?.item?.joined, true);
 });
 
 
-test("INTERN2 lokalisiert Stor.Cl./WPC innerhalb einer langen H-Satz-OCR-Zeile", () => {
+test("Teilalias wird innerhalb einer langen OCR-Zeile geometrisch lokalisiert", () => {
   const profile = {
-    id: "INTERN2", name: "Intern2", role: "vda", active: true,
+    id: "TEST", name: "Test", role: "vda", active: true,
     anchor: { aliases: ["Stor.Cl./WPC"], localizeAlias: true, poly: [[0.54,0.58],[0.64,0.58],[0.64,0.61],[0.54,0.61]] },
     fields: []
   };
   const result = autoSelectProfile([
     item("H-Sätze: H351/H373/H319/H315/H351/H335/H317/H334Stor.Cl./WPC 11 /1", .97, [[250,580],[900,580],[900,620],[250,620]])
   ], [profile], "vda");
-  assert.equal(result?.profile?.id, "INTERN2");
+  assert.equal(result?.profile?.id, "TEST");
   assert.equal(result?.anchorMatch?.item?.anchorFragment, true);
   assert.equal(result?.anchorMatch?.item?.text, "Stor.Cl./WPC");
   const xs = result.anchorMatch.item.poly.map((point) => point[0]);
   assert.ok(Math.min(...xs) > 650, "virtueller Anker muss im rechten Teil der langen OCR-Zeile liegen");
   assert.ok(Math.max(...xs) - Math.min(...xs) < 180, "virtueller Anker darf nicht die gesamte H-Satz-Zeile umfassen");
+});
+
+test("Interne Label-Familie trennt INTERN1 und INTERN2 über Alte Materialnummer", () => {
+  const intern1 = {
+    id: "INTERN1", name: "Intern1", role: "vda", active: true,
+    anchor: { aliases: ["Alte Materialnummer"], poly: [[0.2,0.4],[0.3,0.4],[0.3,0.43],[0.2,0.43]] }, fields: []
+  };
+  const intern2 = {
+    id: "INTERN2", name: "Intern2", role: "vda", active: true,
+    detection: {
+      evidenceAliases: ["Prüflos", "Referenzbeleg", "Transportauftrag - Position"],
+      minEvidenceMatches: 2,
+      excludeAliases: ["Alte Materialnummer"],
+      minScore: 0.62
+    },
+    anchor: { aliases: ["Prüflos"], localizeAlias: true, poly: [[0.63,0.39],[0.69,0.39],[0.69,0.42],[0.63,0.42]], fallbacks: [] },
+    fields: []
+  };
+
+  const intern1Items = [
+    item("Alte Materialnummer", .99, [[200,400],[320,400],[320,430],[200,430]]),
+    item("Prüflos", .99, [[630,390],[690,390],[690,420],[630,420]]),
+    item("Referenzbeleg", .98, [[630,440],[740,440],[740,470],[630,470]])
+  ];
+  const intern2Items = [
+    item("Prüflos", .99, [[630,390],[690,390],[690,420],[630,420]]),
+    item("Referenzbeleg", .98, [[630,440],[740,440],[740,470],[630,470]]),
+    item("Transportauftrag - Position", .97, [[630,510],[820,510],[820,540],[630,540]])
+  ];
+
+  assert.equal(autoSelectProfile(intern1Items, [intern1, intern2], "vda")?.profile?.id, "INTERN1");
+  assert.equal(autoSelectProfile(intern2Items, [intern1, intern2], "vda")?.profile?.id, "INTERN2");
+});
+
+test("INTERN2 verlangt mindestens zwei typische interne Feldbezeichnungen", () => {
+  const profile = {
+    id: "INTERN2", name: "Intern2", role: "vda", active: true,
+    detection: {
+      evidenceAliases: ["Prüflos", "Referenzbeleg", "Transportauftrag - Position"],
+      minEvidenceMatches: 2,
+      excludeAliases: ["Alte Materialnummer"],
+      minScore: 0.62
+    },
+    anchor: { aliases: ["Prüflos"], poly: [[0.6,0.4],[0.7,0.4],[0.7,0.43],[0.6,0.43]] },
+    fields: []
+  };
+  const result = autoSelectProfile([
+    item("Prüflos", .99, [[600,400],[700,400],[700,430],[600,430]])
+  ], [profile], "vda");
+  assert.equal(result, null);
+});
+
+test("INTERN2 nutzt Referenzbeleg als geometrischen Fallback, wenn Prüflos fehlt", () => {
+  const profile = {
+    id: "INTERN2", name: "Intern2", role: "vda", active: true,
+    anchor: {
+      aliases: ["Prüflos"],
+      localizeAlias: true,
+      poly: [[0.60,0.30],[0.70,0.30],[0.70,0.34],[0.60,0.34]],
+      fallbacks: [{
+        aliases: ["Referenzbeleg"],
+        localizeAlias: true,
+        poly: [[0.60,0.40],[0.72,0.40],[0.72,0.44],[0.60,0.44]]
+      }]
+    },
+    fields: [{
+      key: "batch", label: "Batch", required: true, compare: true,
+      regex: "^D\\d{9}$", sourceRegex: "^D\\d{9}$", normalizer: "batch",
+      poly: [[0.30,0.20],[0.44,0.20],[0.44,0.24],[0.30,0.24]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("Referenzbeleg", .99, [[600,400],[720,400],[720,440],[600,440]]),
+    item("D563000665", .99, [[300,200],[440,200],[440,240],[300,240]])
+  ], profile, { width: 1000, height: 1000 });
+  assert.equal(result.anchorMatch?.fallback, true);
+  assert.equal(result.anchorMatch?.anchorIndex, 1);
+  assert.equal(result.fields.batch.value, "D563000665");
+});
+
+test("INTERN2 lokalisiert Prüflos auch zusammen mit der Prüfnummer", () => {
+  const profile = {
+    id: "INTERN2", name: "Intern2", role: "vda", active: true,
+    anchor: { aliases: ["Prüflos"], localizeAlias: true, poly: [[0.63,0.39],[0.69,0.39],[0.69,0.42],[0.63,0.42]] },
+    fields: []
+  };
+  const result = autoSelectProfile([
+    item("Prüflos 000035336667", .98, [[620,390],[850,390],[850,425],[620,425]])
+  ], [profile], "vda");
+  assert.equal(result?.profile?.id, "INTERN2");
+  assert.equal(result?.anchorMatch?.item?.anchorFragment, true);
+  assert.equal(result?.anchorMatch?.item?.text, "Prüflos");
+  const xs = result.anchorMatch.item.poly.map((point) => point[0]);
+  assert.ok(Math.max(...xs) < 720, "virtueller Prüflos-Anker darf die Prüfnummer nicht umfassen");
 });

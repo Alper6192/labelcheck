@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.6.6
+# LabelCheck PaddleOCR 0.6.7
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 
@@ -46,3 +46,7 @@ npm run build
 ```
 
 GitHub Pages veröffentlicht den erzeugten `dist`-Ordner über GitHub Actions.
+
+## INTERN2-Anker 0.6.7
+
+INTERN2 wird nicht mehr über `Stor.Cl./WPC` positioniert. Hauptanker ist `Prüflos`; falls dieser OCR-seitig fehlt, werden `Referenzbeleg` und anschließend `Transportauftrag - Position` mit jeweils eigener Referenzgeometrie verwendet. `Alte Materialnummer` kennzeichnet INTERN1 und schließt INTERN2 bei der Auto-Erkennung aus.

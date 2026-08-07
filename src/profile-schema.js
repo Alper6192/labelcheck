@@ -59,7 +59,8 @@ export function createProfile(role = "vda", index = 1) {
     name: role === "product" ? `Produktprofil ${stamp}` : `VDA-Profil ${stamp}`,
     role,
     active: true,
-    anchor: { aliases: [], poly: [], localizeAlias: false },
+    anchor: { aliases: [], poly: [], localizeAlias: false, fallbacks: [] },
+    detection: undefined,
     fields: []
   };
 }
@@ -90,12 +91,16 @@ export function normalizeProfile(profile, index = 0) {
     role,
     active: profile?.active !== false,
     source: normalizeProfileSource(profile?.source) || undefined,
+    detection: normalizeProfileDetection(profile?.detection),
     anchor: {
       aliases: Array.isArray(profile?.anchor?.aliases)
         ? profile.anchor.aliases.map((value) => String(value).trim()).filter(Boolean)
         : [],
       poly: normalizeNormalizedPoly(profile?.anchor?.poly),
-      localizeAlias: profile?.anchor?.localizeAlias === true
+      localizeAlias: profile?.anchor?.localizeAlias === true,
+      fallbacks: Array.isArray(profile?.anchor?.fallbacks)
+        ? profile.anchor.fallbacks.map((anchor) => normalizeAnchorDefinition(anchor)).filter((anchor) => anchor.aliases.length && anchor.poly.length >= 4)
+        : []
     },
     fields: fields
       .filter((field) => FIELD_PRESETS[field?.key])
@@ -109,6 +114,37 @@ export function normalizeProfile(profile, index = 0) {
         digits: field.digits == null ? FIELD_PRESETS[field.key].digits : Number(field.digits),
         poly: normalizeNormalizedPoly(field.poly)
       }))
+  };
+}
+
+function normalizeAnchorDefinition(anchor) {
+  return {
+    aliases: Array.isArray(anchor?.aliases)
+      ? anchor.aliases.map((value) => String(value).trim()).filter(Boolean)
+      : [],
+    poly: normalizeNormalizedPoly(anchor?.poly),
+    localizeAlias: anchor?.localizeAlias === true
+  };
+}
+
+function normalizeProfileDetection(detection) {
+  if (!detection || typeof detection !== "object") return undefined;
+  const evidenceAliases = Array.isArray(detection.evidenceAliases)
+    ? detection.evidenceAliases.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  const excludeAliases = Array.isArray(detection.excludeAliases)
+    ? detection.excludeAliases.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  if (!evidenceAliases.length && !excludeAliases.length) return undefined;
+  const requestedMinimum = Number(detection.minEvidenceMatches);
+  const minEvidenceMatches = evidenceAliases.length
+    ? clamp(Number.isFinite(requestedMinimum) ? Math.round(requestedMinimum) : 1, 1, evidenceAliases.length)
+    : 0;
+  return {
+    evidenceAliases,
+    minEvidenceMatches,
+    excludeAliases,
+    minScore: clamp(Number(detection.minScore ?? 0.62), 0.4, 1)
   };
 }
 

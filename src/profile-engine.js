@@ -16,7 +16,8 @@ export function autoSelectProfile(items, profiles, role) {
   const eligible = profiles.filter((profile) => profile.role === role && profile.source?.type !== "qr");
   let best = null;
   for (const profile of eligible) {
-    const anchorMatch = findAnchor(items, profile.anchor?.aliases || [], profile.anchor);
+    if (!profilePassesDetection(items, profile)) continue;
+    const anchorMatch = findProfileAnchor(items, profile);
     const score = anchorMatch ? anchorMatch.matchScore : 0;
     if (!best || score > best.score) best = { profile, anchorMatch, score };
   }
@@ -28,12 +29,12 @@ export function autoSelectProfile(items, profiles, role) {
 
 export function extractProfileFields(items, profile, imageSize) {
   if (!profile) return emptyExtraction();
-  const anchorMatch = findAnchor(items, profile.anchor?.aliases || [], profile.anchor);
+  const anchorMatch = findProfileAnchor(items, profile);
   if (!anchorMatch) {
     return { ...emptyExtraction(), profile, warning: "Profilanker wurde nicht erkannt." };
   }
 
-  const transform = buildTransform(profile.anchor.poly, anchorMatch.item.poly, imageSize);
+  const transform = buildTransform(anchorMatch.referencePoly || profile.anchor.poly, anchorMatch.item.poly, imageSize);
   const fields = {};
   const candidates = {};
   const expectedPolys = {};
@@ -163,6 +164,51 @@ export function validateField(value, regex) {
 
 function emptyExtraction() {
   return { profile: null, anchorMatch: null, transform: null, fields: {}, overlays: [], warning: "" };
+}
+
+function findProfileAnchor(items, profile) {
+  const primary = profile?.anchor || {};
+  const anchors = [primary, ...(Array.isArray(primary.fallbacks) ? primary.fallbacks : [])];
+  let best = null;
+  const strongThreshold = anchors.length > 1 ? 0.62 : 0.55;
+
+  for (let index = 0; index < anchors.length; index += 1) {
+    const anchor = anchors[index];
+    const match = findAnchor(items, anchor?.aliases || [], anchor);
+    if (!match) continue;
+    const enriched = {
+      ...match,
+      referencePoly: anchor.poly,
+      anchorIndex: index,
+      fallback: index > 0
+    };
+    // Der Hauptanker wird bevorzugt. Fallbacks greifen nur, wenn der jeweils
+    // vorherige Anker nicht hinreichend sicher erkannt wurde. So bleibt die
+    // Geometrie auch bei mehreren möglichen Beschriftungen deterministisch.
+    if (enriched.matchScore >= strongThreshold) return enriched;
+    if (!best || enriched.matchScore > best.matchScore) best = enriched;
+  }
+  return best;
+}
+
+function profilePassesDetection(items, profile) {
+  const detection = profile?.detection;
+  if (!detection) return true;
+  const minScore = Number(detection.minScore || 0.62);
+
+  for (const alias of detection.excludeAliases || []) {
+    const match = findAnchor(items, [alias], { localizeAlias: true });
+    if (match?.matchScore >= minScore) return false;
+  }
+
+  const evidenceAliases = detection.evidenceAliases || [];
+  if (!evidenceAliases.length) return true;
+  let matches = 0;
+  for (const alias of evidenceAliases) {
+    const match = findAnchor(items, [alias], { localizeAlias: true });
+    if (match?.matchScore >= minScore) matches += 1;
+  }
+  return matches >= Number(detection.minEvidenceMatches || 1);
 }
 
 function findAnchor(items, aliases, anchorOptions = {}) {

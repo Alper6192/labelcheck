@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.6",
-  "exportedAt": "2026-08-07T09:22:21.048702Z",
+  "appVersion": "0.6.7",
+  "exportedAt": "2026-08-07T10:56:00.000Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1677,27 +1677,77 @@
       "active": true,
       "anchor": {
         "aliases": [
-          "Stor.Cl./WPC"
+          "Prüflos"
         ],
         "poly": [
           [
-            0.5425,
-            0.5866666666666667
+            0.6372,
+            0.3971
           ],
           [
-            0.6358333333333334,
-            0.5866666666666667
+            0.686,
+            0.3971
           ],
           [
-            0.6358333333333334,
-            0.61
+            0.686,
+            0.4199
           ],
           [
-            0.5425,
-            0.61
+            0.6372,
+            0.4199
           ]
         ],
-        "localizeAlias": true
+        "localizeAlias": true,
+        "fallbacks": [
+          {
+            "aliases": [
+              "Referenzbeleg"
+            ],
+            "poly": [
+              [
+                0.6372,
+                0.4427
+              ],
+              [
+                0.735,
+                0.4427
+              ],
+              [
+                0.735,
+                0.4655
+              ],
+              [
+                0.6372,
+                0.4655
+              ]
+            ],
+            "localizeAlias": true
+          },
+          {
+            "aliases": [
+              "Transportauftrag - Position"
+            ],
+            "poly": [
+              [
+                0.6372,
+                0.5143
+              ],
+              [
+                0.8155,
+                0.5143
+              ],
+              [
+                0.8155,
+                0.5371
+              ],
+              [
+                0.6372,
+                0.5371
+              ]
+            ],
+            "localizeAlias": true
+          }
+        ]
       },
       "fields": [
         {
@@ -1809,7 +1859,19 @@
             ]
           ]
         }
-      ]
+      ],
+      "detection": {
+        "evidenceAliases": [
+          "Prüflos",
+          "Referenzbeleg",
+          "Transportauftrag - Position"
+        ],
+        "minEvidenceMatches": 2,
+        "excludeAliases": [
+          "Alte Materialnummer"
+        ],
+        "minScore": 0.62
+      }
     },
     {
       "id": "TESLA",

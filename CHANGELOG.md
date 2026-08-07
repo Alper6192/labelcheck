@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.7
+- INTERN2 verwendet `Prüflos` als primären Geometrieanker; `Referenzbeleg` und `Transportauftrag - Position` sind echte positionsbezogene Fallback-Anker.
+- INTERN1 und INTERN2 werden als interne Label-Familie auseinandergehalten: `Alte Materialnummer` schließt INTERN2 aus.
+- Für die automatische INTERN2-Erkennung müssen mindestens zwei der drei typischen Beschriftungen `Prüflos`, `Referenzbeleg` und `Transportauftrag - Position` erkannt werden.
+- Die bisherige Abhängigkeit von `Stor.Cl./WPC` entfällt; lange H-Satz-Zeilen beeinflussen den INTERN2-Anker damit nicht mehr.
+
 ## 0.6.6
 - Asynchrone Scan-Ergebnisse sind an eine Slot-Generation gebunden; ältere OCR-Läufe können kein neueres Foto mehr überschreiben.
 - Manuell gewählte QR-Profile (insbesondere Tesla) werden erneut mit `detectQrProfile()` gelesen statt durch die OCR-Geometrie geschickt.
