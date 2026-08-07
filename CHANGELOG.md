@@ -1,26 +1,18 @@
-# Changelog
+# 0.6.8
 
-## 0.6.7
-- INTERN2 verwendet `Prüflos` als primären Geometrieanker; `Referenzbeleg` und `Transportauftrag - Position` sind echte positionsbezogene Fallback-Anker.
-- INTERN1 und INTERN2 werden als interne Label-Familie auseinandergehalten: `Alte Materialnummer` schließt INTERN2 aus.
-- Für die automatische INTERN2-Erkennung müssen mindestens zwei der drei typischen Beschriftungen `Prüflos`, `Referenzbeleg` und `Transportauftrag - Position` erkannt werden.
-- Die bisherige Abhängigkeit von `Stor.Cl./WPC` entfällt; lange H-Satz-Zeilen beeinflussen den INTERN2-Anker damit nicht mehr.
+- Aktuelle Nutzerkonfiguration als Basis übernommen.
+- INTERN2: ausschließlich `Prüflos` als Hauptanker; `Alte Materialnummer` schließt das Profil aus.
+- Anker mit `localizeAlias` werden innerhalb längerer OCR-Zeilen geometrisch auf den Alias-Teilbereich zugeschnitten. Dadurch beeinflussen lange H-Sätze die INTERN2-Skalierung nicht mehr über die gesamte Zeilenbreite.
+- Manuell gewählte Textprofile benötigen ebenfalls einen ausreichend sicheren Ankertreffer; beliebiger OCR-Text wird nicht mehr als Transformationsanker akzeptiert.
+- Schema-Normalisierung erhält `detection`, `localizeAlias` und `fallbacks` aus der Profilkonfiguration.
+- Bildqualität erzeugt nur einen nicht blockierenden Hinweis im Scanstatus.
+- Tesla wird auch bei manueller Profilauswahl und bei erneuter Analyse über `detectQrProfile()` verarbeitet.
+- Scanprotokoll von localStorage auf IndexedDB umgestellt; bestehende localStorage-Datensätze werden migriert, maximal 500 Einträge.
+- Nach erfolgreichem Speichern wird `Datensatz übernehmen` bis zur nächsten relevanten Änderung deaktiviert.
+- Extraktionswarnungen bzw. leere Extraktionen können nicht versehentlich als Freigabe gewertet werden.
+- `onnxruntime-web` als direkte Build-Abhängigkeit ergänzt.
 
-## 0.6.6
-- Asynchrone Scan-Ergebnisse sind an eine Slot-Generation gebunden; ältere OCR-Läufe können kein neueres Foto mehr überschreiben.
-- Manuell gewählte QR-Profile (insbesondere Tesla) werden erneut mit `detectQrProfile()` gelesen statt durch die OCR-Geometrie geschickt.
-- Derselbe unveränderte Vergleich kann nur einmal gespeichert werden; nach Foto-, Profil-, OCR- oder manueller Feldänderung wird Speichern wieder freigegeben.
-- Schlechte Bildqualität wird als Hinweis angezeigt, blockiert die Freigabe aber nicht.
-- Fehler beim Schreiben oder Leeren des lokalen Protokolls werden sichtbar gemeldet.
-- INTERN2: Wenn PaddleOCR eine lange H-Satz-Zeile zusammen mit `Stor.Cl./WPC` als eine Textbox erkennt, wird der Alias virtuell aus der Zeile ausgeschnitten und nur dessen Geometrie als Anker verwendet.
-
-## 0.6.5
-- VW-Geometrie verwendet die Höhe des Textankers statt dessen Breite; kurze Werkbezeichnungen wie „Volkswagen AG“ verzerren die Feldpositionen nicht mehr.
-- Benachbarte OCR-Textzeilen können gemeinsam einen Anker bilden, z. B. „Stor.Cl.“ + „/ WPC“ und „Alte“ + „Materialnummer“.
-- Das sichtbare Scanprotokoll entspricht jetzt dem Excel-Export.
-- Spalten „Nr“ und „Produktprofil“ entfernt.
-
-# 0.6.5
+# 0.6.4
 
 - Mobilgeräte (Android, iPhone, iPad) starten standardmäßig im stabilen OCR-Modus: WASM, 1 Thread, Recognition-Batch 1 und reduzierte Bildgröße. Desktop bleibt standardmäßig im schnellen AUTO-Modus.
 - Manuelle Wahl zwischen stabilem und schnellem Modus wird pro Browser gespeichert; Crash-Recovery bleibt aktiv.

@@ -76,18 +76,23 @@ test("Tesla-Profil verwendet den QR-Parser und benötigt keine IDH", () => {
   assert.equal(profile?.fields?.find((field) => field.key === "delivery_note")?.required, true);
 });
 
-
-test("Intern2 verwendet Prüflos mit stabilen Fallback-Ankern", () => {
+test("Intern2 nutzt Prüflos als einzigen Anker und schließt Alte Materialnummer aus", () => {
   const raw = readConfig();
   const profile = raw.profiles.find((entry) => entry.id === "INTERN2");
   assert.deepEqual(profile?.anchor?.aliases, ["Prüflos"]);
   assert.equal(profile?.anchor?.localizeAlias, true);
-  assert.deepEqual(profile?.anchor?.fallbacks?.map((anchor) => anchor.aliases[0]), ["Referenzbeleg", "Transportauftrag - Position"]);
-  assert.deepEqual(profile?.detection?.excludeAliases, ["Alte Materialnummer"]);
-  assert.equal(profile?.detection?.minEvidenceMatches, 2);
+  assert.deepEqual(profile?.anchor?.fallbacks, []);
+  assert.ok(profile?.detection?.excludeAliases?.includes("Alte Materialnummer"));
+  assert.equal(profile?.detection?.minEvidenceMatches, 1);
+});
+
+test("Schema-Normalisierung erhält die Intern2-Erkennungsregeln", () => {
+  const raw = readConfig();
   const normalized = normalizeProfileConfig(raw, String(raw.appVersion || ""));
-  const normalizedIntern2 = normalized.profiles.find((entry) => entry.id === "INTERN2");
-  assert.equal(normalizedIntern2?.anchor?.localizeAlias, true);
-  assert.equal(normalizedIntern2?.anchor?.fallbacks?.length, 2);
-  assert.equal(normalizedIntern2?.detection?.minEvidenceMatches, 2);
+  const profile = normalized.profiles.find((entry) => entry.id === "INTERN2");
+  assert.equal(profile?.anchor?.localizeAlias, true);
+  assert.deepEqual(profile?.anchor?.fallbacks, []);
+  assert.ok(profile?.detection?.evidenceAliases?.includes("Prüflos"));
+  assert.ok(profile?.detection?.excludeAliases?.includes("Alte Materialnummer"));
+  assert.equal(profile?.detection?.minScore, 0.62);
 });

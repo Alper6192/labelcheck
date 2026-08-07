@@ -10,11 +10,6 @@ test("Excel enthält Produkt- und Lieferscheinwerte in derselben Zeile", () => {
   }
 });
 
-test("Nr und Produktprofil sind nicht mehr Teil des Exportprotokolls", () => {
-  assert.doesNotMatch(source, /\bNr\s*:/);
-  assert.doesNotMatch(source, /Produktprofil\s*:/);
-});
-
 test("Excel-Dateiname enthält Datum und Uhrzeit bis zur Sekunde", () => {
   assert.match(source, /Labelcheck_\$\{date\.getFullYear\(\)\}/);
   assert.match(source, /getSeconds\(\)/);

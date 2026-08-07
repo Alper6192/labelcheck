@@ -16,16 +16,16 @@ import { detectQrProfile } from "./qr-engine.js";
 import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
 import { clearRecords, loadRecords, saveRecord } from "./storage.js";
-import { exportRecords, LOG_COLUMNS, recordsToRows } from "./excel-export.js";
+import { exportRecords } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
 const crashRecovery = recoverCompatibilityMode();
 const engine = new PaddleOcrEngine();
 let profiles = [];
-let records = loadRecords();
+let records = [];
 let comparison = null;
-let dataRevision = 0;
-let lastSavedRevision = -1;
+let currentSaved = false;
+let saveInProgress = false;
 const slots = { product: createSlot("product"), vda: createSlot("vda") };
 const el = (id) => document.getElementById(id);
 
@@ -36,6 +36,7 @@ setupSlot("vda");
 setupActions();
 setupCompatibilityMode();
 renderAll();
+loadStoredRecords();
 const profilesReady = loadProfiles().then((loaded) => {
   profiles = loaded;
   populateProfiles();
@@ -55,8 +56,7 @@ function createSlot(key) {
     profile: null,
     extraction: null,
     manual: false,
-    selectedProfileId: "",
-    generation: 0
+    selectedProfileId: ""
   };
 }
 
@@ -73,9 +73,7 @@ function setupSlot(key) {
     event.target.value = "";
     if (file) await loadFile(key, file);
   });
-  el(`${key}Profile`).addEventListener("change", async () => {
-    await selectProfile(key, el(`${key}Profile`).value);
-  });
+  el(`${key}Profile`).addEventListener("change", async () => selectProfile(key, el(`${key}Profile`).value));
 }
 
 function setupActions() {
@@ -83,13 +81,10 @@ function setupActions() {
   el("analyzeAllButton").onclick = analyzeAll;
   el("saveButton").onclick = storeCurrent;
   el("excelButton").onclick = () => exportRecords(records);
-  el("clearButton").onclick = () => {
-    if (!confirm("Lokales Protokoll wirklich leeren?")) return;
-    try {
-      records = clearRecords();
-      renderLog();
-    } catch (error) {
-      alert(`Protokoll konnte nicht geleert werden. ${safeError(error)}`);
+  el("clearButton").onclick = async () => {
+    if (confirm("Lokales Protokoll wirklich leeren?")) {
+      records = await clearRecords();
+      renderAll();
     }
   };
   el("debugButton").onclick = exportDebug;
@@ -158,11 +153,7 @@ function currentPreset() {
 
 async function loadFile(key, file) {
   const slot = slots[key];
-  const previousPrepared = slot.prepared;
-  const previousWasAnalyzing = slot.state === "analyzing";
-  const generation = Number(slot.generation || 0) + 1;
-  if (!previousWasAnalyzing) releasePreparedImage(previousPrepared);
-  markDataDirty();
+  releasePreparedImage(slot.prepared);
 
   // Jedes neue Foto beginnt ausdrücklich wieder im Automatikmodus. Das erkannte
   // Profil wird intern gespeichert, der Select bleibt aber auf "Automatisch".
@@ -175,37 +166,31 @@ async function loadFile(key, file) {
     state: "preparing",
     manual: false,
     profile: null,
-    selectedProfileId: "",
-    generation
+    selectedProfileId: ""
   });
   el(`${key}Profile`).value = "";
-  renderSlot(key);
+  comparison = null;
+  currentSaved = false;
+  renderAll();
 
   try {
     const preset = currentPreset();
     const policy = getRuntimePolicy();
-    const prepared = await prepareImage(file, preset.maxImageSide, {
+    slot.prepared = await prepareImage(file, preset.maxImageSide, {
       resizeDuringDecode: policy.resizeDuringDecode
     });
-    if (!isCurrentSlotRequest(slot, generation)) {
-      releasePreparedImage(prepared);
-      return;
-    }
-    slot.prepared = prepared;
 
     // QR-Profile werden vor PaddleOCR geprüft. Tesla kann dadurch vollständig
     // aus dem kleinen QR-Code links unten gelesen werden und benötigt weder OCR
     // noch einen geometrischen Textanker.
     try { await profilesReady; } catch { /* OCR-Fallback bleibt möglich. */ }
-    if (!isCurrentSlotRequest(slot, generation, prepared)) return;
     const qrStartedAt = performance.now();
-    const qrMatch = detectQrProfile(prepared.canvas, profiles, key);
-    if (!isCurrentSlotRequest(slot, generation, prepared)) return;
+    const qrMatch = detectQrProfile(slot.prepared.canvas, profiles, key);
     if (qrMatch) {
       slot.wallMs = performance.now() - qrStartedAt;
       slot.result = {
         items: [],
-        image: { width: prepared.width, height: prepared.height },
+        image: { width: slot.prepared.width, height: slot.prepared.height },
         metrics: { qrMs: slot.wallMs },
         qr: { raw: qrMatch.raw, parser: qrMatch.parsed.parser }
       };
@@ -215,67 +200,89 @@ async function loadFile(key, file) {
       comparison = slots.product.extraction && slots.vda.extraction
         ? compareExtractions(slots.product.extraction, slots.vda.extraction)
         : null;
+      clearOcrInFlight();
       renderAll();
       return;
     }
 
     markOcrInFlight("photo-prepared", {
       slot: key,
-      generation,
       backend: policy.backend,
-      width: prepared.width,
-      height: prepared.height,
+      width: slot.prepared.width,
+      height: slot.prepared.height,
       appVersion: APP_VERSION
     });
     slot.state = "ready";
     renderSlot(key);
     // Safari/iOS bekommt einen Paint-Zyklus, bevor der OCR-Worker startet.
     await nextPaint();
-    if (!isCurrentSlotRequest(slot, generation, prepared)) {
-      clearOcrInFlight({ slot: key, generation });
-      return;
-    }
-    await analyzeSlot(key, generation);
+    await analyzeSlot(key);
   } catch (error) {
-    if (!isCurrentSlotRequest(slot, generation)) return;
-    clearOcrInFlight({ slot: key, generation });
+    clearOcrInFlight();
     slot.error = safeError(error);
     slot.state = "error";
     renderSlot(key);
   }
 }
 
-async function analyzeSlot(key, expectedGeneration = null) {
+async function analyzeSlot(key) {
   const slot = slots[key];
-  const generation = expectedGeneration ?? slot.generation;
-  const prepared = slot.prepared;
-  if (!prepared || !isCurrentSlotRequest(slot, generation, prepared)) return;
+  if (!slot.prepared) return;
+  currentSaved = false;
+
+  // Auch bei "Erneut analysieren" bleibt der QR-Pfad erhalten. Bei manueller
+  // Tesla-Auswahl wird nur dieses QR-Profil geprüft; im Automatikmodus alle
+  // passenden QR-Profile.
+  const selected = slot.selectedProfileId
+    ? profiles.find((profile) => profile.id === slot.selectedProfileId) || null
+    : null;
+  const qrCandidates = selected?.source?.type === "qr"
+    ? [selected]
+    : slot.selectedProfileId ? [] : profiles;
+  if (qrCandidates.length) {
+    const qrStartedAt = performance.now();
+    const qrMatch = detectQrProfile(slot.prepared.canvas, qrCandidates, key);
+    if (qrMatch) {
+      slot.wallMs = performance.now() - qrStartedAt;
+      slot.profile = qrMatch.profile;
+      slot.result = qrResult(slot, qrMatch);
+      slot.extraction = extractQrProfileFields(qrMatch.profile, qrMatch);
+      slot.state = "done";
+      refreshComparison();
+      clearOcrInFlight();
+      renderAll();
+      return;
+    }
+    if (selected?.source?.type === "qr") {
+      slot.profile = selected;
+      slot.extraction = warningExtraction(selected, "QR-Code für dieses Profil wurde nicht erkannt.");
+      slot.state = "done";
+      refreshComparison();
+      clearOcrInFlight();
+      renderAll();
+      return;
+    }
+  }
+
   if (!(await initializeEngine())) {
-    if (isCurrentSlotRequest(slot, generation, prepared)) clearOcrInFlight({ slot: key, generation });
+    clearOcrInFlight();
     return;
   }
-  if (!isCurrentSlotRequest(slot, generation, prepared)) return;
   slot.state = "analyzing";
   renderSlot(key);
   await nextPaint();
-  if (!isCurrentSlotRequest(slot, generation, prepared)) {
-    clearOcrInFlight({ slot: key, generation });
-    releasePreparedImage(prepared);
-    return;
-  }
 
   try {
     const preset = currentPreset();
     const policy = getRuntimePolicy();
     markOcrInFlight("predict", {
       slot: key,
-      generation,
       backend: policy.backend,
-      width: prepared.width,
-      height: prepared.height,
+      width: slot.prepared.width,
+      height: slot.prepared.height,
       appVersion: APP_VERSION
     });
-    const out = await engine.predict(prepared.canvas, {
+    const out = await engine.predict(slot.prepared.canvas, {
       textDetLimitSideLen: preset.textDetLimitSideLen,
       textDetLimitType: "min",
       textDetMaxSideLimit: policy.textDetMaxSideLimit,
@@ -284,11 +291,9 @@ async function analyzeSlot(key, expectedGeneration = null) {
       textDetUnclipRatio: 1.55,
       textRecScoreThresh: preset.textRecScoreThresh
     });
-    if (!isCurrentSlotRequest(slot, generation, prepared)) return;
     slot.result = out.result;
     slot.wallMs = out.wallMs;
     slot.state = "done";
-    markDataDirty();
     setEngineStatus(`PaddleOCR bereit · ${out.mode}`, "ok");
     const metrics = out.result?.metrics || {};
     el("engineDetails").textContent = [
@@ -298,14 +303,12 @@ async function analyzeSlot(key, expectedGeneration = null) {
     ].filter(Boolean).join(" · ");
     resolveProfile(key);
   } catch (error) {
-    if (!isCurrentSlotRequest(slot, generation, prepared)) return;
     slot.error = safeError(error);
     slot.state = "error";
   } finally {
-    clearOcrInFlight({ slot: key, generation });
-    if (!isCurrentSlotRequest(slot, generation, prepared)) releasePreparedImage(prepared);
+    clearOcrInFlight();
   }
-  if (isCurrentSlotRequest(slot, generation, prepared)) renderAll();
+  renderAll();
 }
 
 async function analyzeAll() {
@@ -315,6 +318,7 @@ async function analyzeAll() {
 function resolveProfile(key) {
   const slot = slots[key];
   if (!slot.result) return;
+  currentSaved = false;
 
   let profile = slot.selectedProfileId
     ? profiles.find((candidate) => candidate.id === slot.selectedProfileId) || null
@@ -336,40 +340,61 @@ function resolveProfile(key) {
 
 async function selectProfile(key, id) {
   const slot = slots[key];
-  const generation = slot.generation;
   slot.selectedProfileId = id || "";
   slot.profile = id ? profiles.find((profile) => profile.id === id) || null : null;
-  markDataDirty();
+  currentSaved = false;
 
-  if (slot.selectedProfileId && slot.profile?.source?.type === "qr" && slot.prepared) {
-    const startedAt = performance.now();
-    const qrMatch = detectQrProfile(slot.prepared.canvas, [slot.profile], key);
-    if (!isCurrentSlotRequest(slot, generation, slot.prepared)) return;
-    slot.wallMs = performance.now() - startedAt;
-    slot.extraction = extractQrProfileFields(slot.profile, qrMatch);
-    if (qrMatch) {
-      slot.result = slot.result || {
-        items: [],
-        image: { width: slot.prepared.width, height: slot.prepared.height },
-        metrics: {}
-      };
-      slot.result.qr = { raw: qrMatch.raw, parser: qrMatch.parsed.parser };
-      slot.result.metrics = { ...(slot.result.metrics || {}), qrMs: slot.wallMs };
-    }
-    slot.state = "done";
-    comparison = slots.product.extraction && slots.vda.extraction
-      ? compareExtractions(slots.product.extraction, slots.vda.extraction)
-      : null;
+  if (!slot.prepared) {
     renderAll();
+    return;
+  }
+
+  // QR-Profile (aktuell Tesla) werden auch bei manueller Auswahl wieder über
+  // detectQrProfile geprüft. Damit fällt eine manuelle Tesla-Auswahl nicht in
+  // die normale PaddleOCR-/Textanker-Extraktion zurück.
+  if (slot.selectedProfileId && slot.profile?.source?.type === "qr") {
+    const qrStartedAt = performance.now();
+    const qrMatch = detectQrProfile(slot.prepared.canvas, [slot.profile], key);
+    if (qrMatch) {
+      slot.wallMs = performance.now() - qrStartedAt;
+      slot.result = qrResult(slot, qrMatch);
+      slot.extraction = extractQrProfileFields(slot.profile, qrMatch);
+      slot.state = "done";
+    } else {
+      slot.extraction = warningExtraction(slot.profile, "QR-Code für dieses Profil wurde nicht erkannt.");
+      slot.state = "done";
+    }
+    refreshComparison();
+    renderAll();
+    return;
+  }
+
+  if (!slot.selectedProfileId) {
+    const qrStartedAt = performance.now();
+    const qrMatch = detectQrProfile(slot.prepared.canvas, profiles, key);
+    if (qrMatch) {
+      slot.wallMs = performance.now() - qrStartedAt;
+      slot.profile = qrMatch.profile;
+      slot.result = qrResult(slot, qrMatch);
+      slot.extraction = extractQrProfileFields(qrMatch.profile, qrMatch);
+      slot.state = "done";
+      refreshComparison();
+      renderAll();
+      return;
+    }
+  }
+
+  // Wurde das Bild zuvor nur per QR gelesen, existieren keine OCR-Textzeilen.
+  // Beim Wechsel auf ein Textprofil wird deshalb einmal PaddleOCR ausgeführt.
+  if (!slot.result?.items?.length && slot.result?.qr) {
+    await analyzeSlot(key);
     return;
   }
 
   if (slot.result) {
     if (slot.selectedProfileId) {
       slot.extraction = slot.profile ? extractProfileFields(slot.result.items, slot.profile, slot.result.image) : null;
-      comparison = slots.product.extraction && slots.vda.extraction
-        ? compareExtractions(slots.product.extraction, slots.vda.extraction)
-        : null;
+      refreshComparison();
     } else {
       resolveProfile(key);
     }
@@ -379,12 +404,10 @@ async function selectProfile(key, id) {
 
 function editField(key, field, value) {
   const slot = slots[key];
-  markDataDirty();
   applyManualValue(slot.extraction, field, value);
   slot.manual = true;
-  comparison = slots.product.extraction && slots.vda.extraction
-    ? compareExtractions(slots.product.extraction, slots.vda.extraction)
-    : null;
+  currentSaved = false;
+  refreshComparison();
   renderAll();
 }
 
@@ -393,7 +416,11 @@ function renderAll() {
   renderSlot("vda");
   renderComparison(el("comparison"), comparison);
   renderLog();
-  el("saveButton").disabled = !comparison || dataRevision === lastSavedRevision;
+  const saveButton = el("saveButton");
+  saveButton.disabled = !comparison || currentSaved || saveInProgress;
+  saveButton.textContent = saveInProgress
+    ? "Wird gespeichert …"
+    : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
   el("excelButton").disabled = !records.length;
 }
 
@@ -412,19 +439,21 @@ function renderSlot(key) {
     const sourceInfo = slot.extraction?.qr
       ? "QR-Code"
       : `${slot.result?.items?.length || 0} Textzeilen`;
-    const quality = imageQualityHint(slot.prepared);
-    status.textContent = `${formatMilliseconds(slot.wallMs)} · ${sourceInfo} · ${slot.profile?.name || "Profil nicht erkannt"}${slot.extraction?.warning ? ` · ${slot.extraction.warning}` : ""}${quality ? ` · ${quality}` : ""}`;
-    status.className = `slot-status ${slot.profile && !quality ? "ok" : "warn"}`;
+    const quality = slot.prepared?.quality?.rating;
+    const qualityHint = quality && quality.level !== "ok" ? ` · Hinweis: Bild ${quality.text}` : "";
+    status.textContent = `${formatMilliseconds(slot.wallMs)} · ${sourceInfo} · ${slot.profile?.name || "Profil nicht erkannt"}${slot.extraction?.warning ? ` · ${slot.extraction.warning}` : ""}${qualityHint}`;
+    status.className = `slot-status ${slot.extraction?.warning || !slot.profile ? "warn" : "ok"}`;
   } else {
-    const quality = imageQualityHint(slot.prepared);
-    status.textContent = slot.prepared ? `Bild vorbereitet${quality ? ` · ${quality}` : ""}` : "Noch kein Bild";
-    status.className = `slot-status ${quality ? "warn" : ""}`.trim();
+    status.textContent = slot.prepared ? "Bild vorbereitet" : "Noch kein Bild";
+    status.className = "slot-status";
   }
   renderFieldEditor(el(`${key}Fields`), slot.extraction, (field, value) => editField(key, field, value));
 }
 
-function storeCurrent() {
-  if (!comparison || dataRevision === lastSavedRevision) return;
+async function storeCurrent() {
+  if (!comparison || currentSaved || saveInProgress) return;
+  saveInProgress = true;
+  renderAll();
   const record = {
     timestamp: new Date().toISOString(),
     status: comparison.status,
@@ -436,11 +465,14 @@ function storeCurrent() {
     manual: slots.product.manual || slots.vda.manual
   };
   try {
-    records = saveRecord(record);
-    lastSavedRevision = dataRevision;
-    renderAll();
+    records = await saveRecord(record);
+    currentSaved = true;
   } catch (error) {
-    alert(`Datensatz konnte nicht gespeichert werden. ${safeError(error)}`);
+    currentSaved = false;
+    alert(`Datensatz konnte nicht gespeichert werden: ${safeError(error)}`);
+  } finally {
+    saveInProgress = false;
+    renderAll();
   }
 }
 
@@ -450,30 +482,44 @@ function values(extraction) {
   return output;
 }
 
+async function loadStoredRecords() {
+  try {
+    records = await loadRecords();
+  } catch (error) {
+    console.warn("Scanprotokoll konnte nicht geladen werden:", error);
+    records = [];
+  }
+  renderAll();
+}
+
+function refreshComparison() {
+  comparison = slots.product.extraction && slots.vda.extraction
+    ? compareExtractions(slots.product.extraction, slots.vda.extraction)
+    : null;
+}
+
+function qrResult(slot, qrMatch) {
+  return {
+    items: [],
+    image: { width: slot.prepared.width, height: slot.prepared.height },
+    metrics: { qrMs: slot.wallMs },
+    qr: { raw: qrMatch.raw, parser: qrMatch.parsed.parser }
+  };
+}
+
+function warningExtraction(profile, warning) {
+  return { profile, anchorMatch: null, transform: null, fields: {}, overlays: [], warning };
+}
+
 function renderLog() {
   el("logCount").textContent = `${records.length} Datensätze`;
-  const head = el("logHead");
   const body = el("logBody");
-  head.replaceChildren();
   body.replaceChildren();
-
-  const headerRow = document.createElement("tr");
-  for (const column of LOG_COLUMNS) {
-    const th = document.createElement("th");
-    th.textContent = column.key;
-    headerRow.append(th);
-  }
-  head.append(headerRow);
-
-  for (const values of recordsToRows(records.slice(0, 30))) {
+  records.slice(0, 30).forEach((record) => {
     const row = document.createElement("tr");
-    for (const column of LOG_COLUMNS) {
-      const cell = document.createElement("td");
-      cell.textContent = values[column.key] || "–";
-      row.append(cell);
-    }
+    row.innerHTML = `<td>${new Date(record.timestamp).toLocaleString()}</td><td>${record.product.batch || "–"}</td><td>${record.product.drum_number || "–"}</td><td>${record.vda.batch || "–"}</td><td>${record.result}</td>`;
     body.append(row);
-  }
+  });
 }
 
 function exportDebug() {
@@ -511,21 +557,6 @@ function download(content, name, type) {
 function setEngineStatus(text, className) {
   el("engineBadge").textContent = text;
   el("engineBadge").className = `engine-badge ${className}`;
-}
-
-function markDataDirty() {
-  dataRevision += 1;
-}
-
-function isCurrentSlotRequest(slot, generation, prepared = null) {
-  if (!slot || Number(slot.generation) !== Number(generation)) return false;
-  return !prepared || slot.prepared === prepared;
-}
-
-function imageQualityHint(prepared) {
-  const rating = prepared?.quality?.rating;
-  if (!rating || rating.level === "ok") return "";
-  return `Hinweis: Bild ${rating.text}`;
 }
 
 function nextPaint() {

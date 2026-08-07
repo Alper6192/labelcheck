@@ -6,10 +6,11 @@ export function compareExtractions(product, vda) {
     .filter((key) => shouldCompare(product?.fields?.[key], vda?.fields?.[key]))
     .map((key) => compareField(key, product?.fields?.[key], vda?.fields?.[key]));
 
+  const extractionIssue = hasExtractionIssue(product) || hasExtractionIssue(vda);
   const requiredIssue = hasRequiredIssue(product) || hasRequiredIssue(vda);
   const rowIssue = rows.some((row) => row.status === "missing" || row.status === "invalid");
   const mismatch = rows.some((row) => row.status === "mismatch");
-  const needsReview = requiredIssue || rowIssue;
+  const needsReview = extractionIssue || requiredIssue || rowIssue;
   const comparedLabels = rows.map((row) => row.label).join(", ");
 
   return {
@@ -22,6 +23,11 @@ export function compareExtractions(product, vda) {
         ? "NICHT FREIGEGEBEN – Werte weichen ab."
         : `FREIGEGEBEN – ${comparedLabels || "Konfigurierte Werte"} stimmen überein.`
   };
+}
+
+function hasExtractionIssue(extraction) {
+  if (!extraction || String(extraction.warning || "").trim()) return true;
+  return !Object.keys(extraction.fields || {}).length;
 }
 
 function shouldCompare(left, right) {

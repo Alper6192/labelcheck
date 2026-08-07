@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.7",
+  "appVersion": "0.6.8",
   "exportedAt": "2026-08-07T11:11:13.203Z",
   "profiles": [
     {
@@ -1707,7 +1707,7 @@
           "Referenzbeleg",
           "Transportauftrag - Position"
         ],
-        "minEvidenceMatches": 2,
+        "minEvidenceMatches": 1,
         "excludeAliases": [
           "Alte Materialnummer"
         ],
@@ -1736,56 +1736,7 @@
           ]
         ],
         "localizeAlias": true,
-        "fallbacks": [
-          {
-            "aliases": [
-              "Referenzbeleg"
-            ],
-            "poly": [
-              [
-                0.6372,
-                0.4427
-              ],
-              [
-                0.735,
-                0.4427
-              ],
-              [
-                0.735,
-                0.4655
-              ],
-              [
-                0.6372,
-                0.4655
-              ]
-            ],
-            "localizeAlias": true
-          },
-          {
-            "aliases": [
-              "Transportauftrag - Position"
-            ],
-            "poly": [
-              [
-                0.6372,
-                0.5143
-              ],
-              [
-                0.8155,
-                0.5143
-              ],
-              [
-                0.8155,
-                0.5371
-              ],
-              [
-                0.6372,
-                0.5371
-              ]
-            ],
-            "localizeAlias": true
-          }
-        ]
+        "fallbacks": []
       },
       "fields": [
         {

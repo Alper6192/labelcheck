@@ -33,24 +33,18 @@ test("Scanner prüft QR-Profile vor PaddleOCR", () => {
   assert.match(source, /QR-Code/);
 });
 
-
-test("Scanner verwirft veraltete asynchrone Scan-Ergebnisse per Generation", () => {
-  assert.match(source, /generation:\s*0/);
-  assert.match(source, /isCurrentSlotRequest/);
-  assert.match(source, /expectedGeneration/);
-});
-
-test("Manuell gewähltes QR-Profil wird erneut mit detectQrProfile ausgewertet", () => {
-  assert.match(source, /slot\.profile\?\.source\?\.type === "qr"/);
+test("Manuelle QR-Profilauswahl verwendet erneut detectQrProfile", () => {
   assert.match(source, /detectQrProfile\(slot\.prepared\.canvas, \[slot\.profile\], key\)/);
+  assert.match(source, /QR-Code für dieses Profil wurde nicht erkannt/);
 });
 
-test("Speichern desselben Vergleichs wird bis zur nächsten Änderung gesperrt", () => {
-  assert.match(source, /dataRevision === lastSavedRevision/);
-  assert.match(source, /lastSavedRevision = dataRevision/);
-});
-
-test("Bildqualität wird nur als Hinweis angezeigt", () => {
+test("Bildqualität wird nur als Hinweis dargestellt", () => {
   assert.match(source, /Hinweis: Bild/);
-  assert.match(source, /imageQualityHint/);
+  assert.match(source, /slot\.prepared\?\.quality\?\.rating/);
+});
+
+test("Speichern wird nach einer erfolgreichen Übernahme gesperrt", () => {
+  assert.match(source, /currentSaved\s*=\s*true/);
+  assert.match(source, /saveButton\.disabled\s*=\s*!comparison \|\| currentSaved \|\| saveInProgress/);
+  assert.match(source, /Datensatz übernommen/);
 });

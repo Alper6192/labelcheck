@@ -16,25 +16,36 @@ export function autoSelectProfile(items, profiles, role) {
   const eligible = profiles.filter((profile) => profile.role === role && profile.source?.type !== "qr");
   let best = null;
   for (const profile of eligible) {
-    if (!profilePassesDetection(items, profile)) continue;
+    const detection = evaluateProfileDetection(items, profile);
+    if (!detection.allowed) continue;
+
     const anchorMatch = findProfileAnchor(items, profile);
     const score = anchorMatch ? anchorMatch.matchScore : 0;
-    if (!best || score > best.score) best = { profile, anchorMatch, score };
+    const minScore = Math.max(0.55, Number(profile.detection?.minScore || 0));
+    if (score < minScore) continue;
+    if (!best || score > best.score) best = { profile, anchorMatch, score, detection };
   }
-  if (role === "product" && eligible.length === 1 && (!best || best.score < 0.35)) {
+  if (role === "product" && eligible.length === 1 && !best) {
     return { profile: eligible[0], anchorMatch: null, score: 0, manual: true };
   }
-  return best?.score >= 0.55 ? best : null;
+  return best;
 }
 
 export function extractProfileFields(items, profile, imageSize) {
   if (!profile) return emptyExtraction();
-  const anchorMatch = findProfileAnchor(items, profile);
-  if (!anchorMatch) {
-    return { ...emptyExtraction(), profile, warning: "Profilanker wurde nicht erkannt." };
+
+  const excluded = findExcludedAlias(items, profile.detection?.excludeAliases || []);
+  if (excluded) {
+    return { ...emptyExtraction(), profile, warning: `Profil ausgeschlossen: „${excluded.alias}“ wurde erkannt.` };
   }
 
-  const transform = buildTransform(anchorMatch.referencePoly || profile.anchor.poly, anchorMatch.item.poly, imageSize);
+  const anchorMatch = findProfileAnchor(items, profile);
+  const minAnchorScore = 0.55;
+  if (!anchorMatch || anchorMatch.matchScore < minAnchorScore) {
+    return { ...emptyExtraction(), profile, warning: "Profilanker wurde nicht sicher erkannt." };
+  }
+
+  const transform = buildTransform(anchorMatch.referencePoly, anchorMatch.item.poly, imageSize);
   const fields = {};
   const candidates = {};
   const expectedPolys = {};
@@ -82,10 +93,10 @@ export function extractProfileFields(items, profile, imageSize) {
 }
 
 export function extractQrProfileFields(profile, qrMatch) {
-  if (!profile) return emptyExtraction();
+  if (!profile || !qrMatch?.parsed) return emptyExtraction();
   const fields = {};
   for (const field of profile.fields || []) {
-    const raw = String(qrMatch?.parsed?.fields?.[field.key] || "");
+    const raw = String(qrMatch.parsed.fields?.[field.key] || "");
     const value = normalizeFieldValue(field.key, raw, field);
     fields[field.key] = {
       key: field.key,
@@ -97,7 +108,7 @@ export function extractQrProfileFields(profile, qrMatch) {
       required: Boolean(field.required),
       compare: Boolean(field.compare),
       source: raw ? "qr" : "missing",
-      poly: qrMatch?.poly || []
+      poly: qrMatch.poly || []
     };
   }
   return {
@@ -105,11 +116,11 @@ export function extractQrProfileFields(profile, qrMatch) {
     anchorMatch: null,
     transform: null,
     fields,
-    overlays: qrMatch?.poly?.length
+    overlays: qrMatch.poly?.length
       ? [{ key: "anchor", label: "QR", poly: qrMatch.poly, item: null }]
       : [],
-    warning: qrMatch?.parsed ? "" : "QR-Code des gewählten Profils wurde nicht erkannt.",
-    qr: qrMatch?.parsed ? { parser: qrMatch.parsed.parser, raw: qrMatch.raw } : null
+    warning: "",
+    qr: { parser: qrMatch.parsed.parser, raw: qrMatch.raw }
   };
 }
 
@@ -167,164 +178,80 @@ function emptyExtraction() {
 }
 
 function findProfileAnchor(items, profile) {
-  const primary = profile?.anchor || {};
-  const anchors = [primary, ...(Array.isArray(primary.fallbacks) ? primary.fallbacks : [])];
+  const anchors = [profile?.anchor, ...(profile?.anchor?.fallbacks || [])].filter((anchor) =>
+    Array.isArray(anchor?.aliases) && anchor.aliases.length && Array.isArray(anchor?.poly) && anchor.poly.length >= 4
+  );
   let best = null;
-  const strongThreshold = anchors.length > 1 ? 0.62 : 0.55;
-
   for (let index = 0; index < anchors.length; index += 1) {
     const anchor = anchors[index];
-    const match = findAnchor(items, anchor?.aliases || [], anchor);
+    const match = findAnchor(items, anchor.aliases, { localizeAlias: anchor.localizeAlias === true });
     if (!match) continue;
-    const enriched = {
+    const candidate = {
       ...match,
       referencePoly: anchor.poly,
-      anchorIndex: index,
-      fallback: index > 0
+      fallback: index > 0,
+      anchorIndex: index
     };
-    // Der Hauptanker wird bevorzugt. Fallbacks greifen nur, wenn der jeweils
-    // vorherige Anker nicht hinreichend sicher erkannt wurde. So bleibt die
-    // Geometrie auch bei mehreren möglichen Beschriftungen deterministisch.
-    if (enriched.matchScore >= strongThreshold) return enriched;
-    if (!best || enriched.matchScore > best.matchScore) best = enriched;
+    if (!best || candidate.matchScore > best.matchScore) best = candidate;
   }
   return best;
 }
 
-function profilePassesDetection(items, profile) {
-  const detection = profile?.detection;
-  if (!detection) return true;
-  const minScore = Number(detection.minScore || 0.62);
-
-  for (const alias of detection.excludeAliases || []) {
-    const match = findAnchor(items, [alias], { localizeAlias: true });
-    if (match?.matchScore >= minScore) return false;
-  }
-
-  const evidenceAliases = detection.evidenceAliases || [];
-  if (!evidenceAliases.length) return true;
-  let matches = 0;
-  for (const alias of evidenceAliases) {
-    const match = findAnchor(items, [alias], { localizeAlias: true });
-    if (match?.matchScore >= minScore) matches += 1;
-  }
-  return matches >= Number(detection.minEvidenceMatches || 1);
-}
-
-function findAnchor(items, aliases, anchorOptions = {}) {
+function findAnchor(items, aliases, options = {}) {
   let best = null;
-  for (const sourceItem of anchorCandidates(items)) {
+  for (const item of items || []) {
+    const text = normalizeText(item.text);
     for (const alias of aliases) {
       const target = normalizeText(alias);
       if (!target) continue;
-      const item = anchorOptions?.localizeAlias === true
-        ? localizeAnchorAlias(sourceItem, alias) || sourceItem
-        : sourceItem;
-      const text = normalizeText(item.text);
       const similarity = anchorSimilarity(text, target);
       const score = similarity * 0.8 + Number(item.score || 0) * 0.2;
-      if (!best || score > best.matchScore) best = { item, alias, matchScore: score };
+      let matchedItem = item;
+      if (options.localizeAlias && similarity >= 0.9) {
+        const range = findAliasRange(item.text, alias);
+        if (range) {
+          matchedItem = {
+            ...item,
+            text: String(item.text || "").slice(range.start, range.end).trim() || String(alias),
+            poly: approximateTextFragmentPoly(item.poly, String(item.text || "").length, range.start, range.end),
+            sourceText: String(item.text || "")
+          };
+        }
+      }
+      if (!best || score > best.matchScore) best = { item: matchedItem, alias, matchScore: score };
     }
   }
   return best;
 }
 
-// PaddleOCR fasst bei langen H-Satz-Zeilen gelegentlich alles zu einer einzigen
-// Textbox zusammen, z. B. "H-Sätze ... H334 Stor.Cl./WPC 11 /1". Würden wir
-// die komplette Box als Anker verwenden, läge deren Mittelpunkt viel zu weit
-// links und sämtliche Feldzonen würden verschoben. Liegt der Alias als Teiltext
-// in einer längeren OCR-Zeile, schneiden wir deshalb virtuell nur den Alias aus
-// und verwenden dessen angenäherte Geometrie als Anker.
-function localizeAnchorAlias(item, alias) {
-  const raw = String(item?.text || "");
-  if (!raw || !item?.poly) return null;
-  const source = normalizeTextWithMap(raw);
+function evaluateProfileDetection(items, profile) {
+  const detection = profile?.detection;
+  if (!detection) return { allowed: true, evidenceMatches: 0, excluded: null };
+
+  const excluded = findExcludedAlias(items, detection.excludeAliases || []);
+  if (excluded) return { allowed: false, evidenceMatches: 0, excluded };
+
+  const aliases = detection.evidenceAliases || [];
+  const evidenceMatches = aliases.filter((alias) => hasAliasEvidence(items, alias)).length;
+  const minEvidenceMatches = Math.max(0, Number(detection.minEvidenceMatches || 0));
+  return {
+    allowed: evidenceMatches >= minEvidenceMatches,
+    evidenceMatches,
+    excluded: null
+  };
+}
+
+function findExcludedAlias(items, aliases) {
+  for (const alias of aliases || []) {
+    if (hasAliasEvidence(items, alias)) return { alias };
+  }
+  return null;
+}
+
+function hasAliasEvidence(items, alias) {
   const target = normalizeText(alias);
-  if (!target || source.normalized === target) return null;
-  const normalizedStart = source.normalized.indexOf(target);
-  if (normalizedStart < 0) return null;
-  const normalizedEnd = normalizedStart + target.length - 1;
-  const start = source.map[normalizedStart]?.start ?? 0;
-  const end = source.map[normalizedEnd]?.end ?? raw.length;
-  return {
-    ...item,
-    text: raw.slice(start, end),
-    poly: approximateTextFragmentPoly(item.poly, raw.length, start, end),
-    sourceText: raw,
-    anchorFragment: true
-  };
-}
-
-function normalizeTextWithMap(value) {
-  const raw = String(value || "");
-  let normalized = "";
-  const map = [];
-  for (let index = 0; index < raw.length; index += 1) {
-    const upper = raw[index].toUpperCase().normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^A-Z0-9]/g, "");
-    for (const char of upper) {
-      normalized += char;
-      map.push({ start: index, end: index + 1 });
-    }
-  }
-  return { normalized, map };
-}
-
-// PaddleOCR trennt kurze Beschriftungen gelegentlich in zwei Boxen, z. B.
-// "Stor.Cl." + "/ WPC" oder "Alte" + "Materialnummer". Für die
-// Profilerkennung bilden wir deshalb zusätzlich benachbarte Textboxen derselben
-// Zeile zu einem virtuellen Ankerkandidaten zusammen.
-function anchorCandidates(items) {
-  const source = (items || []).filter((item) => item?.text && normalizePoly(item.poly).length >= 4);
-  const candidates = [...source];
-  const pairs = [];
-  for (let i = 0; i < source.length; i += 1) {
-    for (let j = 0; j < source.length; j += 1) {
-      if (i === j || !canJoinAnchorItems(source[i], source[j])) continue;
-      const pair = joinAnchorItems(source[i], source[j]);
-      pairs.push(pair);
-      candidates.push(pair);
-    }
-  }
-
-  // Auch drei kleine Boxen zulassen, falls z. B. "Stor.Cl.", "/" und "WPC"
-  // getrennt erkannt werden.
-  for (const pair of pairs) {
-    for (const item of source) {
-      if (pair.sourceItems?.includes(item) || !canJoinAnchorItems(pair, item)) continue;
-      candidates.push(joinAnchorItems(pair, item));
-    }
-  }
-  return candidates;
-}
-
-function canJoinAnchorItems(left, right) {
-  const a = boundsFromPoly(left.poly);
-  const b = boundsFromPoly(right.poly);
-  if (b.x < a.x) return false;
-  const verticalDistance = Math.abs((a.y + a.height / 2) - (b.y + b.height / 2));
-  const lineTolerance = Math.max(10, Math.max(a.height, b.height) * 0.75);
-  if (verticalDistance > lineTolerance) return false;
-  const gap = b.x - (a.x + a.width);
-  const maxGap = Math.max(42, Math.max(a.height, b.height) * 4.5);
-  return gap >= -Math.max(a.height, b.height) * 0.35 && gap <= maxGap;
-}
-
-function joinAnchorItems(left, right) {
-  const a = boundsFromPoly(left.poly);
-  const b = boundsFromPoly(right.poly);
-  const x1 = Math.min(a.x, b.x);
-  const y1 = Math.min(a.y, b.y);
-  const x2 = Math.max(a.x + a.width, b.x + b.width);
-  const y2 = Math.max(a.y + a.height, b.y + b.height);
-  return {
-    text: `${left.text} ${right.text}`,
-    score: (Number(left.score || 0) + Number(right.score || 0)) / 2,
-    poly: [[x1,y1],[x2,y1],[x2,y2],[x1,y2]],
-    joined: true,
-    sourceItems: [...(left.sourceItems || [left]), ...(right.sourceItems || [right])]
-  };
+  if (!target) return false;
+  return (items || []).some((item) => anchorSimilarity(normalizeText(item?.text), target) >= 0.75);
 }
 
 function anchorSimilarity(text, target) {
@@ -348,16 +275,7 @@ function anchorSimilarity(text, target) {
 function buildTransform(referenceAnchorPoly, liveAnchorPoly, imageSize) {
   const ref = polyGeometry(scaleNormalizedPoly(referenceAnchorPoly, imageSize));
   const live = polyGeometry(liveAnchorPoly);
-
-  // Die Breite einer OCR-Textbox hängt stark vom erkannten Text ab. Beim VW-
-  // Master steht z. B. "Volkswagen Sachsen GmbH", auf einem anderen Werk aber
-  // nur "Volkswagen AG". Würden wir die Boxbreite als globalen Maßstab nutzen,
-  // würden sämtliche Feldpositionen zusammengestaucht. Die Schrift-/Zeilenhöhe
-  // ist dagegen weitgehend unabhängig von der Textlänge und ist deshalb der
-  // robustere Skalierungsanker.
-  let scale = live.height / Math.max(ref.height, 1);
-  if (!Number.isFinite(scale) || scale <= 0) scale = 1;
-  scale = Math.max(0.35, Math.min(3, scale));
+  const scale = live.width / Math.max(ref.width, 1);
   return { refCenter: ref.center, liveCenter: live.center, scale, rotation: live.angle - ref.angle };
 }
 
@@ -453,16 +371,53 @@ function matchingFieldFragments(item, sourceRegex) {
 }
 
 function approximateTextFragmentPoly(poly, textLength, start, end) {
-  const bounds = boundsFromPoly(poly);
-  if (!bounds.width || !textLength || (start === 0 && end >= textLength)) return normalizePoly(poly);
-  const left = bounds.x + bounds.width * (start / textLength);
-  const right = bounds.x + bounds.width * (end / textLength);
+  const points = normalizePoly(poly);
+  if (!textLength || (start === 0 && end >= textLength) || points.length < 4) return points;
+  const from = Math.max(0, Math.min(1, start / textLength));
+  const to = Math.max(from, Math.min(1, end / textLength));
+  const [topLeft, topRight, bottomRight, bottomLeft] = points;
   return [
-    [left, bounds.y],
-    [right, bounds.y],
-    [right, bounds.y + bounds.height],
-    [left, bounds.y + bounds.height]
+    interpolatePoint(topLeft, topRight, from),
+    interpolatePoint(topLeft, topRight, to),
+    interpolatePoint(bottomLeft, bottomRight, to),
+    interpolatePoint(bottomLeft, bottomRight, from)
   ];
+}
+
+function interpolatePoint(a, b, ratio) {
+  return [
+    Number(a?.[0] || 0) + (Number(b?.[0] || 0) - Number(a?.[0] || 0)) * ratio,
+    Number(a?.[1] || 0) + (Number(b?.[1] || 0) - Number(a?.[1] || 0)) * ratio
+  ];
+}
+
+function findAliasRange(source, alias) {
+  const sourceMap = normalizedTextWithMap(source);
+  const target = normalizeText(alias);
+  if (!sourceMap.text || !target) return null;
+  const normalizedStart = sourceMap.text.indexOf(target);
+  if (normalizedStart < 0) return null;
+  const normalizedEnd = normalizedStart + target.length - 1;
+  const start = sourceMap.map[normalizedStart];
+  const last = sourceMap.map[normalizedEnd];
+  if (!Number.isInteger(start) || !Number.isInteger(last)) return null;
+  return { start, end: last + 1 };
+}
+
+function normalizedTextWithMap(value) {
+  const source = String(value || "");
+  let text = "";
+  const map = [];
+  for (let index = 0; index < source.length; index += 1) {
+    const normalized = source[index].toUpperCase().normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Z0-9]/g, "");
+    for (const char of normalized) {
+      text += char;
+      map.push(index);
+    }
+  }
+  return { text, map };
 }
 
 function deriveDrumCandidate(items, batchCandidate, field, expectedPoly) {
@@ -519,11 +474,9 @@ function polyGeometry(poly) {
   const bounds = boundsFromPoly(points);
   const a = points[0] || [bounds.x, bounds.y];
   const c = points[1] || [bounds.x + bounds.width, bounds.y];
-  const d = points[3] || [bounds.x, bounds.y + bounds.height];
   return {
     center: [bounds.x + bounds.width / 2, bounds.y + bounds.height / 2],
     width: Math.hypot(c[0] - a[0], c[1] - a[1]) || bounds.width,
-    height: Math.hypot(d[0] - a[0], d[1] - a[1]) || bounds.height,
     angle: Math.atan2(c[1] - a[1], c[0] - a[0])
   };
 }

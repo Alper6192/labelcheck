@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.6.7
+# LabelCheck PaddleOCR 0.6.8
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 
@@ -10,16 +10,13 @@ LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Pr
 - Ein erkannter Browserabsturz während OCR erzwingt beim nächsten Start automatisch den stabilen Modus.
 - Die PP-OCRv5-Modelle werden beim GitHub-Actions-Build in die Pages-Site kopiert und zur Laufzeit same-origin geladen.
 
-## Robustheit 0.6.6
+## Intern2
 
-- Neue Fotos besitzen eine interne Generation; verspätete OCR-Ergebnisse älterer Fotos werden verworfen.
-- Ein unveränderter Vergleich kann nicht versehentlich mehrfach gespeichert werden.
-- Bei auffälliger Schärfe/Belichtung erscheint nur ein Hinweis; die Freigabelogik wird dadurch nicht blockiert.
-- INTERN2 bleibt auch dann positionsstabil, wenn `Stor.Cl./WPC` mit einer langen H-Satz-Zeile in derselben OCR-Textbox erkannt wird.
+Intern2 verwendet ausschließlich `Prüflos` als Anker. Wird der Text zusammen mit einer längeren OCR-Zeile erkannt, wird nur der Teilbereich von `Prüflos` für die Geometrie verwendet. `Alte Materialnummer` schließt Intern2 ausdrücklich aus.
 
 ## Tesla
 
-Tesla-Versandlabel werden ohne PaddleOCR aus dem kleinen QR-Code links unten gelesen. Der Parser verwendet:
+Tesla-Versandlabel werden ohne PaddleOCR aus dem kleinen QR-Code links unten gelesen. Auch eine manuelle Tesla-Auswahl startet erneut die QR-Erkennung. Der Parser verwendet:
 
 - `1T` → Batch
 - `99Z` → Lieferscheinnummer
@@ -27,7 +24,9 @@ Tesla-Versandlabel werden ohne PaddleOCR aus dem kleinen QR-Code links unten gel
 
 Tesla besitzt in dieser Prüfung keine IDH; der IDH-Vergleich wird für dieses Profil übersprungen.
 
-## Excel
+## Scanprotokoll und Excel
+
+Kontrollen werden lokal in IndexedDB gespeichert; vorhandene Datensätze aus dem bisherigen localStorage werden beim ersten Start übernommen. Nach einer erfolgreichen Übernahme bleibt der Speicher-Button gesperrt, bis ein Scan, Profil oder Feld geändert beziehungsweise erneut analysiert wurde.
 
 Jede übernommene Kontrolle entspricht einer Zeile. Enthalten sind Zeit, Ergebnis, Produkt-/Lieferschein-Batch, Produkt-/Lieferschein-IDH, Produkt-/Lieferschein-Gewicht, Lieferscheinnummer und ergänzende Protokollinformationen.
 
@@ -46,7 +45,3 @@ npm run build
 ```
 
 GitHub Pages veröffentlicht den erzeugten `dist`-Ordner über GitHub Actions.
-
-## INTERN2-Anker 0.6.7
-
-INTERN2 wird nicht mehr über `Stor.Cl./WPC` positioniert. Hauptanker ist `Prüflos`; falls dieser OCR-seitig fehlt, werden `Referenzbeleg` und anschließend `Transportauftrag - Position` mit jeweils eigener Referenzgeometrie verwendet. `Alte Materialnummer` kennzeichnet INTERN1 und schließt INTERN2 bei der Auto-Erkennung aus.
