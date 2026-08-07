@@ -270,3 +270,67 @@ test("Scania-Gewicht nimmt Netto rechts und nicht Gross oder Batch-Suffix", () =
   ], profile, { width: 1000, height: 500 });
   assert.equal(separated.fields.weight.value, "1300 KG");
 });
+
+test("VW-Ankerbreite verändert bei scaleFrom height nicht den Profilmaßstab", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: {
+      aliases: ["Volkswagen AG", "Volkswagen Sachsen GmbH"],
+      scaleFrom: "height",
+      poly: [[0.2,0.1],[0.6,0.1],[0.6,0.2],[0.2,0.2]]
+    },
+    fields: [
+      { key: "delivery_note", label: "Lieferscheinnummer", required: false, compare: false,
+        regex: "^\\d{7,12}$", sourceRegex: "^\\d{7,12}$", normalizer: "digits", minOverlap: 0.02,
+        poly: [[0.2,0.4],[0.3,0.4],[0.3,0.5],[0.2,0.5]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("Volkswagen AG", .99, [[200,50],[380,50],[380,100],[200,100]]),
+    item("13026260", .99, [[90,200],[190,200],[190,250],[90,250]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.transform.scaleFrom, "height");
+  assert.ok(Math.abs(result.transform.scale - 1) < 0.05, `unerwartete VW-Skalierung ${result.transform.scale}`);
+  assert.equal(result.fields.delivery_note.value, "13026260");
+});
+
+test("Interne Lieferscheinnummer ignoriert passende Referenznummer oberhalb", () => {
+  const profile = {
+    id: "INTERN1", name: "Intern1", role: "vda", active: true,
+    anchor: { aliases: ["Alte Materialnummer"], poly: [[0.2,0.2],[0.4,0.2],[0.4,0.3],[0.2,0.3]] },
+    fields: [
+      { key: "delivery_note", label: "Lieferscheinnummer", required: false, compare: false,
+        regex: "^\\d{7,12}$", sourceRegex: "^\\d{7,12}$", normalizer: "digits",
+        minOverlap: 0.02, searchRadius: 1.25,
+        poly: [[0.6,0.55],[0.8,0.55],[0.8,0.62],[0.6,0.62]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("Alte Materialnummer", .99, [[200,100],[400,100],[400,150],[200,150]]),
+    item("2008520842", .999, [[600,210],[800,210],[800,245],[600,245]]),
+    item("1006539616 - 0001", .99, [[600,275],[840,275],[840,310],[600,310]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "1006539616");
+});
+
+test("Scania-Netto darf knapp rechts neben der Sollbox liegen und gewinnt gegen Gross", () => {
+  const profile = {
+    id: "SCANIA", name: "Scania", role: "vda", active: true,
+    anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+      sourceRegex: "^(?:\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?)$",
+      normalizer: "net_weight", searchRadius: 1.8, minOverlap: 0,
+      preferRightmost: true, preferUnit: true,
+      poly: [[0.70,0.50],[0.78,0.50],[0.78,0.60],[0.70,0.60]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("SCANIA AB (PUBL)", .99, [[100,50],[300,50],[300,90],[100,90]]),
+    item("1550", .999, [[650,250],[735,250],[735,300],[650,300]]),
+    item("1300 KG", .98, [[790,250],[910,250],[910,300],[790,300]]),
+    item("00001", .999, [[780,330],[870,330],[870,365],[780,365]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "1300 KG");
+});

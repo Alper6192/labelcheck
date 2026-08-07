@@ -45,7 +45,7 @@ export function extractProfileFields(items, profile, imageSize) {
     return { ...emptyExtraction(), profile, warning: "Profilanker wurde nicht sicher erkannt." };
   }
 
-  const transform = buildTransform(anchorMatch.referencePoly, anchorMatch.item.poly, imageSize);
+  const transform = buildTransform(anchorMatch.referencePoly, anchorMatch.item.poly, imageSize, anchorMatch.scaleFrom);
   const fields = {};
   const candidates = {};
   const expectedPolys = {};
@@ -197,6 +197,7 @@ function findProfileAnchor(items, profile) {
     const candidate = {
       ...match,
       referencePoly: anchor.poly,
+      scaleFrom: anchor.scaleFrom === "height" ? "height" : "width",
       fallback: index > 0,
       anchorIndex: index
     };
@@ -280,11 +281,18 @@ function anchorSimilarity(text, target) {
   return dice(text, target);
 }
 
-function buildTransform(referenceAnchorPoly, liveAnchorPoly, imageSize) {
+function buildTransform(referenceAnchorPoly, liveAnchorPoly, imageSize, scaleFrom = "width") {
   const ref = polyGeometry(scaleNormalizedPoly(referenceAnchorPoly, imageSize));
   const live = polyGeometry(liveAnchorPoly);
-  const scale = live.width / Math.max(ref.width, 1);
-  return { refCenter: ref.center, liveCenter: live.center, scale, rotation: live.angle - ref.angle };
+  // Einige Profile besitzen bewusst verschieden lange Textvarianten desselben
+  // Ankers (z. B. "Volkswagen Sachsen GmbH" vs. "Volkswagen AG"). In diesem
+  // Fall darf die Textbreite nicht den Maßstab des gesamten Labels bestimmen.
+  // Die Buchstabenhöhe ist von der Alias-Länge unabhängig und liefert dafür
+  // den deutlich stabileren Skalierungsfaktor.
+  const scale = scaleFrom === "height"
+    ? live.height / Math.max(ref.height, 1)
+    : live.width / Math.max(ref.width, 1);
+  return { refCenter: ref.center, liveCenter: live.center, scale, rotation: live.angle - ref.angle, scaleFrom };
 }
 
 function transformPoly(normalized, transform, imageSize) {
@@ -317,7 +325,19 @@ function chooseCandidate(items, expectedPoly, field) {
       if (overlap < minOverlap) continue;
       if (distance > radius && overlap <= 0) continue;
       const proximity = Math.max(0, 1 - distance / radius);
-      const score = overlap * 0.55 + proximity * 0.25 + Number(fragment.score || 0) * 0.2;
+      let score = overlap * 0.55 + proximity * 0.25 + Number(fragment.score || 0) * 0.2;
+
+      // Bei Gross/Net-Zeilen steht der Nettowert rechts. OCR kann die Zeile als
+      // einen Text oder als zwei getrennte Texte liefern. Profile können deshalb
+      // gezielt den rechten Kandidaten und einen Kandidaten mit Einheit bevorzugen.
+      if (field.preferRightmost) {
+        const rightness = Math.max(0, Math.min(1, 0.5 + dx / Math.max(1, radius * 2)));
+        score += rightness * 0.22;
+      }
+      if (field.preferUnit && /\b(?:KG|KGM|G|L|LTR)\b/i.test(String(fragment.text || ""))) {
+        score += 0.35;
+      }
+
       if (!best || score > best.selectionScore) best = { ...fragment, selectionScore: score };
     }
   }
@@ -476,9 +496,11 @@ function polyGeometry(poly) {
   const bounds = boundsFromPoly(points);
   const a = points[0] || [bounds.x, bounds.y];
   const c = points[1] || [bounds.x + bounds.width, bounds.y];
+  const d = points[3] || [bounds.x, bounds.y + bounds.height];
   return {
     center: [bounds.x + bounds.width / 2, bounds.y + bounds.height / 2],
     width: Math.hypot(c[0] - a[0], c[1] - a[1]) || bounds.width,
+    height: Math.hypot(d[0] - a[0], d[1] - a[1]) || bounds.height,
     angle: Math.atan2(c[1] - a[1], c[0] - a[0])
   };
 }

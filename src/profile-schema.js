@@ -189,13 +189,15 @@ function normalizeAnchor(anchor) {
       : [],
     poly: normalizeNormalizedPoly(anchor?.poly),
     localizeAlias: anchor?.localizeAlias === true,
+    scaleFrom: anchor?.scaleFrom === "height" ? "height" : "width",
     fallbacks: Array.isArray(anchor?.fallbacks)
       ? anchor.fallbacks.map((fallback) => ({
           aliases: Array.isArray(fallback?.aliases)
             ? fallback.aliases.map((value) => String(value).trim()).filter(Boolean)
             : [],
           poly: normalizeNormalizedPoly(fallback?.poly),
-          localizeAlias: fallback?.localizeAlias === true
+          localizeAlias: fallback?.localizeAlias === true,
+          scaleFrom: fallback?.scaleFrom === "height" ? "height" : "width"
         })).filter((fallback) => fallback.aliases.length && fallback.poly.length >= 4)
       : []
   };

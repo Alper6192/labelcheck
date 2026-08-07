@@ -110,8 +110,8 @@ test("Scania-Gewicht verwendet Netto-Logik und räumliche Überlappung", () => {
   const scania = readConfig().profiles.find((profile) => profile.id === "SCANIA");
   const weight = scania?.fields?.find((field) => field.key === "weight");
   assert.equal(weight?.normalizer, "net_weight");
-  assert.equal(weight?.minOverlap, 0.05);
-  assert.equal(weight?.searchRadius, 1.2);
+  assert.equal(weight?.minOverlap, 0);
+  assert.equal(weight?.searchRadius, 1.8);
 });
 
 test("Seat akzeptiert 5-stellige IDH und keine 9-stellige Lieferscheinnummer als IDH", () => {
@@ -120,4 +120,34 @@ test("Seat akzeptiert 5-stellige IDH und keine 9-stellige Lieferscheinnummer als
   assert.equal(idh?.regex, "^\\d{5,8}$");
   assert.equal(idh?.sourceRegex, "^\\d{5,8}$");
   assert.equal(idh?.minOverlap, 0.05);
+});
+
+test("VW skaliert bei unterschiedlich langen Ankertexten über die Ankerhöhe", () => {
+  const vw = readConfig().profiles.find((profile) => profile.id === "VW");
+  assert.equal(vw?.anchor?.scaleFrom, "height");
+  assert.equal(vw?.fields?.find((field) => field.key === "delivery_note")?.minOverlap, 0.02);
+});
+
+test("Interne Profile binden die Lieferscheinnummer räumlich an ihren Feldbereich", () => {
+  const raw = readConfig();
+  for (const id of ["INTERN1", "INTERN2"]) {
+    const field = raw.profiles.find((profile) => profile.id === id)?.fields?.find((entry) => entry.key === "delivery_note");
+    assert.equal(field?.minOverlap, 0.02, id);
+    assert.equal(field?.searchRadius, 1.25, id);
+  }
+});
+
+test("Scania bevorzugt beim Gewicht den rechten Wert mit Einheit", () => {
+  const scania = readConfig().profiles.find((profile) => profile.id === "SCANIA");
+  const field = scania?.fields?.find((entry) => entry.key === "weight");
+  assert.equal(field?.minOverlap, 0);
+  assert.equal(field?.preferRightmost, true);
+  assert.equal(field?.preferUnit, true);
+});
+
+test("Schema-Normalisierung erhält VWs height-Skalierung", () => {
+  const raw = readConfig();
+  const normalized = normalizeProfileConfig(raw, String(raw.appVersion || ""));
+  const vw = normalized.profiles.find((profile) => profile.id === "VW");
+  assert.equal(vw?.anchor?.scaleFrom, "height");
 });

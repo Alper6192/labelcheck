@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.9",
+  "appVersion": "0.6.10",
   "exportedAt": "2026-08-07T11:11:13.203Z",
   "profiles": [
     {
@@ -1119,8 +1119,10 @@
             ]
           ],
           "digits": 4,
-          "searchRadius": 1.2,
-          "minOverlap": 0.05
+          "searchRadius": 1.8,
+          "minOverlap": 0,
+          "preferRightmost": true,
+          "preferUnit": true
         },
         {
           "key": "delivery_note",
@@ -1182,7 +1184,8 @@
           ]
         ],
         "localizeAlias": false,
-        "fallbacks": []
+        "fallbacks": [],
+        "scaleFrom": "height"
       },
       "fields": [
         {
@@ -1293,7 +1296,9 @@
               0.1785383331368344,
               0.43061707442043945
             ]
-          ]
+          ],
+          "minOverlap": 0.02,
+          "searchRadius": 1.35
         }
       ]
     },
@@ -1695,7 +1700,9 @@
               0.5825197186654684,
               0.5706909797608596
             ]
-          ]
+          ],
+          "minOverlap": 0.02,
+          "searchRadius": 1.25
         }
       ]
     },
@@ -1849,7 +1856,9 @@
               0.6334275098842659,
               0.5850862918159565
             ]
-          ]
+          ],
+          "minOverlap": 0.02,
+          "searchRadius": 1.25
         }
       ]
     },

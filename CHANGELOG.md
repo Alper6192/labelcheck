@@ -1,9 +1,10 @@
-# 0.6.9
+# 0.6.10
 
-- Lieferscheinnummern werden nicht mehr in kürzere Teilnummern zerlegt.
-- VW: IDH ist in der untersten kombinierten Zahlenzeile explizit die letzten 7 Ziffern.
-- Scania: Gewichtslogik bevorzugt den Netto-Wert rechts; Gross-Wert und 00001-Batch-Suffix werden ausgeschlossen.
-- Seat: 9-stellige Lieferscheinnummern können nicht mehr als IDH-Fragmente dienen; 5-stellige IDH-Werte werden unterstützt.
+- VW: Profilskalierung nutzt bei unterschiedlich langen Volkswagen-Ankern die Ankerhöhe statt der Textbreite.
+- INTERN1/INTERN2: Lieferscheinnummer ist räumlich an den eingelernten unteren Bereich gebunden; Referenzbelegnummern oberhalb werden nicht mehr übernommen.
+- Scania: Gross/Net-Zeile bevorzugt den rechten Nettowert und Kandidaten mit Gewichtseinheit; knapp außerhalb der Sollbox liegende Netto-Werte bleiben zulässig.
+
+# 0.6.9
 
 - Aktuelle Nutzerkonfiguration als Basis übernommen.
 - INTERN2: ausschließlich `Prüflos` als Hauptanker; `Alte Materialnummer` schließt das Profil aus.
