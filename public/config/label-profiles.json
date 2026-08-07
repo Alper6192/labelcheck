@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "appVersion": "0.6.12",
-  "exportedAt": "2026-08-07T18:45:48.717Z",
+  "exportedAt": "2026-08-07T18:10:58.421Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1113,8 +1113,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?\\s*K(?:G)?$",
-          "sourceRegex": "^(?:\\d+(?:[.,]\\d+)?\\s*K(?:G)?|\\d+(?:[.,]\\d+)?\\s*[/|I]\\s*\\d+(?:[.,]\\d+)?\\s*K(?:G)?)$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^(?:\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?)$",
           "normalizer": "net_weight",
           "poly": [
             [
@@ -1288,8 +1288,8 @@
           "required": true,
           "compare": true,
           "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?\\s*(?:KGM|LTR)$",
-          "normalizer": "",
+          "sourceRegex": "^(?:\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?|\\d+(?:[.,]\\d+)?\\s*[/|I]\\s*\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?)$",
+          "normalizer": "net_weight",
           "poly": [
             [
               0.7161492259055263,
