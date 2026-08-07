@@ -153,6 +153,14 @@ export function normalizeFieldValue(key, value, field = {}) {
   if (normalizer === "weight") {
     return text.replace(/,/g, ".").replace(/\bKGM\b/g, "KG").replace(/\s+/g, " ");
   }
+  if (normalizer === "net_weight") {
+    const normalized = text.replace(/,/g, ".").replace(/\bKGM\b/g, "KG").replace(/\s+/g, " ");
+    const values = Array.from(normalized.matchAll(/(\d+(?:\.\d+)?)(?:\s*(KG|G|L|LTR))?/g));
+    if (!values.length) return normalized;
+    const match = values[values.length - 1];
+    const unit = match[2] === "LTR" ? "L" : (match[2] || (normalized.includes("KG") ? "KG" : ""));
+    return `${match[1]}${unit ? ` ${unit}` : ""}`;
+  }
   return text;
 }
 
@@ -294,6 +302,7 @@ function chooseCandidate(items, expectedPoly, field) {
   const cx = expected.x + expected.width / 2;
   const cy = expected.y + expected.height / 2;
   const radius = Math.max(expected.width, expected.height) * Number(field.searchRadius || 1.8) + 28;
+  const minOverlap = Math.max(0, Math.min(1, Number(field.minOverlap || 0)));
   const sourceRegex = field.sourceRegex || field.regex;
   let best = null;
   for (const item of items || []) {
@@ -305,6 +314,7 @@ function chooseCandidate(items, expectedPoly, field) {
       const dx = (b.x + b.width / 2) - cx;
       const dy = (b.y + b.height / 2) - cy;
       const distance = Math.hypot(dx, dy);
+      if (overlap < minOverlap) continue;
       if (distance > radius && overlap <= 0) continue;
       const proximity = Math.max(0, 1 - distance / radius);
       const score = overlap * 0.55 + proximity * 0.25 + Number(fragment.score || 0) * 0.2;
@@ -334,7 +344,12 @@ function matchingFieldFragments(item, sourceRegex) {
     });
   };
 
+  // Wenn PaddleOCR den Feldwert bereits vollständig und gültig erkannt hat,
+  // darf er nicht in kürzere Teilnummern zerlegt werden. Genau das führte z. B.
+  // dazu, dass bei Lieferscheinnummern eine Ziffer am Anfang/Ende abgeschnitten
+  // wurde, obwohl die vollständige Nummer korrekt im OCR-Ergebnis vorhanden war.
   add(0, text.length);
+  if (fragments.length) return fragments;
 
   const words = Array.from(text.matchAll(/\S+/g));
   for (let startIndex = 0; startIndex < words.length; startIndex += 1) {
@@ -345,28 +360,15 @@ function matchingFieldFragments(item, sourceRegex) {
     }
   }
 
-  // Zusätzliche atomare Teile erlauben Werte aus kombinierten Zeilen wie
-  // "D561001475:00001" oder "13023444 3103560".
+  // Atomare Teile bleiben erlaubt, damit kombinierte OCR-Zeilen wie
+  // "D561001475:00001" oder "13023444 3103560" sauber getrennt werden.
   for (const part of text.matchAll(/[A-Z0-9]+(?:[.,-][A-Z0-9]+)*/gi)) {
     add(part.index, part.index + part[0].length);
   }
 
-  // VW und ähnliche Etiketten werden von OCR gelegentlich als eine einzige
-  // Ziffernfolge ohne Leerzeichen erkannt (z. B. 130234443103560). Wir bilden
-  // deshalb aus längeren Ziffernfolgen kurze Teilkandidaten. add() lässt nur
-  // diejenigen durch, die zum jeweiligen Feld-RegEx passen; die Geometrie
-  // entscheidet anschließend zwischen Lieferscheinnummer und IDH.
-  for (const run of text.matchAll(/\d+/g)) {
-    const digits = run[0];
-    if (digits.length <= 8) continue;
-    const maxLength = Math.min(12, digits.length);
-    for (let length = 4; length <= maxLength; length += 1) {
-      for (let offset = 0; offset + length <= digits.length; offset += 1) {
-        add(run.index + offset, run.index + offset + length);
-      }
-    }
-  }
-
+  // Keine beliebigen gleitenden Ziffernfenster mehr. Diese erzeugten aus einer
+  // fremden 9-stelligen Nummer künstlich gültige 6- bis 8-stellige IDH-Werte.
+  // Sonderfälle wie VW werden stattdessen explizit im Profil beschrieben.
   return fragments;
 }
 

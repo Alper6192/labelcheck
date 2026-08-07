@@ -96,3 +96,28 @@ test("Schema-Normalisierung erhält die Intern2-Erkennungsregeln", () => {
   assert.ok(profile?.detection?.excludeAliases?.includes("Alte Materialnummer"));
   assert.equal(profile?.detection?.minScore, 0.62);
 });
+
+test("VW verwendet für die IDH die letzten 7 Ziffern der untersten Zahlenzeile", () => {
+  const vw = readConfig().profiles.find((profile) => profile.id === "VW");
+  const idh = vw?.fields?.find((field) => field.key === "idh");
+  assert.equal(idh?.normalizer, "last_digits");
+  assert.equal(idh?.digits, 7);
+  assert.equal(idh?.regex, "^\\d{7}$");
+  assert.match(idh?.sourceRegex || "", /\\d\{7,8\}/);
+});
+
+test("Scania-Gewicht verwendet Netto-Logik und räumliche Überlappung", () => {
+  const scania = readConfig().profiles.find((profile) => profile.id === "SCANIA");
+  const weight = scania?.fields?.find((field) => field.key === "weight");
+  assert.equal(weight?.normalizer, "net_weight");
+  assert.equal(weight?.minOverlap, 0.05);
+  assert.equal(weight?.searchRadius, 1.2);
+});
+
+test("Seat akzeptiert 5-stellige IDH und keine 9-stellige Lieferscheinnummer als IDH", () => {
+  const seat = readConfig().profiles.find((profile) => profile.id === "SEAT");
+  const idh = seat?.fields?.find((field) => field.key === "idh");
+  assert.equal(idh?.regex, "^\\d{5,8}$");
+  assert.equal(idh?.sourceRegex, "^\\d{5,8}$");
+  assert.equal(idh?.minOverlap, 0.05);
+});

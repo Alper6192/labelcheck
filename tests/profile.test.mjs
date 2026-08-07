@@ -107,8 +107,7 @@ test("VW-IDH wird auch aus einer zusammengeklebten Ziffernzeile gewählt", () =>
     id: "VW", name: "VW", role: "vda", active: true,
     anchor: { aliases: ["Volkswagen Sachsen GmbH"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
     fields: [
-      { key: "delivery_note", label: "Lieferschein", required: false, compare: false, regex: "^\\d{8}$", sourceRegex: "^\\d{8}$", normalizer: "digits", poly: [[0.30,0.72],[0.48,0.72],[0.48,0.8],[0.30,0.8]] },
-      { key: "idh", label: "IDH", required: true, compare: true, regex: "^\\d{7}$", sourceRegex: "^\\d{7}$", normalizer: "digits", poly: [[0.55,0.72],[0.7,0.72],[0.7,0.8],[0.55,0.8]] }
+      { key: "idh", label: "IDH", required: true, compare: true, regex: "^\\d{7}$", sourceRegex: "^(?:\\d{7}|\\d{7,8}\\s*\\d{7})$", normalizer: "last_digits", digits: 7, poly: [[0.55,0.72],[0.7,0.72],[0.7,0.8],[0.55,0.8]] }
     ]
   };
   const items = [
@@ -116,7 +115,6 @@ test("VW-IDH wird auch aus einer zusammengeklebten Ziffernzeile gewählt", () =>
     item("130234443103560", .99, [[300,360],[700,360],[700,400],[300,400]])
   ];
   const result = extractProfileFields(items, profile, { width: 1000, height: 500 });
-  assert.equal(result.fields.delivery_note.value, "13023444");
   assert.equal(result.fields.idh.value, "3103560");
 });
 
@@ -192,4 +190,83 @@ test("Intern2 wird nur ohne Alte Materialnummer automatisch gewählt", () => {
     item("Alte Materialnummer", .99, [[120,220],[300,220],[300,245],[120,245]])
   ], intern2, { width: 1000, height: 500 });
   assert.match(manualExtraction.warning, /Alte Materialnummer/);
+});
+
+test("vollständige Lieferscheinnummer wird nicht in kürzere Teilnummern zerlegt", () => {
+  const profile = {
+    id: "LSN", name: "LSN", role: "vda", active: true,
+    anchor: { aliases: ["ANKER"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.2],[0.1,0.2]] },
+    fields: [{ key: "delivery_note", label: "Lieferscheinnummer", required: false, compare: false, regex: "^\\d{7,12}$", sourceRegex: "^\\d{7,12}$", normalizer: "digits", poly: [[0.2,0.4],[0.35,0.4],[0.35,0.5],[0.2,0.5]] }]
+  };
+  const result = extractProfileFields([
+    item("ANKER", .99, [[100,50],[300,50],[300,100],[100,100]]),
+    item("969711916", .99, [[200,200],[350,200],[350,250],[200,250]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "969711916");
+  assert.equal(result.fields.delivery_note.raw, "969711916");
+});
+
+test("Seat-IDH nimmt keine Teilziffern aus einer 9-stelligen Lieferscheinnummer", () => {
+  const profile = {
+    id: "SEAT", name: "Seat", role: "vda", active: true,
+    anchor: { aliases: ["SEAT"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.2],[0.1,0.2]] },
+    fields: [
+      { key: "delivery_note", label: "Lieferscheinnummer", required: false, compare: false, regex: "^\\d{7,12}$", sourceRegex: "^\\d{7,12}$", normalizer: "digits", poly: [[0.2,0.35],[0.35,0.35],[0.35,0.43],[0.2,0.43]] },
+      { key: "idh", label: "IDH", required: true, compare: true, regex: "^\\d{5,8}$", sourceRegex: "^\\d{5,8}$", normalizer: "digits", minOverlap: 0.05, poly: [[0.2,0.44],[0.32,0.44],[0.32,0.52],[0.2,0.52]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("SEAT", .99, [[100,50],[300,50],[300,100],[100,100]]),
+    item("969711916", .99, [[200,175],[350,175],[350,215],[200,215]]),
+    item("41584", .99, [[210,220],[300,220],[300,260],[210,260]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "969711916");
+  assert.equal(result.fields.idh.value, "41584");
+});
+
+test("VW-IDH ist bei der kombinierten untersten Zeile immer die letzten 7 Ziffern", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen Sachsen GmbH"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [
+      { key: "idh", label: "IDH", required: true, compare: true, regex: "^\\d{7}$", sourceRegex: "^(?:\\d{7}|\\d{7,8}\\s*\\d{7})$", normalizer: "last_digits", digits: 7, poly: [[0.55,0.72],[0.7,0.72],[0.7,0.8],[0.55,0.8]] }
+    ]
+  };
+  for (const text of ["13023444 3103560", "130234443103560", "3103560"]) {
+    const result = extractProfileFields([
+      item("Volkswagen Sachsen GmbH", .99, [[100,50],[300,50],[300,90],[100,90]]),
+      item(text, .99, [[300,360],[700,360],[700,400],[300,400]])
+    ], profile, { width: 1000, height: 500 });
+    assert.equal(result.fields.idh.value, "3103560", text);
+    assert.equal(result.fields.idh.valid, true, text);
+  }
+});
+
+test("Scania-Gewicht nimmt Netto rechts und nicht Gross oder Batch-Suffix", () => {
+  const profile = {
+    id: "SCANIA", name: "Scania", role: "vda", active: true,
+    anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+      sourceRegex: "^(?:\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?)$",
+      normalizer: "net_weight", searchRadius: 1.2, minOverlap: 0.05,
+      poly: [[0.75,0.50],[0.90,0.50],[0.90,0.60],[0.75,0.60]]
+    }]
+  };
+  const anchor = item("SCANIA AB (PUBL)", .99, [[100,50],[300,50],[300,90],[100,90]]);
+  const combined = extractProfileFields([
+    anchor,
+    item("1550 / 1300 KG", .99, [[650,250],[900,250],[900,300],[650,300]]),
+    item("00001", .99, [[780,330],[870,330],[870,365],[780,365]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(combined.fields.weight.value, "1300 KG");
+
+  const separated = extractProfileFields([
+    anchor,
+    item("1550", .99, [[620,250],[735,250],[735,300],[620,300]]),
+    item("1300 KG", .99, [[755,250],[900,250],[900,300],[755,300]]),
+    item("00001", .99, [[780,330],[870,330],[870,365],[780,365]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(separated.fields.weight.value, "1300 KG");
 });

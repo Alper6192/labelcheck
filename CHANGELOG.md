@@ -1,4 +1,9 @@
-# 0.6.8
+# 0.6.9
+
+- Lieferscheinnummern werden nicht mehr in kürzere Teilnummern zerlegt.
+- VW: IDH ist in der untersten kombinierten Zahlenzeile explizit die letzten 7 Ziffern.
+- Scania: Gewichtslogik bevorzugt den Netto-Wert rechts; Gross-Wert und 00001-Batch-Suffix werden ausgeschlossen.
+- Seat: 9-stellige Lieferscheinnummern können nicht mehr als IDH-Fragmente dienen; 5-stellige IDH-Werte werden unterstützt.
 
 - Aktuelle Nutzerkonfiguration als Basis übernommen.
 - INTERN2: ausschließlich `Prüflos` als Hauptanker; `Alte Materialnummer` schließt das Profil aus.

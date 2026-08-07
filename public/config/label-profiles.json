@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.8",
+  "appVersion": "0.6.9",
   "exportedAt": "2026-08-07T11:11:13.203Z",
   "profiles": [
     {
@@ -1098,8 +1098,8 @@
           "required": true,
           "compare": true,
           "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "normalizer": "weight",
+          "sourceRegex": "^(?:\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?)$",
+          "normalizer": "net_weight",
           "poly": [
             [
               0.8016212121212121,
@@ -1118,7 +1118,9 @@
               0.5965858277600223
             ]
           ],
-          "digits": 4
+          "digits": 4,
+          "searchRadius": 1.2,
+          "minOverlap": 0.05
         },
         {
           "key": "delivery_note",
@@ -1215,9 +1217,9 @@
           "label": "IDH",
           "required": true,
           "compare": true,
-          "regex": "^\\d{6,8}$",
-          "sourceRegex": "^\\d{6,8}$",
-          "normalizer": "digits",
+          "regex": "^\\d{7}$",
+          "sourceRegex": "^(?:\\d{7}|\\d{7,8}\\s*\\d{7})$",
+          "normalizer": "last_digits",
           "poly": [
             [
               0.411609362579786,
@@ -1235,7 +1237,8 @@
               0.411609362579786,
               0.7882708020665258
             ]
-          ]
+          ],
+          "digits": 7
         },
         {
           "key": "weight",
@@ -1967,8 +1970,8 @@
           "label": "IDH",
           "required": true,
           "compare": true,
-          "regex": "^\\d{6,8}$",
-          "sourceRegex": "^\\d{6,8}$",
+          "regex": "^\\d{5,8}$",
+          "sourceRegex": "^\\d{5,8}$",
           "normalizer": "digits",
           "poly": [
             [
@@ -1987,7 +1990,8 @@
               0.2287576219963305,
               0.4643839616871844
             ]
-          ]
+          ],
+          "minOverlap": 0.05
         },
         {
           "key": "weight",
