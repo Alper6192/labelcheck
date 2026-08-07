@@ -1,38 +1,41 @@
-# LabelCheck PaddleOCR 0.5.9
+# LabelCheck PaddleOCR 0.6.4
 
-LabelCheck erkennt Produkt- und VDA-Labels lokal im Browser und enthält einen Profileditor für Anker und Feldzonen.
+LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 
-## OCR-Laufzeit
+## Laufzeit
 
-Scanner und Profileditor verwenden dieselbe gemeinsame Engine:
+- Mobilgeräte starten standardmäßig im stabilen Modus: WASM, 1 Thread, Recognition-Batch 1, verkleinerte Bilddekodierung.
+- Desktop/Notebook startet standardmäßig im schnellen AUTO-Modus mit WebGPU/WASM.
+- Eine manuelle Moduswahl wird lokal pro Browser gespeichert.
+- Ein erkannter Browserabsturz während OCR erzwingt beim nächsten Start automatisch den stabilen Modus.
+- Die PP-OCRv5-Modelle werden beim GitHub-Actions-Build in die Pages-Site kopiert und zur Laufzeit same-origin geladen.
 
-- dedizierter Web Worker
-- `backend: "auto"`
-- WebGPU, sofern PaddleOCR/ONNX Runtime diesen Provider erfolgreich auswählt
-- WASM als Fallback
-- automatische WASM-Threadzahl (`numThreads: 0`)
-- PP-OCRv5 mobile detection und recognition
+## Tesla
 
-Die Oberfläche zeigt nach der ersten Analyse die tatsächlich gemeldeten Provider getrennt für Detektor und Erkennung. Eine bloße vorhandene WebGPU-API wird nicht mehr als erfolgreicher GPU-Einsatz ausgegeben.
+Tesla-Versandlabel werden ohne PaddleOCR aus dem kleinen QR-Code links unten gelesen. Der Parser verwendet:
+
+- `1T` → Batch
+- `99Z` → Lieferscheinnummer
+- `Q` + `3Q` → Gewicht und Einheit
+
+Tesla besitzt in dieser Prüfung keine IDH; der IDH-Vergleich wird für dieses Profil übersprungen.
+
+## Excel
+
+Jede übernommene Kontrolle entspricht einer Zeile. Enthalten sind Zeit, Ergebnis, Produkt-/Lieferschein-Batch, Produkt-/Lieferschein-IDH, Produkt-/Lieferschein-Gewicht, Lieferscheinnummer und ergänzende Protokollinformationen.
+
+Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.xlsx`.
 
 ## Profileditor
 
-`editor.html` verwaltet für jedes Profil ein separates Masterbild und OCR-Ergebnis. Eine kombinierte Zeile wie
-
-`D562707978 / 0001`
-
-wird ausgewählt und mit **Batch + Fassnummer** beiden Feldern zugeordnet. Der Scanner trennt daraus Batch und vierstellige Fassnummer über die Feldregeln.
+Masterbilder und OCR-Ergebnisse werden profilbezogen in IndexedDB auf dem jeweiligen Browser gespeichert. Sie werden nicht in die JSON eingebettet und nicht auf GitHub hochgeladen.
 
 ## Deployment
 
 ```bash
 npm install
-npm run test
+npm test
 npm run build
 ```
 
 GitHub Pages veröffentlicht den erzeugten `dist`-Ordner über GitHub Actions.
-
-## Eigene Profile und Build-Tests
-
-Ab Version 0.5.9 sind die fachlichen Extraktionstests von `public/config/label-profiles.json` getrennt. Die im Editor exportierte Profildatei darf daher beliebige eigene Kunden- und Produktprofile enthalten. Der Build prüft nur noch die technische Gültigkeit der produktiven JSON-Datei.

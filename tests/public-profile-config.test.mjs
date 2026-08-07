@@ -47,7 +47,7 @@ test("Exportierte Feldregeln verwenden bekannte Felder und gültige reguläre Au
 test("Aktuelle Nutzerkonfiguration enthält die zuletzt angelegten Profile", () => {
   const raw = readConfig();
   const ids = new Set(raw.profiles.map((profile) => profile.id));
-  for (const id of ["STELLANTIS", "MERCEDES", "HENKEL", "BMW", "SCANIA", "VW", "INTERN1", "INTERN2"]) {
+  for (const id of ["STELLANTIS", "MERCEDES", "HENKEL", "BMW", "SCANIA", "VW", "INTERN1", "INTERN2", "TESLA"]) {
     assert.ok(ids.has(id), `Aktuelles Profil ${id} fehlt.`);
   }
 });
@@ -63,4 +63,15 @@ test("Scania-Batch akzeptiert Doppelpunkt-Suffix im OCR-Rohtext", () => {
   const profile = raw.profiles.find((entry) => entry.id === "SCANIA");
   const field = profile?.fields?.find((entry) => entry.key === "batch");
   assert.equal(new RegExp(field.sourceRegex, "i").test("D561001475 :00001"), true);
+});
+
+
+test("Tesla-Profil verwendet den QR-Parser und benötigt keine IDH", () => {
+  const raw = readConfig();
+  const profile = raw.profiles.find((entry) => entry.id === "TESLA");
+  assert.equal(profile?.source?.type, "qr");
+  assert.equal(profile?.source?.parser, "tesla");
+  assert.equal(profile?.source?.region, "lower-left");
+  assert.equal(profile?.fields?.some((field) => field.key === "idh"), false);
+  assert.equal(profile?.fields?.find((field) => field.key === "delivery_note")?.required, true);
 });

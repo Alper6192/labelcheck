@@ -25,3 +25,10 @@ test("Scanner bietet einen manuellen Kompatibilitätsmodus", () => {
   assert.match(source, /setCompatibilityMode/);
   assert.match(source, /resizeDuringDecode/);
 });
+
+
+test("Scanner prüft QR-Profile vor PaddleOCR", () => {
+  assert.match(source, /detectQrProfile/);
+  assert.match(source, /extractQrProfileFields/);
+  assert.match(source, /QR-Code/);
+});

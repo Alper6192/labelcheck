@@ -1,23 +1,25 @@
 const COMPATIBILITY_KEY = "labelcheck.ocr.compatibility.v1";
+const MODE_PREFERENCE_KEY = "labelcheck.ocr.mode.preference.v1";
 const OCR_INFLIGHT_KEY = "labelcheck.ocr.inflight.v1";
 const MAX_RECOVERY_AGE_MS = 30 * 60 * 1000;
 let memoryCompatibility = false;
 let memoryReason = "";
+let memoryPreference = "";
 
 /**
  * Laufzeitstrategie für Scanner und Editor.
  *
- * Normalmodus: AUTO (WebGPU/WASM), großer Batch.
- * Kompatibilitätsmodus: ausschließlich WASM, 1 Thread, Batch 1 und kleinere
- * Scannerbilder. Der Modus wird automatisch aktiviert, wenn die vorherige
- * Seite während einer markierten OCR-Inferenz beendet/neugeladen wurde.
+ * Mobilgeräte starten standardmäßig im stabilen Kompatibilitätsmodus. Auf
+ * Desktop/Notebook bleibt AUTO aktiv. Eine manuelle Auswahl wird pro Browser
+ * gespeichert. Crash-Recovery kann jederzeit wieder auf den stabilen Modus
+ * schalten.
  */
 export function detectRuntimePolicy({ compatibilityMode = false } = {}) {
   if (compatibilityMode) {
     return {
       family: "compatibility",
       compatibilityMode: true,
-      label: "Kompatibilität · WASM/1 Thread",
+      label: "Stabil · WASM/1 Thread",
       backend: "wasm",
       numThreads: 1,
       textRecognitionBatchSize: 1,
@@ -32,7 +34,7 @@ export function detectRuntimePolicy({ compatibilityMode = false } = {}) {
   return {
     family: "default",
     compatibilityMode: false,
-    label: "AUTO · WebGPU/WASM",
+    label: "Schnell · AUTO/WebGPU/WASM",
     backend: "auto",
     numThreads: 0,
     textRecognitionBatchSize: 8,
@@ -48,13 +50,30 @@ export function getRuntimePolicy() {
   return detectRuntimePolicy({ compatibilityMode: isCompatibilityMode() });
 }
 
+export function isMobileLike(navigatorLike = globalThis.navigator) {
+  const nav = navigatorLike || {};
+  if (nav.userAgentData?.mobile === true) return true;
+  const ua = String(nav.userAgent || "");
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+  // iPadOS kann sich gegenüber Webseiten als Macintosh ausgeben.
+  if (/Macintosh/i.test(ua) && Number(nav.maxTouchPoints || 0) > 1) return true;
+  return false;
+}
+
 export function isCompatibilityMode() {
+  const preference = getModePreference();
+  if (preference === "stable") return true;
+  if (preference === "fast") return false;
+
   try {
     if (globalThis.localStorage?.getItem(COMPATIBILITY_KEY) === "1") return true;
   } catch {
     // Fallback auf den In-Memory-Status.
   }
-  return memoryCompatibility;
+  if (memoryCompatibility) return true;
+
+  // Kein Nutzerwunsch gespeichert: auf Telefonen/Tablets sofort stabil starten.
+  return isMobileLike();
 }
 
 export function getCompatibilityReason() {
@@ -64,12 +83,30 @@ export function getCompatibilityReason() {
   } catch {
     // Fallback auf den In-Memory-Status.
   }
-  return memoryReason;
+  if (memoryReason) return memoryReason;
+  if (!getModePreference() && isMobileLike()) return "mobile-default";
+  return "";
+}
+
+export function getModePreference() {
+  try {
+    const stored = globalThis.localStorage?.getItem(MODE_PREFERENCE_KEY);
+    if (stored === "stable" || stored === "fast") return stored;
+  } catch {
+    // Fallback.
+  }
+  return memoryPreference;
 }
 
 export function setCompatibilityMode(enabled, reason = "manual") {
   memoryCompatibility = Boolean(enabled);
   memoryReason = enabled ? String(reason || "manual") : "";
+
+  // Bei manueller Wahl oder Crash-Recovery soll die Entscheidung beim nächsten
+  // Besuch auf genau diesem Gerät erhalten bleiben.
+  const persistPreference = reason === "manual" || reason === "ocr-crash-recovery";
+  if (persistPreference) memoryPreference = enabled ? "stable" : "fast";
+
   try {
     if (enabled) {
       globalThis.localStorage?.setItem(COMPATIBILITY_KEY, "1");
@@ -78,9 +115,12 @@ export function setCompatibilityMode(enabled, reason = "manual") {
       globalThis.localStorage?.removeItem(COMPATIBILITY_KEY);
       globalThis.localStorage?.removeItem(`${COMPATIBILITY_KEY}:reason`);
     }
+    if (persistPreference) {
+      globalThis.localStorage?.setItem(MODE_PREFERENCE_KEY, enabled ? "stable" : "fast");
+    }
   } catch {
-    // Storage kann im Privatmodus/unter MDM gesperrt sein. Dann bleibt nur der
-    // normale Laufzeitpfad; die App darf deshalb nicht selbst scheitern.
+    // Storage kann im Privatmodus/unter MDM gesperrt sein. Dann bleibt der
+    // In-Memory-Status für die aktuelle Sitzung erhalten.
   }
 }
 

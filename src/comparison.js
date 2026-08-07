@@ -2,21 +2,30 @@ import { normalizedWeight } from "./profile-engine.js";
 
 export function compareExtractions(product, vda) {
   const keys = ["batch", "idh", "weight"];
-  const rows = keys.map((key) => compareField(key, product?.fields?.[key], vda?.fields?.[key]));
+  const rows = keys
+    .filter((key) => shouldCompare(product?.fields?.[key], vda?.fields?.[key]))
+    .map((key) => compareField(key, product?.fields?.[key], vda?.fields?.[key]));
+
   const requiredIssue = hasRequiredIssue(product) || hasRequiredIssue(vda);
   const rowIssue = rows.some((row) => row.status === "missing" || row.status === "invalid");
   const mismatch = rows.some((row) => row.status === "mismatch");
   const needsReview = requiredIssue || rowIssue;
+  const comparedLabels = rows.map((row) => row.label).join(", ");
+
   return {
     released: !needsReview && !mismatch,
     status: needsReview ? "review" : mismatch ? "rejected" : "released",
     rows,
     message: needsReview
-      ? "PRÜFUNG ERFORDERLICH – Pflichtwerte wie Batch, IDH, Gewicht oder Fassnummer fehlen bzw. sind unsicher."
+      ? "PRÜFUNG ERFORDERLICH – Pflichtwerte fehlen bzw. sind unsicher."
       : mismatch
         ? "NICHT FREIGEGEBEN – Werte weichen ab."
-        : "FREIGEGEBEN – Batch, IDH und Gewicht stimmen überein."
+        : `FREIGEGEBEN – ${comparedLabels || "Konfigurierte Werte"} stimmen überein.`
   };
+}
+
+function shouldCompare(left, right) {
+  return Boolean(left?.compare && right?.compare);
 }
 
 function hasRequiredIssue(extraction) {

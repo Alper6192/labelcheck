@@ -100,3 +100,38 @@ test("Gewicht ohne Einheit wird als Kilogramm vergleichbar", () => {
   assert.deepEqual(normalizedWeight("1550"), { number: 1550, unit: "KG", base: 1550000 });
   assert.deepEqual(normalizedWeight("1150 KGM"), { number: 1150, unit: "KG", base: 1150000 });
 });
+
+
+test("VW-IDH wird auch aus einer zusammengeklebten Ziffernzeile gewählt", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen Sachsen GmbH"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [
+      { key: "delivery_note", label: "Lieferschein", required: false, compare: false, regex: "^\\d{8}$", sourceRegex: "^\\d{8}$", normalizer: "digits", poly: [[0.30,0.72],[0.48,0.72],[0.48,0.8],[0.30,0.8]] },
+      { key: "idh", label: "IDH", required: true, compare: true, regex: "^\\d{7}$", sourceRegex: "^\\d{7}$", normalizer: "digits", poly: [[0.55,0.72],[0.7,0.72],[0.7,0.8],[0.55,0.8]] }
+    ]
+  };
+  const items = [
+    item("Volkswagen Sachsen GmbH", .99, [[100,50],[300,50],[300,90],[100,90]]),
+    item("130234443103560", .99, [[300,360],[700,360],[700,400],[300,400]])
+  ];
+  const result = extractProfileFields(items, profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "13023444");
+  assert.equal(result.fields.idh.value, "3103560");
+});
+
+test("Vergleich überspringt IDH, wenn der Lieferschein dieses Feld nicht vergleicht", () => {
+  const left = { fields: {
+    batch: { value: "D562808695", valid: true, required: true, compare: true },
+    idh: { value: "2561822", valid: true, required: true, compare: true },
+    weight: { value: "900 KG", valid: true, required: true, compare: true }
+  }};
+  const right = { fields: {
+    batch: { value: "D562808695", valid: true, required: true, compare: true },
+    weight: { value: "900 KG", valid: true, required: true, compare: true },
+    delivery_note: { value: "0013029294", valid: true, required: true, compare: false }
+  }};
+  const comparison = compareExtractions(left, right);
+  assert.equal(comparison.status, "released");
+  assert.deepEqual(comparison.rows.map((row) => row.key), ["batch", "weight"]);
+});

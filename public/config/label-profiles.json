@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.2",
-  "exportedAt": "2026-08-07T06:28:23.410Z",
+  "appVersion": "0.6.4",
+  "exportedAt": "2026-08-07T09:22:21.048702Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1807,6 +1807,56 @@
               0.5850862918159565
             ]
           ]
+        }
+      ]
+    },
+    {
+      "id": "TESLA",
+      "name": "Tesla",
+      "role": "vda",
+      "active": true,
+      "source": {
+        "type": "qr",
+        "parser": "tesla",
+        "region": "lower-left"
+      },
+      "anchor": {
+        "aliases": [
+          "Tesla"
+        ],
+        "poly": []
+      },
+      "fields": [
+        {
+          "key": "batch",
+          "label": "Batch",
+          "required": true,
+          "compare": true,
+          "regex": "^D\\d{8,10}$",
+          "sourceRegex": "^D\\d{8,10}$",
+          "normalizer": "batch",
+          "poly": []
+        },
+        {
+          "key": "weight",
+          "label": "Gewicht",
+          "required": true,
+          "compare": true,
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "normalizer": "weight",
+          "poly": [],
+          "digits": 4
+        },
+        {
+          "key": "delivery_note",
+          "label": "Lieferscheinnummer",
+          "required": true,
+          "compare": false,
+          "regex": "^\\d{7,12}$",
+          "sourceRegex": "^\\d{7,12}$",
+          "normalizer": "digits",
+          "poly": []
         }
       ]
     }

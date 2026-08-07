@@ -1,18 +1,10 @@
-# Start mit Version 0.5.9
+# Start – LabelCheck 0.6.4
 
-1. Projektinhalt in das bestehende Repository kopieren.
-2. Commit und Push ausführen.
-3. Warten, bis GitHub Actions Build und Deploy abgeschlossen hat.
-4. Scanner öffnen: `https://alper6192.github.io/labelcheck/?v=056`
-5. Editor öffnen: `https://alper6192.github.io/labelcheck/editor.html?v=056`
+1. Projektinhalt in das GitHub-Repository kopieren.
+2. `public/config/label-profiles.json` enthält den zuletzt bereitgestellten Profilstand plus Tesla.
+3. Commit und Push auf `main`.
+4. Unter GitHub Actions den Workflow **GitHub Pages veröffentlichen** vollständig durchlaufen lassen.
+5. Scanner: `https://alper6192.github.io/labelcheck/?v=064`
+6. Editor: `https://alper6192.github.io/labelcheck/editor.html?v=064`
 
-Nach der ersten Analyse steht im Status beispielsweise:
-
-- `Web Worker · WebGPU`
-- oder `Web Worker · WASM`
-
-Die Detailzeile zeigt Detektor- und Erkennungsprovider sowie deren Laufzeiten.
-
-## Batch und Fassnummer
-
-Im Profileditor die OCR-Box mit dem gesamten Text wie `D… / 0001` anklicken und **Batch + Fassnummer** wählen. Die gleiche Zone wird für beide Felder gespeichert; die Feldregeln trennen den Inhalt später automatisch.
+Auf Mobilgeräten ist der stabile OCR-Modus standardmäßig aktiv.

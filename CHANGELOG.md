@@ -1,3 +1,14 @@
+# 0.6.4
+
+- Mobilgeräte (Android, iPhone, iPad) starten standardmäßig im stabilen OCR-Modus: WASM, 1 Thread, Recognition-Batch 1 und reduzierte Bildgröße. Desktop bleibt standardmäßig im schnellen AUTO-Modus.
+- Manuelle Wahl zwischen stabilem und schnellem Modus wird pro Browser gespeichert; Crash-Recovery bleibt aktiv.
+- Tesla-Versandlabel werden vor PaddleOCR über den kleinen QR-Code links unten erkannt. Aus dem QR-Code werden Batch, Lieferscheinnummer und Gewicht gelesen; eine IDH ist bei Tesla nicht erforderlich.
+- Tesla-QR-Testmuster: Batch `D562808695`, Lieferscheinnummer `0013029294`, Gewicht `900 KG`.
+- Vergleich berücksichtigt nur Felder, die auf beiden Etiketten als Vergleichsfeld konfiguriert sind; Tesla kann deshalb ohne IDH freigegeben werden.
+- VW: zusammengeklebte Ziffernzeilen wie `130234443103560` werden positionsabhängig in Lieferscheinnummer `13023444` und IDH `3103560` zerlegt.
+- Excel enthält pro gespeicherter Kontrolle genau eine Zeile mit Zeit, Ergebnis, Batch/IDH/Gewicht von Produkt und Lieferschein sowie Lieferscheinnummer. Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.xlsx`.
+- Produktive Konfiguration baut auf dem zuletzt bereitgestellten Nutzerprofilstand auf und ergänzt das Tesla-QR-Profil.
+
 # 0.6.1
 
 - iPhone/iPad: OCR läuft im stabileren WASM-Worker statt WebGPU, mit kleinerem Recognition-Batch und reduziertem Scannerbild.

@@ -1,14 +1,62 @@
 import * as XLSX from "xlsx";
-export function exportRecords(records){
-  const rows=(records||[]).map((r,i)=>({
-    Nr:i+1,Zeitstempel:r.timestamp,Ergebnis:r.result,
-    Batch_Produkt:safe(r.product.batch),Fassnummer_Produkt:safe(r.product.drum_number),Batch_VDA:safe(r.vda.batch),
-    IDH_Produkt:safe(r.product.idh),IDH_VDA:safe(r.vda.idh),
-    Gewicht_Produkt:safe(r.product.weight),Gewicht_VDA:safe(r.vda.weight),
-    Lieferscheinnummer:safe(r.vda.delivery_note),Produktprofil:safe(r.productProfile),VDA_Profil:safe(r.vdaProfile),Manuell_korrigiert:r.manual?"Ja":"Nein"
+
+export function exportRecords(records) {
+  const rows = (records || []).map((record, index) => ({
+    Nr: index + 1,
+    Zeit: formatLocalTimestamp(record.timestamp),
+    Ergebnis: resultLabel(record),
+    "Batch Produkt": safe(record.product?.batch),
+    "Batch Lieferschein": safe(record.vda?.batch),
+    "IDH Produkt": safe(record.product?.idh),
+    "IDH Lieferschein": safe(record.vda?.idh),
+    "Gewicht Produkt": safe(record.product?.weight),
+    "Gewicht Lieferschein": safe(record.vda?.weight),
+    Lieferscheinnummer: safe(record.vda?.delivery_note),
+    "Fassnummer Produkt": safe(record.product?.drum_number),
+    Produktprofil: safe(record.productProfile),
+    Lieferscheinprofil: safe(record.vdaProfile),
+    "Manuell korrigiert": record.manual ? "Ja" : "Nein"
   }));
-  const ws=XLSX.utils.json_to_sheet(rows); ws["!cols"]=[{wch:6},{wch:24},{wch:20},...Array(11).fill({wch:20})];
-  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Etikettenprüfungen");
-  XLSX.writeFile(wb,`Etikettenpruefungen_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = [
+    { wch: 6 }, { wch: 20 }, { wch: 24 },
+    { wch: 20 }, { wch: 22 }, { wch: 18 }, { wch: 20 },
+    { wch: 20 }, { wch: 22 }, { wch: 22 }, { wch: 20 },
+    { wch: 22 }, { wch: 24 }, { wch: 20 }
+  ];
+  if (rows.length) ws["!autofilter"] = { ref: `A1:N${rows.length + 1}` };
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Kontrollen");
+  XLSX.writeFile(wb, excelFilename(new Date()));
 }
-function safe(v){const s=String(v??"");return /^[=+\-@]/.test(s)?`'${s}`:s;}
+
+export function excelFilename(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `Labelcheck_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}.xlsx`;
+}
+
+function formatLocalTimestamp(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function resultLabel(record) {
+  const status = String(record?.status || "").toLowerCase();
+  if (status === "released") return "FREIGEGEBEN";
+  if (status === "rejected") return "NICHT FREIGEGEBEN";
+  if (status === "review") return "PRÜFUNG ERFORDERLICH";
+  const message = String(record?.result || "");
+  if (message.startsWith("FREIGEGEBEN")) return "FREIGEGEBEN";
+  if (message.startsWith("NICHT FREIGEGEBEN")) return "NICHT FREIGEGEBEN";
+  if (message.startsWith("PRÜFUNG ERFORDERLICH")) return "PRÜFUNG ERFORDERLICH";
+  return message;
+}
+
+function safe(value) {
+  const text = String(value ?? "");
+  return /^[=+\-@]/.test(text) ? `'${text}` : text;
+}

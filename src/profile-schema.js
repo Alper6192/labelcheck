@@ -89,6 +89,7 @@ export function normalizeProfile(profile, index = 0) {
     name: String(profile?.name || fallback.name),
     role,
     active: profile?.active !== false,
+    source: normalizeProfileSource(profile?.source) || undefined,
     anchor: {
       aliases: Array.isArray(profile?.anchor?.aliases)
         ? profile.anchor.aliases.map((value) => String(value).trim()).filter(Boolean)
@@ -182,6 +183,15 @@ export function safeProfileId(value) {
     .toUpperCase()
     .replace(/[^A-Z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "") || "PROFILE";
+}
+
+function normalizeProfileSource(source) {
+  if (source?.type !== "qr") return null;
+  return {
+    type: "qr",
+    parser: String(source?.parser || "").trim(),
+    region: String(source?.region || "").trim()
+  };
 }
 
 function normalizeNormalizedPoly(poly) {

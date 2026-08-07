@@ -161,9 +161,11 @@ function validateConfig(config) {
   const warnings = [];
   for (const profile of config.profiles) {
     if (!profile.id) warnings.push("Ein Profil besitzt keine ID.");
-    if (!profile.anchor?.aliases?.length) warnings.push(`${profile.name}: keine Anker-Aliase.`);
-    if ((profile.anchor?.poly || []).length < 4) warnings.push(`${profile.name}: kein Ankerbereich.`);
-    for (const key of ["batch", "idh", "weight"]) {
+    const qrProfile = profile.source?.type === "qr";
+    if (!qrProfile && !profile.anchor?.aliases?.length) warnings.push(`${profile.name}: keine Anker-Aliase.`);
+    if (!qrProfile && (profile.anchor?.poly || []).length < 4) warnings.push(`${profile.name}: kein Ankerbereich.`);
+    const requiredFieldKeys = qrProfile ? ["batch", "weight", "delivery_note"] : ["batch", "idh", "weight"];
+    for (const key of requiredFieldKeys) {
       if (!findField(profile, key)) warnings.push(`${profile.name}: ${key} fehlt.`);
     }
     for (const field of profile.fields || []) {

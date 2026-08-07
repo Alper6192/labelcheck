@@ -53,7 +53,7 @@ export function renderFieldEditor(container, extraction, onChange) {
   container.replaceChildren();
   const keys=["batch","idh","weight","delivery_note","drum_number"];
   const labels={batch:"Batch",idh:"IDH",weight:"Gewicht",delivery_note:"Lieferscheinnummer",drum_number:"Fassnummer"};
-  for(const key of keys){const field=extraction?.fields?.[key];if(!field)continue;const card=document.createElement("label");card.className=`field-card ${field.valid?"valid":"invalid"}`;card.innerHTML=`<span>${labels[key]}</span><input type="text"><small></small>`;const input=card.querySelector("input");input.value=field.value||"";card.querySelector("small").textContent=field.source==="manual"?"manuell korrigiert":field.source==="ocr"?`OCR ${(field.confidence*100).toFixed(1)} %`:"nicht erkannt";input.addEventListener("change",()=>onChange(key,input.value));container.append(card);}
+  for(const key of keys){const field=extraction?.fields?.[key];if(!field)continue;const card=document.createElement("label");card.className=`field-card ${field.valid?"valid":"invalid"}`;card.innerHTML=`<span>${labels[key]}</span><input type="text"><small></small>`;const input=card.querySelector("input");input.value=field.value||"";card.querySelector("small").textContent=field.source==="manual"?"manuell korrigiert":field.source==="ocr"?`OCR ${(field.confidence*100).toFixed(1)} %`:field.source==="qr"?"QR-Code":"nicht erkannt";input.addEventListener("change",()=>onChange(key,input.value));container.append(card);}
   if(!container.children.length){const p=document.createElement("p");p.className="muted";p.textContent="Noch keine Felder zugeordnet.";container.append(p);}
 }
 

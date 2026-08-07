@@ -12,7 +12,8 @@ import {
   setCompatibilityMode
 } from "./runtime-policy.js";
 import { renderComparison, renderFieldEditor, renderPreview } from "./render.js";
-import { applyManualValue, autoSelectProfile, extractProfileFields, loadProfiles } from "./profile-engine.js";
+import { detectQrProfile } from "./qr-engine.js";
+import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
 import { clearRecords, loadRecords, saveRecord } from "./storage.js";
 import { exportRecords } from "./excel-export.js";
@@ -33,10 +34,12 @@ setupSlot("vda");
 setupActions();
 setupCompatibilityMode();
 renderAll();
-Promise.all([
-  loadProfiles().then((loaded) => { profiles = loaded; populateProfiles(); }),
-  initializeEngine()
-]).catch(() => {});
+const profilesReady = loadProfiles().then((loaded) => {
+  profiles = loaded;
+  populateProfiles();
+  return profiles;
+});
+Promise.all([profilesReady, initializeEngine()]).catch(() => {});
 
 function createSlot(key) {
   return {
@@ -121,7 +124,8 @@ async function initializeEngine(force = false) {
     el("engineDetails").textContent = [
       `Initialisierung ${formatMilliseconds(info.initMs)}`,
       formatRuntimeDetails(info.summary),
-      isCompatibilityMode() && reason === "ocr-crash-recovery" ? "Kompatibilitätsmodus nach vorherigem OCR-Absturz automatisch aktiviert" : ""
+      isCompatibilityMode() && reason === "ocr-crash-recovery" ? "Stabiler Modus nach vorherigem OCR-Absturz automatisch aktiviert" : "",
+      isCompatibilityMode() && reason === "mobile-default" ? "Mobilgerät · stabiler Modus standardmäßig aktiv" : ""
     ].filter(Boolean).join(" · ");
     return true;
   } catch (error) {
@@ -170,6 +174,32 @@ async function loadFile(key, file) {
     slot.prepared = await prepareImage(file, preset.maxImageSide, {
       resizeDuringDecode: policy.resizeDuringDecode
     });
+
+    // QR-Profile werden vor PaddleOCR geprüft. Tesla kann dadurch vollständig
+    // aus dem kleinen QR-Code links unten gelesen werden und benötigt weder OCR
+    // noch einen geometrischen Textanker.
+    try { await profilesReady; } catch { /* OCR-Fallback bleibt möglich. */ }
+    const qrStartedAt = performance.now();
+    const qrMatch = detectQrProfile(slot.prepared.canvas, profiles, key);
+    if (qrMatch) {
+      slot.wallMs = performance.now() - qrStartedAt;
+      slot.result = {
+        items: [],
+        image: { width: slot.prepared.width, height: slot.prepared.height },
+        metrics: { qrMs: slot.wallMs },
+        qr: { raw: qrMatch.raw, parser: qrMatch.parsed.parser }
+      };
+      slot.profile = qrMatch.profile;
+      slot.extraction = extractQrProfileFields(qrMatch.profile, qrMatch);
+      slot.state = "done";
+      comparison = slots.product.extraction && slots.vda.extraction
+        ? compareExtractions(slots.product.extraction, slots.vda.extraction)
+        : null;
+      clearOcrInFlight();
+      renderAll();
+      return;
+    }
+
     markOcrInFlight("photo-prepared", {
       slot: key,
       backend: policy.backend,
@@ -315,7 +345,10 @@ function renderSlot(key) {
     status.textContent = `Fehler: ${slot.error}`;
     status.className = "slot-status bad";
   } else if (slot.state === "done") {
-    status.textContent = `${formatMilliseconds(slot.wallMs)} · ${slot.result?.items?.length || 0} Textzeilen · ${slot.profile?.name || "Profil nicht erkannt"}${slot.extraction?.warning ? ` · ${slot.extraction.warning}` : ""}`;
+    const sourceInfo = slot.extraction?.qr
+      ? "QR-Code"
+      : `${slot.result?.items?.length || 0} Textzeilen`;
+    status.textContent = `${formatMilliseconds(slot.wallMs)} · ${sourceInfo} · ${slot.profile?.name || "Profil nicht erkannt"}${slot.extraction?.warning ? ` · ${slot.extraction.warning}` : ""}`;
     status.className = `slot-status ${slot.profile ? "ok" : "warn"}`;
   } else {
     status.textContent = slot.prepared ? "Bild vorbereitet" : "Noch kein Bild";
@@ -328,6 +361,7 @@ function storeCurrent() {
   if (!comparison) return;
   const record = {
     timestamp: new Date().toISOString(),
+    status: comparison.status,
     result: comparison.message,
     productProfile: slots.product.profile?.name || "",
     vdaProfile: slots.vda.profile?.name || "",

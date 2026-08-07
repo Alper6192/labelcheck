@@ -13,7 +13,7 @@ export async function loadProfiles() {
 }
 
 export function autoSelectProfile(items, profiles, role) {
-  const eligible = profiles.filter((profile) => profile.role === role);
+  const eligible = profiles.filter((profile) => profile.role === role && profile.source?.type !== "qr");
   let best = null;
   for (const profile of eligible) {
     const anchorMatch = findAnchor(items, profile.anchor?.aliases || []);
@@ -78,6 +78,38 @@ export function extractProfileFields(items, profile, imageSize) {
   }
 
   return { profile, anchorMatch, transform, fields, overlays, warning: "" };
+}
+
+export function extractQrProfileFields(profile, qrMatch) {
+  if (!profile || !qrMatch?.parsed) return emptyExtraction();
+  const fields = {};
+  for (const field of profile.fields || []) {
+    const raw = String(qrMatch.parsed.fields?.[field.key] || "");
+    const value = normalizeFieldValue(field.key, raw, field);
+    fields[field.key] = {
+      key: field.key,
+      label: field.label || field.key,
+      value,
+      raw,
+      confidence: raw ? 1 : 0,
+      valid: Boolean(value && validateField(value, field.regex)),
+      required: Boolean(field.required),
+      compare: Boolean(field.compare),
+      source: raw ? "qr" : "missing",
+      poly: qrMatch.poly || []
+    };
+  }
+  return {
+    profile,
+    anchorMatch: null,
+    transform: null,
+    fields,
+    overlays: qrMatch.poly?.length
+      ? [{ key: "anchor", label: "QR", poly: qrMatch.poly, item: null }]
+      : [],
+    warning: "",
+    qr: { parser: qrMatch.parsed.parser, raw: qrMatch.raw }
+  };
 }
 
 export function applyManualValue(extraction, key, value) {
@@ -243,6 +275,22 @@ function matchingFieldFragments(item, sourceRegex) {
   // "D561001475:00001" oder "13023444 3103560".
   for (const part of text.matchAll(/[A-Z0-9]+(?:[.,-][A-Z0-9]+)*/gi)) {
     add(part.index, part.index + part[0].length);
+  }
+
+  // VW und ähnliche Etiketten werden von OCR gelegentlich als eine einzige
+  // Ziffernfolge ohne Leerzeichen erkannt (z. B. 130234443103560). Wir bilden
+  // deshalb aus längeren Ziffernfolgen kurze Teilkandidaten. add() lässt nur
+  // diejenigen durch, die zum jeweiligen Feld-RegEx passen; die Geometrie
+  // entscheidet anschließend zwischen Lieferscheinnummer und IDH.
+  for (const run of text.matchAll(/\d+/g)) {
+    const digits = run[0];
+    if (digits.length <= 8) continue;
+    const maxLength = Math.min(12, digits.length);
+    for (let length = 4; length <= maxLength; length += 1) {
+      for (let offset = 0; offset + length <= digits.length; offset += 1) {
+        add(run.index + offset, run.index + offset + length);
+      }
+    }
   }
 
   return fragments;

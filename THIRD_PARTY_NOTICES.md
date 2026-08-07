@@ -1,15 +1,15 @@
 # Drittanbieterhinweise
 
 ## PaddleOCR / PaddleOCR.js
-
 Copyright PaddlePaddle Authors. Lizenz: Apache License 2.0.
 
 ## ONNX Runtime Web
-
 Copyright Microsoft Corporation. Lizenz: MIT.
 
-## OpenCV.js
+## SheetJS (xlsx)
+Lizenz entsprechend dem installierten npm-Paket.
 
-OpenCV ist unter Apache License 2.0 verfügbar.
+## jsQR
+QR-Code-Decoder für die lokale Tesla-Auswertung. Lizenz: Apache License 2.0.
 
-Die konkreten Lizenztexte der installierten npm-Pakete werden durch den Paketmanager bezogen. Dieses Projekt enthält keine Modellgewichte im Repository; die Testversion bezieht die offiziellen Modelle beim ersten Start über das PaddleOCR.js-SDK.
+Die PaddleOCR-Modelle werden beim GitHub-Actions-Build aus der offiziellen Quelle geladen und anschließend als Teil der eigenen GitHub-Pages-Site bereitgestellt. Zur Laufzeit muss das Endgerät keine externe Modell-CDN-Verbindung aufbauen.
