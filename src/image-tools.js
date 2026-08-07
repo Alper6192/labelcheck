@@ -112,3 +112,16 @@ function qualityRating(sharpness, brightness, darkRatio, lightRatio) {
   if (sharpness < 180) return { level: "warn", text: "noch brauchbar, aber nicht optimal" };
   return { level: "ok", text: "plausibel" };
 }
+
+export function releasePreparedImage(prepared) {
+  const canvas = prepared?.canvas;
+  if (!canvas) return;
+  try {
+    // Das Zurücksetzen der Canvas-Dimensionen gibt den großen Pixelpuffer in
+    // Safari wesentlich zuverlässiger frei als nur die JS-Referenz zu löschen.
+    canvas.width = 1;
+    canvas.height = 1;
+  } catch {
+    // Best effort; darf einen neuen Scan nie verhindern.
+  }
+}

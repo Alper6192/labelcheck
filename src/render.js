@@ -1,12 +1,51 @@
 import { boundsFromPoly, clamp, normalizePoly } from "./utils.js";
 
-export function renderPreview(container, prepared, overlays = []) {
+export function renderPreview(container, prepared, overlays = [], maxPreviewSide = 1100) {
   container.replaceChildren();
-  if (!prepared?.canvas) { const p=document.createElement("div");p.className="placeholder";p.textContent="Noch kein Bild";container.append(p);return; }
-  const canvas=document.createElement("canvas"); canvas.width=prepared.canvas.width;canvas.height=prepared.canvas.height;
-  const c=canvas.getContext("2d");c.drawImage(prepared.canvas,0,0);
-  c.lineWidth=Math.max(3,Math.round(canvas.width/600));c.font=`700 ${Math.max(18,Math.round(canvas.width/45))}px system-ui`;c.textBaseline="bottom";
-  overlays.forEach((o)=>{const pts=normalizePoly(o.poly);if(pts.length<3)return;const color=o.key==="anchor"?"#37dc91":"#4cc9f0";c.strokeStyle=color;c.fillStyle=color;c.beginPath();c.moveTo(...pts[0]);pts.slice(1).forEach(p=>c.lineTo(...p));c.closePath();c.stroke();const b=boundsFromPoly(pts);const label=o.label||o.key;const m=c.measureText(label);const x=clamp(b.x,0,canvas.width-m.width-12),y=clamp(b.y,28,canvas.height);c.fillRect(x,y-28,m.width+12,28);c.fillStyle="#061423";c.fillText(label,x+6,y-4);});
+  if (!prepared?.canvas) {
+    const placeholder = document.createElement("div");
+    placeholder.className = "placeholder";
+    placeholder.textContent = "Noch kein Bild";
+    container.append(placeholder);
+    return;
+  }
+
+  // Die Vorschau muss auf einem Smartphone nicht dieselben 1400–2100 Pixel wie
+  // das OCR-Canvas besitzen. Eine kleinere Display-Kopie spart besonders unter
+  // iOS mehrere große RGBA-Puffer, ohne die OCR oder Profilgeometrie zu ändern.
+  const source = prepared.canvas;
+  const scale = Math.min(1, Number(maxPreviewSide || 1100) / Math.max(source.width, source.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(source.width * scale));
+  canvas.height = Math.max(1, Math.round(source.height * scale));
+  const context = canvas.getContext("2d");
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  context.lineWidth = Math.max(2, Math.round(canvas.width / 600));
+  context.font = `700 ${Math.max(14, Math.round(canvas.width / 45))}px system-ui`;
+  context.textBaseline = "bottom";
+
+  overlays.forEach((overlay) => {
+    const points = normalizePoly(overlay.poly).map(([x, y]) => [x * scale, y * scale]);
+    if (points.length < 3) return;
+    const color = overlay.key === "anchor" ? "#37dc91" : "#4cc9f0";
+    context.strokeStyle = color;
+    context.fillStyle = color;
+    context.beginPath();
+    context.moveTo(...points[0]);
+    points.slice(1).forEach((point) => context.lineTo(...point));
+    context.closePath();
+    context.stroke();
+    const bounds = boundsFromPoly(points);
+    const label = overlay.label || overlay.key;
+    const metrics = context.measureText(label);
+    const labelHeight = Math.max(20, Math.round(canvas.width / 60));
+    const x = clamp(bounds.x, 0, canvas.width - metrics.width - 12);
+    const y = clamp(bounds.y, labelHeight, canvas.height);
+    context.fillRect(x, y - labelHeight, metrics.width + 12, labelHeight);
+    context.fillStyle = "#061423";
+    context.fillText(label, x + 6, y - 4);
+  });
+
   container.append(canvas);
 }
 

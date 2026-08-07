@@ -1,4 +1,4 @@
-export const APP_VERSION = "0.5.9";
+export const APP_VERSION = "0.6.2";
 
 export const MODEL_OPTIONS = {
   standard: {
@@ -6,6 +6,8 @@ export const MODEL_OPTIONS = {
     label: "PP-OCRv5 Standard (Zahlen/lateinische Zeichen)",
     textDetectionModelName: "PP-OCRv5_mobile_det",
     textRecognitionModelName: "PP-OCRv5_mobile_rec",
+    textDetectionModelFile: "PP-OCRv5_mobile_det_onnx_infer.tar",
+    textRecognitionModelFile: "PP-OCRv5_mobile_rec_onnx_infer.tar",
     description: "Offizielles eingebautes PP-OCRv5-Browsermodell. Für den ersten Machbarkeitstest mit Artikelnummern, Chargen, Gewichten und Kundennamen."
   }
 };

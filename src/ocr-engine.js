@@ -1,6 +1,7 @@
 import { PaddleOCR } from "@paddleocr/paddleocr-js";
 import { MODEL_OPTIONS } from "./config.js";
 import { safeError } from "./utils.js";
+import { RUNTIME_POLICY } from "./runtime-policy.js";
 
 const DISPOSE_TIMEOUT_MS = 5000;
 
@@ -8,8 +9,8 @@ const DISPOSE_TIMEOUT_MS = 5000;
  * Gemeinsame PaddleOCR-Laufzeit für Scanner und Profileditor.
  *
  * - genau ein dedizierter Worker
- * - Backend "auto": WebGPU wird bevorzugt, WASM bleibt Fallback
- * - WASM-Threadzahl 0: ONNX Runtime bestimmt die mögliche Threadzahl selbst
+ * - alle Browser: Backend AUTO (WebGPU bevorzugt, WASM als Fallback)
+ * - OCR-Modelle werden same-origin von GitHub Pages geladen
  * - keine künstliche Inferenz-Zeitüberschreitung; ein Timeout beendet predict()
  *   nicht zuverlässig und kann sonst eine zweite konkurrierende Instanz erzeugen
  */
@@ -22,7 +23,7 @@ export class PaddleOcrEngine {
   #generation = 0;
   #summary = null;
   #lastRuntime = null;
-  #mode = "Web Worker · Backend automatisch";
+  #mode = `Web Worker · ${RUNTIME_POLICY.label}`;
 
   get ready() {
     return Boolean(this.#ocr);
@@ -79,7 +80,7 @@ export class PaddleOcrEngine {
 
     const startedAt = performance.now();
     const options = createCommonOptions(model);
-    onStatus("PaddleOCR lädt im Web Worker · Backend wird automatisch gewählt …");
+    onStatus(`PaddleOCR lädt im Web Worker · ${RUNTIME_POLICY.label} …`);
 
     try {
       this.#ocr = await PaddleOCR.create({ ...options, worker: true });
@@ -158,7 +159,7 @@ export class PaddleOcrEngine {
     this.#modelKey = null;
     this.#summary = null;
     this.#lastRuntime = null;
-    this.#mode = "Web Worker · Backend automatisch";
+    this.#mode = `Web Worker · ${RUNTIME_POLICY.label}`;
     this.#queue = Promise.resolve();
     this.#pendingCount = 0;
   }
@@ -176,22 +177,29 @@ export class PaddleOcrEngine {
 
 export function createCommonOptions(model) {
   const wasmPaths = new URL("./ort/", window.location.href).href;
+  const modelBase = new URL("./models/", window.location.href);
   return {
     textDetectionModelName: model.textDetectionModelName,
+    textDetectionModelAsset: {
+      url: new URL(model.textDetectionModelFile, modelBase).href
+    },
     textRecognitionModelName: model.textRecognitionModelName,
+    textRecognitionModelAsset: {
+      url: new URL(model.textRecognitionModelFile, modelBase).href
+    },
     textDetectionBatchSize: 1,
-    textRecognitionBatchSize: 8,
+    textRecognitionBatchSize: RUNTIME_POLICY.textRecognitionBatchSize,
     ortOptions: {
-      backend: "auto",
+      backend: RUNTIME_POLICY.backend,
       wasmPaths,
-      numThreads: 0,
+      numThreads: RUNTIME_POLICY.numThreads,
       simd: true
     }
   };
 }
 
 export function createRuntimeDiagnostics(summary = null, runtime = null) {
-  const requestedBackend = runtime?.requestedBackend ?? summary?.backend ?? "auto";
+  const requestedBackend = runtime?.requestedBackend ?? summary?.backend ?? RUNTIME_POLICY.backend;
   const detProvider = runtime?.detProvider ?? summary?.detProvider ?? null;
   const recProvider = runtime?.recProvider ?? summary?.recProvider ?? null;
   return {
@@ -201,7 +209,7 @@ export function createRuntimeDiagnostics(summary = null, runtime = null) {
     webgpuAvailable: runtime?.webgpuAvailable ?? summary?.webgpuAvailable ?? Boolean(globalThis.navigator?.gpu),
     hardwareConcurrency: Number(globalThis.navigator?.hardwareConcurrency || 0) || null,
     crossOriginIsolated: globalThis.crossOriginIsolated === true,
-    configuredThreads: 0,
+    configuredThreads: RUNTIME_POLICY.numThreads,
     simdRequested: true
   };
 }
@@ -215,7 +223,7 @@ export function describeRuntimeMode(summary = null, runtime = null) {
     const provider = det === rec ? det : `${det}/${rec}`;
     return `Web Worker · ${provider}`;
   }
-  return "Web Worker · Backend automatisch";
+  return `Web Worker · ${RUNTIME_POLICY.label}`;
 }
 
 export function formatRuntimeDetails(summary = null, runtime = null) {
@@ -225,7 +233,10 @@ export function formatRuntimeDetails(summary = null, runtime = null) {
   if (info.recProvider) parts.push(`Erkennung ${formatProvider(info.recProvider)}`);
   parts.push(`Backend-Anfrage ${String(info.requestedBackend).toUpperCase()}`);
   parts.push(`CPU-Kerne ${info.hardwareConcurrency ?? "unbekannt"}`);
-  parts.push(`Threads automatisch${info.crossOriginIsolated ? " · Mehrthread möglich" : " · derzeit Einzelthread-Fallback möglich"}`);
+  parts.push(info.configuredThreads > 0
+    ? `Threads ${info.configuredThreads}`
+    : `Threads automatisch${info.crossOriginIsolated ? " · Mehrthread möglich" : " · derzeit Einzelthread-Fallback möglich"}`);
+  parts.push("Modelle lokal · GitHub Pages");
   parts.push(`WebGPU-API ${info.webgpuAvailable ? "verfügbar" : "nicht verfügbar"}`);
   return parts.join(" · ");
 }

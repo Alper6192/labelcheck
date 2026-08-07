@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { extractProfileFields, normalizeFieldValue } from "../src/profile-engine.js";
+import { autoSelectProfile, extractProfileFields, normalizeFieldValue, normalizedWeight } from "../src/profile-engine.js";
 import { compareExtractions } from "../src/comparison.js";
 
 const config = JSON.parse(fs.readFileSync(new URL("./fixtures/extraction-profiles.json", import.meta.url), "utf8"));
@@ -50,4 +50,53 @@ test("Fassnummer wird auch aus einem an den Batch angehängten Wert gelesen", ()
 test("last_digits korrigiert einen als 1 gelesenen Schrägstrich", () => {
   assert.equal(normalizeFieldValue("drum_number", "10001", { normalizer: "last_digits", digits: 4 }), "0001");
   assert.equal(normalizeFieldValue("drum_number", "/0007", { normalizer: "last_digits", digits: 4 }), "0007");
+});
+
+test("Batch-Normalisierung ignoriert Doppelpunkt und Suffix", () => {
+  assert.equal(normalizeFieldValue("batch", "D561001475 :00001", { normalizer: "batch" }), "D561001475");
+  assert.equal(normalizeFieldValue("batch", "D561001475:00001", { normalizer: "batch" }), "D561001475");
+});
+
+
+test("Kurzer Alias BMW erkennt eine längere Kundenzeile automatisch", () => {
+  const profile = {
+    id: "BMW", name: "BMW", role: "vda", active: true,
+    anchor: { aliases: ["BMW"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.2],[0.1,0.2]] }, fields: []
+  };
+  const result = autoSelectProfile([
+    item("BMW (UK) Manufacturing Ltd", .99, [[100,50],[400,50],[400,90],[100,90]])
+  ], [profile], "vda");
+  assert.equal(result?.profile?.id, "BMW");
+});
+
+test("Materialnummer allein reicht nicht als Anker Alte Materialnummer", () => {
+  const profile = {
+    id: "INTERN", name: "Intern", role: "product", active: true,
+    anchor: { aliases: ["Alte Materialnummer"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.2],[0.1,0.2]] }, fields: []
+  };
+  const result = autoSelectProfile([
+    item("Materialnummer", .99, [[100,50],[260,50],[260,90],[100,90]])
+  ], [profile], "product");
+  assert.equal(result?.manual, true);
+  assert.equal(result?.anchorMatch, null);
+});
+
+test("IDH kann als Teil einer gemeinsamen OCR-Zeile gewählt werden", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen Sachsen GmbH"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [{ key: "idh", label: "IDH", required: true, compare: true, regex: "^\\d{6,8}$", sourceRegex: "^\\d{6,8}$", normalizer: "digits", poly: [[0.55,0.72],[0.7,0.72],[0.7,0.8],[0.55,0.8]] }]
+  };
+  const items = [
+    item("Volkswagen Sachsen GmbH", .99, [[100,50],[300,50],[300,90],[100,90]]),
+    item("13023444 3103560", .99, [[300,360],[700,360],[700,400],[300,400]])
+  ];
+  const result = extractProfileFields(items, profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.idh.value, "3103560");
+  assert.equal(result.fields.idh.valid, true);
+});
+
+test("Gewicht ohne Einheit wird als Kilogramm vergleichbar", () => {
+  assert.deepEqual(normalizedWeight("1550"), { number: 1550, unit: "KG", base: 1550000 });
+  assert.deepEqual(normalizedWeight("1150 KGM"), { number: 1150, unit: "KG", base: 1150000 });
 });

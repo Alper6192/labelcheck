@@ -43,3 +43,24 @@ test("Exportierte Feldregeln verwenden bekannte Felder und gültige reguläre Au
     }
   }
 });
+
+test("Aktuelle Nutzerkonfiguration enthält die zuletzt angelegten Profile", () => {
+  const raw = readConfig();
+  const ids = new Set(raw.profiles.map((profile) => profile.id));
+  for (const id of ["STELLANTIS", "MERCEDES", "HENKEL", "BMW", "SCANIA", "VW", "INTERN1", "INTERN2"]) {
+    assert.ok(ids.has(id), `Aktuelles Profil ${id} fehlt.`);
+  }
+});
+
+test("Intern1 verwendet den vollständigen Anker Alte Materialnummer", () => {
+  const raw = readConfig();
+  const profile = raw.profiles.find((entry) => entry.id === "INTERN1");
+  assert.deepEqual(profile?.anchor?.aliases, ["Alte Materialnummer"]);
+});
+
+test("Scania-Batch akzeptiert Doppelpunkt-Suffix im OCR-Rohtext", () => {
+  const raw = readConfig();
+  const profile = raw.profiles.find((entry) => entry.id === "SCANIA");
+  const field = profile?.fields?.find((entry) => entry.key === "batch");
+  assert.equal(new RegExp(field.sourceRegex, "i").test("D561001475 :00001"), true);
+});

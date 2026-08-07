@@ -1,4 +1,20 @@
+# 0.6.1
+
+- iPhone/iPad: OCR läuft im stabileren WASM-Worker statt WebGPU, mit kleinerem Recognition-Batch und reduziertem Scannerbild.
+- Vorschau-Canvas wird auf Mobilgeräten deutlich kleiner gerendert, um Safari-Speicherdruck zu reduzieren.
+- Jedes neu aufgenommene/gewählte Foto startet wieder im Layoutmodus „Automatisch“.
+- Automatisch erkanntes Profil wird intern verwendet, ohne den Layout-Select von „Automatisch“ wegzuschalten.
+- Produktive Konfiguration basiert auf dem Nutzerexport vom 07.08.2026; INTERN1-Anker auf „Alte Materialnummer“ präzisiert und KGM bei Gewichten ergänzt.
+
 # Changelog
+
+## 0.6.0
+- Masterbilder und OCR-Ergebnisse des Profileditors werden profilbezogen in IndexedDB gespeichert und nach erneutem Öffnen wiederhergestellt.
+- Automatische Ankererkennung ist asymmetrisch: kurze Aliase wie BMW dürfen in längeren Kundenzeilen vorkommen; verkürzte OCR-Texte wie Materialnummer reichen nicht mehr für Alte Materialnummer.
+- Felder können aus Teilstücken einer gemeinsamen OCR-Zeile extrahiert werden, z. B. VW-IDH aus einer Zeile mit Lieferscheinnummer und IDH.
+- Batch-Normalisierung ignoriert Doppelpunkt-/Suffixwerte nach D-Nummern.
+- Gewichte ohne Einheit sind zulässig und werden beim Vergleich als KG interpretiert; KGM wird als KG normalisiert.
+
 
 ## 0.5.9
 
@@ -123,3 +139,10 @@
 - Offizielle eingebaute Modellnamen `PP-OCRv5_mobile_det` und `PP-OCRv5_mobile_rec` werden direkt verwendet.
 - Oberfläche auf eine eindeutige Standardmodell-Option reduziert.
 - Test ergänzt, der verhindert, dass erneut `lang: de` in die Browserkonfiguration gelangt.
+
+## 0.6.2
+- iOS-Sonderpfad wieder entfernt; iPhone, Android und Desktop verwenden dieselbe AUTO/WebGPU-WASM-Strategie.
+- PP-OCRv5 Detektions- und Erkennungsmodelle werden beim GitHub-Build in `public/models/` gespiegelt.
+- Scanner und Editor laden OCR-Modelle danach ausschließlich same-origin von GitHub Pages; kein direkter Baidu/BOS-Modellabruf im Firmennetz mehr.
+- Nutzerkonfiguration auf Basis von `label-profiles(1).json` übernommen.
+- INTERN1-Anker auf `Alte Materialnummer` präzisiert, KGM als Gewichtseinheit ergänzt und Scania-Batch mit Doppelpunkt-Suffix unterstützt.

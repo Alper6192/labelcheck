@@ -1,10 +1,12 @@
 export function createEditorProfileSession() {
   return {
     prepared: null,
+    masterBlob: null,
     ocrResult: null,
     selection: null,
     masterFileName: "",
-    imageRevision: 0
+    imageRevision: 0,
+    restoreAttempted: false
   };
 }
 

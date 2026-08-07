@@ -37,8 +37,8 @@ export const FIELD_PRESETS = {
     label: "Gewicht",
     required: true,
     compare: true,
-    regex: "^\\d+(?:[.,]\\d+)?\\s*(?:KG|G|L|LTR)$",
-    sourceRegex: "^\\d+(?:[.,]\\d+)?\\s*(?:KG|G|L|LTR)$",
+    regex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+    sourceRegex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
     normalizer: "weight"
   },
   delivery_note: {

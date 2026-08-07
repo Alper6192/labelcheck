@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.5.9",
+  "appVersion": "0.6.2",
   "exportedAt": "2026-08-07T06:28:23.410Z",
   "profiles": [
     {
@@ -91,8 +91,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -233,8 +233,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -402,8 +402,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -517,8 +517,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -659,8 +659,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -800,8 +800,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -940,8 +940,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -1028,7 +1028,7 @@
           "required": true,
           "compare": true,
           "regex": "^D\\d{8,10}$",
-          "sourceRegex": "^D\\d{8,10}(?:\\s*[/|I1]\\s*\\d{4})?$",
+          "sourceRegex": "^D\\d{8,10}(?:\\s*[:;/|I1]\\s*\\d{4,6})?$",
           "normalizer": "batch",
           "poly": [
             [
@@ -1081,8 +1081,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -1222,8 +1222,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -1336,8 +1336,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -1478,8 +1478,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -1537,7 +1537,7 @@
       "active": true,
       "anchor": {
         "aliases": [
-          "Alte"
+          "Alte Materialnummer"
         ],
         "poly": [
           [
@@ -1618,8 +1618,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [
@@ -1758,8 +1758,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|G|L|LTR))?$",
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "normalizer": "weight",
           "poly": [
             [

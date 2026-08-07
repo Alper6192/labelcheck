@@ -6,6 +6,7 @@ const editorSource = await readFile(new URL("../src/editor.js", import.meta.url)
 const scannerSource = await readFile(new URL("../src/main.js", import.meta.url), "utf8");
 const engineSource = await readFile(new URL("../src/ocr-engine.js", import.meta.url), "utf8");
 const editorHtml = await readFile(new URL("../editor.html", import.meta.url), "utf8");
+const policySource = await readFile(new URL("../src/runtime-policy.js", import.meta.url), "utf8");
 
 test("Scanner und Profileditor verwenden dieselbe OCR-Engine", () => {
   assert.match(scannerSource, /PaddleOcrEngine/);
@@ -14,11 +15,13 @@ test("Scanner und Profileditor verwenden dieselbe OCR-Engine", () => {
   assert.match(editorSource, /from "\.\/ocr-engine\.js"/);
 });
 
-test("Gemeinsame Engine nutzt automatisches Backend und automatische Threadzahl", () => {
+test("Gemeinsame Engine nutzt einheitlichen AUTO-Pfad und weiterhin genau einen Worker", () => {
   assert.match(engineSource, /worker:\s*true/);
-  assert.match(engineSource, /backend:\s*"auto"/);
-  assert.match(engineSource, /numThreads:\s*0/);
-  assert.match(engineSource, /textRecognitionBatchSize:\s*8/);
+  assert.match(engineSource, /backend:\s*RUNTIME_POLICY\.backend/);
+  assert.match(engineSource, /numThreads:\s*RUNTIME_POLICY\.numThreads/);
+  assert.match(engineSource, /textRecognitionBatchSize:\s*RUNTIME_POLICY\.textRecognitionBatchSize/);
+  assert.match(policySource, /backend:\s*"auto"/);
+  assert.doesNotMatch(policySource, /family:\s*"ios"|backend:\s*"wasm"/);
   assert.doesNotMatch(engineSource, /worker:\s*false/);
 });
 
@@ -39,4 +42,12 @@ test("Profileditor unterstützt OCR-JSON und kombinierte Batch-Fass-Zuordnung", 
   assert.match(editorHtml, /assignBatchDrumButton/);
   assert.match(editorSource, /function importOcrJson/);
   assert.match(editorSource, /function assignBatchAndDrum/);
+});
+
+
+test("OCR-Modelle werden same-origin von GitHub Pages geladen", () => {
+  assert.match(engineSource, /new URL\("\.\/models\/", window\.location\.href\)/);
+  assert.match(engineSource, /textDetectionModelAsset/);
+  assert.match(engineSource, /textRecognitionModelAsset/);
+  assert.doesNotMatch(engineSource, /paddle-model-ecology\.bj\.bcebos\.com/);
 });

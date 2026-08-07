@@ -26,6 +26,7 @@ import {
   updateAssignmentRect
 } from "./editor-geometry.js";
 import { EditorProfileSessionStore } from "./editor-session.js";
+import { deleteEditorMaster, loadEditorMaster, renameEditorMaster, saveEditorMaster } from "./editor-persistence.js";
 
 const engine = new PaddleOcrEngine();
 const el = (id) => document.getElementById(id);
@@ -73,6 +74,7 @@ function setupEvents() {
     if (!session) return;
     session.ocrResult = null;
     session.selection = null;
+    persistSession(state.selectedProfileId, session).catch(() => undefined);
     drawOverlay();
     renderSelectionInfo();
   };
@@ -204,6 +206,7 @@ function deleteProfile() {
   const index = state.config.profiles.findIndex((profile) => profile.id === current.id);
   state.config.profiles.splice(index, 1);
   state.sessions.delete(current.id);
+  deleteEditorMaster(current.id).catch(() => undefined);
   markDirty();
   renderProfileList();
   selectProfile(state.config.profiles[Math.max(0, index - 1)]?.id || "");
@@ -237,6 +240,7 @@ function selectProfile(id) {
   drawOverlay();
   renderSelectionInfo();
   refreshMasterControls();
+  restorePersistedMaster(id).catch(() => undefined);
 }
 
 function renderProfileMeta() {
@@ -262,6 +266,7 @@ function updateProfileMeta() {
   profile.anchor.aliases = el("anchorAliases").value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
   if (profile.id !== previousId) {
     state.sessions.rename(previousId, profile.id);
+    renameEditorMaster(previousId, profile.id).catch(() => undefined);
     state.selectedProfileId = profile.id;
   }
   markDirty();
@@ -317,10 +322,13 @@ async function loadMasterImage(event) {
   try {
     const preset = QUALITY_PRESETS.balanced;
     session.prepared = await prepareImage(file, preset.maxImageSide);
+    session.masterBlob = await canvasToBlob(session.prepared.canvas).catch(() => file);
     session.masterFileName = file.name;
     session.imageRevision += 1;
+    session.restoreAttempted = true;
     session.ocrResult = null;
     session.selection = null;
+    await persistSession(state.selectedProfileId, session);
     state.selectedAssignment = null;
     drawBaseImage();
     drawOverlay();
@@ -361,6 +369,7 @@ async function importOcrJson(event) {
       session.prepared.height
     );
     session.selection = null;
+    await persistSession(profile.id, session);
     setEditorEngine(`OCR-JSON importiert · ${session.ocrResult.items.length} Textzeilen`, "ok");
     el("editorEngineDetails").textContent = `Quelle „${file.name}“ · Boxen auf ${session.prepared.width} × ${session.prepared.height} px skaliert.`;
     el("editorHint").textContent = "OCR-Box anklicken und einem Feld zuweisen. Für eine kombinierte Zeile wie D… / 0001 die Schaltfläche „Batch + Fassnummer“ verwenden.";
@@ -417,6 +426,7 @@ async function runOcr() {
       targetSession.prepared.height
     );
     targetSession.selection = null;
+    await persistSession(run.profileId, targetSession);
     if (state.selectedProfileId === run.profileId) {
       const result = targetSession.ocrResult;
       const metrics = result.metrics || {};
@@ -494,10 +504,13 @@ async function clearMasterImage() {
   const session = currentSession(false);
   if (!session) return;
   session.prepared = null;
+  session.masterBlob = null;
   session.ocrResult = null;
   session.selection = null;
   session.masterFileName = "";
   session.imageRevision += 1;
+  session.restoreAttempted = true;
+  await deleteEditorMaster(state.selectedProfileId).catch(() => undefined);
   state.selectedAssignment = null;
   drawBaseImage();
   drawOverlay();
@@ -505,6 +518,50 @@ async function clearMasterImage() {
   renderProperties();
   refreshMasterControls();
   el("editorHint").textContent = "Für dieses Profil ist kein Masterbild geladen.";
+}
+
+async function restorePersistedMaster(profileId) {
+  const session = state.sessions.get(profileId, true);
+  if (!session || session.prepared || session.restoreAttempted) return;
+  session.restoreAttempted = true;
+  const revision = session.imageRevision;
+  try {
+    const saved = await loadEditorMaster(profileId);
+    if (!saved?.blob || session.prepared || session.imageRevision !== revision) return;
+    const preset = QUALITY_PRESETS.balanced;
+    const prepared = await prepareImage(saved.blob, preset.maxImageSide);
+    if (session.prepared || session.imageRevision !== revision) return;
+    session.prepared = prepared;
+    session.masterBlob = saved.blob;
+    session.masterFileName = saved.fileName || "gespeichertes-masterbild.jpg";
+    session.ocrResult = saved.ocrResult || null;
+    session.selection = null;
+    session.imageRevision += 1;
+    if (state.selectedProfileId === profileId) {
+      drawBaseImage();
+      drawOverlay();
+      renderSelectionInfo();
+      refreshMasterControls();
+      el("editorHint").textContent = `Masterbild „${session.masterFileName}“ lokal aus dem Browser wiederhergestellt${session.ocrResult ? " · OCR-Boxen ebenfalls geladen" : ""}.`;
+    }
+  } catch {
+    // Der Editor bleibt auch ohne IndexedDB vollständig benutzbar.
+  }
+}
+
+async function persistSession(profileId, session) {
+  if (!profileId || !session?.masterBlob) return;
+  await saveEditorMaster(profileId, {
+    blob: session.masterBlob,
+    fileName: session.masterFileName,
+    ocrResult: session.ocrResult
+  });
+}
+
+function canvasToBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Masterbild konnte nicht lokal gespeichert werden.")), "image/jpeg", 0.9);
+  });
 }
 
 function refreshMasterControls() {

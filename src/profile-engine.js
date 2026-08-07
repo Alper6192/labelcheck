@@ -95,7 +95,10 @@ export function normalizeFieldValue(key, value, field = {}) {
   const normalizer = field.normalizer || defaultNormalizer(key);
 
   if (normalizer === "batch") {
-    return text.replace(/\s/g, "").split(/[\/|I]/)[0].replace(/[^A-Z0-9-]/g, "");
+    const compact = text.replace(/\s+/g, "");
+    const direct = compact.match(/D\d{8,10}/i);
+    if (direct) return direct[0].toUpperCase();
+    return compact.split(/[\/|I:;]/)[0].replace(/[^A-Z0-9-]/g, "");
   }
   if (normalizer === "last_digits") {
     const digits = text.replace(/\D/g, "");
@@ -103,15 +106,19 @@ export function normalizeFieldValue(key, value, field = {}) {
     return digits.length >= count ? digits.slice(-count) : digits;
   }
   if (normalizer === "digits") return text.replace(/\D/g, "");
-  if (normalizer === "weight") return text.replace(/,/g, ".").replace(/\s+/g, " ");
+  if (normalizer === "weight") {
+    return text.replace(/,/g, ".").replace(/\bKGM\b/g, "KG").replace(/\s+/g, " ");
+  }
   return text;
 }
 
 export function normalizedWeight(value) {
-  const match = String(value || "").toUpperCase().replace(/,/g, ".").match(/(\d+(?:\.\d+)?)\s*(KG|G|L|LTR)/);
+  const match = String(value || "").toUpperCase().replace(/,/g, ".").match(/(\d+(?:\.\d+)?)\s*(KG|KGM|G|L|LTR)?/);
   if (!match) return null;
   const number = Number(match[1]);
-  const unit = match[2] === "LTR" ? "L" : match[2];
+  let unit = match[2] || "KG";
+  if (unit === "LTR") unit = "L";
+  if (unit === "KGM") unit = "KG";
   if (!Number.isFinite(number)) return null;
   return { number, unit, base: unit === "KG" ? number * 1000 : number };
 }
@@ -133,14 +140,30 @@ function findAnchor(items, aliases) {
     for (const alias of aliases) {
       const target = normalizeText(alias);
       if (!target) continue;
-      const exact = text === target;
-      const contains = text.includes(target) || target.includes(text);
-      const similarity = exact ? 1 : contains ? Math.min(text.length, target.length) / Math.max(text.length, target.length) : dice(text, target);
+      const similarity = anchorSimilarity(text, target);
       const score = similarity * 0.8 + Number(item.score || 0) * 0.2;
       if (!best || score > best.matchScore) best = { item, alias, matchScore: score };
     }
   }
   return best;
+}
+
+function anchorSimilarity(text, target) {
+  if (!text || !target) return 0;
+  if (text === target) return 1;
+
+  // Ein vollständiger Alias innerhalb einer längeren OCR-Zeile ist ein starker
+  // Treffer: Alias BMW darf z. B. "BMW (UK) Manufacturing Ltd" erkennen.
+  if (target.length >= 3 && text.includes(target)) return 0.95;
+
+  // Umgekehrt darf ein verkürzter OCR-Text nicht den längeren Alias ersetzen.
+  // "Materialnummer" reicht deshalb nicht für "Alte Materialnummer".
+  if (target.includes(text)) {
+    const coverage = text.length / Math.max(1, target.length);
+    return dice(text, target) * coverage * 0.25;
+  }
+
+  return dice(text, target);
 }
 
 function buildTransform(referenceAnchorPoly, liveAnchorPoly, imageSize) {
@@ -168,20 +191,74 @@ function chooseCandidate(items, expectedPoly, field) {
   const sourceRegex = field.sourceRegex || field.regex;
   let best = null;
   for (const item of items || []) {
-    if (!validateField(item.text, sourceRegex)) continue;
-    const b = boundsFromPoly(item.poly);
-    const ix = Math.max(0, Math.min(expected.x + expected.width, b.x + b.width) - Math.max(expected.x, b.x));
-    const iy = Math.max(0, Math.min(expected.y + expected.height, b.y + b.height) - Math.max(expected.y, b.y));
-    const overlap = (ix * iy) / Math.max(1, Math.min(expected.width * expected.height, b.width * b.height));
-    const dx = (b.x + b.width / 2) - cx;
-    const dy = (b.y + b.height / 2) - cy;
-    const distance = Math.hypot(dx, dy);
-    if (distance > radius && overlap <= 0) continue;
-    const proximity = Math.max(0, 1 - distance / radius);
-    const score = overlap * 0.55 + proximity * 0.25 + Number(item.score || 0) * 0.2;
-    if (!best || score > best.selectionScore) best = { ...item, selectionScore: score };
+    for (const fragment of matchingFieldFragments(item, sourceRegex)) {
+      const b = boundsFromPoly(fragment.poly);
+      const ix = Math.max(0, Math.min(expected.x + expected.width, b.x + b.width) - Math.max(expected.x, b.x));
+      const iy = Math.max(0, Math.min(expected.y + expected.height, b.y + b.height) - Math.max(expected.y, b.y));
+      const overlap = (ix * iy) / Math.max(1, Math.min(expected.width * expected.height, b.width * b.height));
+      const dx = (b.x + b.width / 2) - cx;
+      const dy = (b.y + b.height / 2) - cy;
+      const distance = Math.hypot(dx, dy);
+      if (distance > radius && overlap <= 0) continue;
+      const proximity = Math.max(0, 1 - distance / radius);
+      const score = overlap * 0.55 + proximity * 0.25 + Number(fragment.score || 0) * 0.2;
+      if (!best || score > best.selectionScore) best = { ...fragment, selectionScore: score };
+    }
   }
   return best;
+}
+
+function matchingFieldFragments(item, sourceRegex) {
+  const text = String(item?.text || "").trim();
+  if (!text) return [];
+  const fragments = [];
+  const seen = new Set();
+
+  const add = (start, end) => {
+    const raw = text.slice(start, end).trim();
+    if (!raw || !validateField(raw, sourceRegex)) return;
+    const key = `${start}:${end}:${raw}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    fragments.push({
+      ...item,
+      text: raw,
+      poly: approximateTextFragmentPoly(item.poly, text.length, start, end),
+      sourceText: text
+    });
+  };
+
+  add(0, text.length);
+
+  const words = Array.from(text.matchAll(/\S+/g));
+  for (let startIndex = 0; startIndex < words.length; startIndex += 1) {
+    for (let count = 1; count <= 3 && startIndex + count <= words.length; count += 1) {
+      const first = words[startIndex];
+      const last = words[startIndex + count - 1];
+      add(first.index, last.index + last[0].length);
+    }
+  }
+
+  // Zusätzliche atomare Teile erlauben Werte aus kombinierten Zeilen wie
+  // "D561001475:00001" oder "13023444 3103560".
+  for (const part of text.matchAll(/[A-Z0-9]+(?:[.,-][A-Z0-9]+)*/gi)) {
+    add(part.index, part.index + part[0].length);
+  }
+
+  return fragments;
+}
+
+function approximateTextFragmentPoly(poly, textLength, start, end) {
+  const bounds = boundsFromPoly(poly);
+  if (!bounds.width || !textLength || (start === 0 && end >= textLength)) return normalizePoly(poly);
+  const left = bounds.x + bounds.width * (start / textLength);
+  const right = bounds.x + bounds.width * (end / textLength);
+  return [
+    [left, bounds.y],
+    [right, bounds.y],
+    [right, bounds.y + bounds.height],
+    [left, bounds.y + bounds.height]
+  ];
 }
 
 function deriveDrumCandidate(items, batchCandidate, field, expectedPoly) {
