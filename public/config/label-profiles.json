@@ -1115,7 +1115,7 @@
           "compare": true,
           "regex": "^\\d+(?:[.,]\\d+)?\\s*K(?:G)?$",
           "sourceRegex": "^(?:\\d+(?:[.,]\\d+)?\\s*K(?:G)?|\\d+(?:[.,]\\d+)?\\s*[/|I]\\s*\\d+(?:[.,]\\d+)?\\s*K(?:G)?)$",
-          "normalizer": "weight",
+          "normalizer": "net_weight",
           "poly": [
             [
               0.6622272727272727,
