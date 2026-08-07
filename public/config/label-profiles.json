@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "appVersion": "0.5.9",
-  "exportedAt": "2026-08-07T06:25:16.675Z",
+  "exportedAt": "2026-08-07T06:28:23.410Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1537,7 +1537,7 @@
       "active": true,
       "anchor": {
         "aliases": [
-          "Alte Materialnummer"
+          "Alte"
         ],
         "poly": [
           [
