@@ -136,11 +136,20 @@ export function markOcrInFlight(stage = "predict", details = {}) {
   }
 }
 
-export function clearOcrInFlight() {
+export function clearOcrInFlight(expected = null) {
   try {
+    if (expected && typeof expected === "object") {
+      const raw = globalThis.localStorage?.getItem(OCR_INFLIGHT_KEY);
+      if (!raw) return false;
+      const marker = JSON.parse(raw);
+      if (expected.slot != null && marker?.slot !== expected.slot) return false;
+      if (expected.generation != null && Number(marker?.generation) !== Number(expected.generation)) return false;
+    }
     globalThis.localStorage?.removeItem(OCR_INFLIGHT_KEY);
+    return true;
   } catch {
     // Best effort.
+    return false;
   }
 }
 

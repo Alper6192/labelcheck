@@ -16,7 +16,7 @@ export function autoSelectProfile(items, profiles, role) {
   const eligible = profiles.filter((profile) => profile.role === role && profile.source?.type !== "qr");
   let best = null;
   for (const profile of eligible) {
-    const anchorMatch = findAnchor(items, profile.anchor?.aliases || []);
+    const anchorMatch = findAnchor(items, profile.anchor?.aliases || [], profile.anchor);
     const score = anchorMatch ? anchorMatch.matchScore : 0;
     if (!best || score > best.score) best = { profile, anchorMatch, score };
   }
@@ -28,7 +28,7 @@ export function autoSelectProfile(items, profiles, role) {
 
 export function extractProfileFields(items, profile, imageSize) {
   if (!profile) return emptyExtraction();
-  const anchorMatch = findAnchor(items, profile.anchor?.aliases || []);
+  const anchorMatch = findAnchor(items, profile.anchor?.aliases || [], profile.anchor);
   if (!anchorMatch) {
     return { ...emptyExtraction(), profile, warning: "Profilanker wurde nicht erkannt." };
   }
@@ -81,10 +81,10 @@ export function extractProfileFields(items, profile, imageSize) {
 }
 
 export function extractQrProfileFields(profile, qrMatch) {
-  if (!profile || !qrMatch?.parsed) return emptyExtraction();
+  if (!profile) return emptyExtraction();
   const fields = {};
   for (const field of profile.fields || []) {
-    const raw = String(qrMatch.parsed.fields?.[field.key] || "");
+    const raw = String(qrMatch?.parsed?.fields?.[field.key] || "");
     const value = normalizeFieldValue(field.key, raw, field);
     fields[field.key] = {
       key: field.key,
@@ -96,7 +96,7 @@ export function extractQrProfileFields(profile, qrMatch) {
       required: Boolean(field.required),
       compare: Boolean(field.compare),
       source: raw ? "qr" : "missing",
-      poly: qrMatch.poly || []
+      poly: qrMatch?.poly || []
     };
   }
   return {
@@ -104,11 +104,11 @@ export function extractQrProfileFields(profile, qrMatch) {
     anchorMatch: null,
     transform: null,
     fields,
-    overlays: qrMatch.poly?.length
+    overlays: qrMatch?.poly?.length
       ? [{ key: "anchor", label: "QR", poly: qrMatch.poly, item: null }]
       : [],
-    warning: "",
-    qr: { parser: qrMatch.parsed.parser, raw: qrMatch.raw }
+    warning: qrMatch?.parsed ? "" : "QR-Code des gewählten Profils wurde nicht erkannt.",
+    qr: qrMatch?.parsed ? { parser: qrMatch.parsed.parser, raw: qrMatch.raw } : null
   };
 }
 
@@ -165,19 +165,120 @@ function emptyExtraction() {
   return { profile: null, anchorMatch: null, transform: null, fields: {}, overlays: [], warning: "" };
 }
 
-function findAnchor(items, aliases) {
+function findAnchor(items, aliases, anchorOptions = {}) {
   let best = null;
-  for (const item of items || []) {
-    const text = normalizeText(item.text);
+  for (const sourceItem of anchorCandidates(items)) {
     for (const alias of aliases) {
       const target = normalizeText(alias);
       if (!target) continue;
+      const item = anchorOptions?.localizeAlias === true
+        ? localizeAnchorAlias(sourceItem, alias) || sourceItem
+        : sourceItem;
+      const text = normalizeText(item.text);
       const similarity = anchorSimilarity(text, target);
       const score = similarity * 0.8 + Number(item.score || 0) * 0.2;
       if (!best || score > best.matchScore) best = { item, alias, matchScore: score };
     }
   }
   return best;
+}
+
+// PaddleOCR fasst bei langen H-Satz-Zeilen gelegentlich alles zu einer einzigen
+// Textbox zusammen, z. B. "H-Sätze ... H334 Stor.Cl./WPC 11 /1". Würden wir
+// die komplette Box als Anker verwenden, läge deren Mittelpunkt viel zu weit
+// links und sämtliche Feldzonen würden verschoben. Liegt der Alias als Teiltext
+// in einer längeren OCR-Zeile, schneiden wir deshalb virtuell nur den Alias aus
+// und verwenden dessen angenäherte Geometrie als Anker.
+function localizeAnchorAlias(item, alias) {
+  const raw = String(item?.text || "");
+  if (!raw || !item?.poly) return null;
+  const source = normalizeTextWithMap(raw);
+  const target = normalizeText(alias);
+  if (!target || source.normalized === target) return null;
+  const normalizedStart = source.normalized.indexOf(target);
+  if (normalizedStart < 0) return null;
+  const normalizedEnd = normalizedStart + target.length - 1;
+  const start = source.map[normalizedStart]?.start ?? 0;
+  const end = source.map[normalizedEnd]?.end ?? raw.length;
+  return {
+    ...item,
+    text: raw.slice(start, end),
+    poly: approximateTextFragmentPoly(item.poly, raw.length, start, end),
+    sourceText: raw,
+    anchorFragment: true
+  };
+}
+
+function normalizeTextWithMap(value) {
+  const raw = String(value || "");
+  let normalized = "";
+  const map = [];
+  for (let index = 0; index < raw.length; index += 1) {
+    const upper = raw[index].toUpperCase().normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Z0-9]/g, "");
+    for (const char of upper) {
+      normalized += char;
+      map.push({ start: index, end: index + 1 });
+    }
+  }
+  return { normalized, map };
+}
+
+// PaddleOCR trennt kurze Beschriftungen gelegentlich in zwei Boxen, z. B.
+// "Stor.Cl." + "/ WPC" oder "Alte" + "Materialnummer". Für die
+// Profilerkennung bilden wir deshalb zusätzlich benachbarte Textboxen derselben
+// Zeile zu einem virtuellen Ankerkandidaten zusammen.
+function anchorCandidates(items) {
+  const source = (items || []).filter((item) => item?.text && normalizePoly(item.poly).length >= 4);
+  const candidates = [...source];
+  const pairs = [];
+  for (let i = 0; i < source.length; i += 1) {
+    for (let j = 0; j < source.length; j += 1) {
+      if (i === j || !canJoinAnchorItems(source[i], source[j])) continue;
+      const pair = joinAnchorItems(source[i], source[j]);
+      pairs.push(pair);
+      candidates.push(pair);
+    }
+  }
+
+  // Auch drei kleine Boxen zulassen, falls z. B. "Stor.Cl.", "/" und "WPC"
+  // getrennt erkannt werden.
+  for (const pair of pairs) {
+    for (const item of source) {
+      if (pair.sourceItems?.includes(item) || !canJoinAnchorItems(pair, item)) continue;
+      candidates.push(joinAnchorItems(pair, item));
+    }
+  }
+  return candidates;
+}
+
+function canJoinAnchorItems(left, right) {
+  const a = boundsFromPoly(left.poly);
+  const b = boundsFromPoly(right.poly);
+  if (b.x < a.x) return false;
+  const verticalDistance = Math.abs((a.y + a.height / 2) - (b.y + b.height / 2));
+  const lineTolerance = Math.max(10, Math.max(a.height, b.height) * 0.75);
+  if (verticalDistance > lineTolerance) return false;
+  const gap = b.x - (a.x + a.width);
+  const maxGap = Math.max(42, Math.max(a.height, b.height) * 4.5);
+  return gap >= -Math.max(a.height, b.height) * 0.35 && gap <= maxGap;
+}
+
+function joinAnchorItems(left, right) {
+  const a = boundsFromPoly(left.poly);
+  const b = boundsFromPoly(right.poly);
+  const x1 = Math.min(a.x, b.x);
+  const y1 = Math.min(a.y, b.y);
+  const x2 = Math.max(a.x + a.width, b.x + b.width);
+  const y2 = Math.max(a.y + a.height, b.y + b.height);
+  return {
+    text: `${left.text} ${right.text}`,
+    score: (Number(left.score || 0) + Number(right.score || 0)) / 2,
+    poly: [[x1,y1],[x2,y1],[x2,y2],[x1,y2]],
+    joined: true,
+    sourceItems: [...(left.sourceItems || [left]), ...(right.sourceItems || [right])]
+  };
 }
 
 function anchorSimilarity(text, target) {
@@ -201,7 +302,16 @@ function anchorSimilarity(text, target) {
 function buildTransform(referenceAnchorPoly, liveAnchorPoly, imageSize) {
   const ref = polyGeometry(scaleNormalizedPoly(referenceAnchorPoly, imageSize));
   const live = polyGeometry(liveAnchorPoly);
-  const scale = live.width / Math.max(ref.width, 1);
+
+  // Die Breite einer OCR-Textbox hängt stark vom erkannten Text ab. Beim VW-
+  // Master steht z. B. "Volkswagen Sachsen GmbH", auf einem anderen Werk aber
+  // nur "Volkswagen AG". Würden wir die Boxbreite als globalen Maßstab nutzen,
+  // würden sämtliche Feldpositionen zusammengestaucht. Die Schrift-/Zeilenhöhe
+  // ist dagegen weitgehend unabhängig von der Textlänge und ist deshalb der
+  // robustere Skalierungsanker.
+  let scale = live.height / Math.max(ref.height, 1);
+  if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+  scale = Math.max(0.35, Math.min(3, scale));
   return { refCenter: ref.center, liveCenter: live.center, scale, rotation: live.angle - ref.angle };
 }
 
@@ -363,9 +473,11 @@ function polyGeometry(poly) {
   const bounds = boundsFromPoly(points);
   const a = points[0] || [bounds.x, bounds.y];
   const c = points[1] || [bounds.x + bounds.width, bounds.y];
+  const d = points[3] || [bounds.x, bounds.y + bounds.height];
   return {
     center: [bounds.x + bounds.width / 2, bounds.y + bounds.height / 2],
     width: Math.hypot(c[0] - a[0], c[1] - a[1]) || bounds.width,
+    height: Math.hypot(d[0] - a[0], d[1] - a[1]) || bounds.height,
     angle: Math.atan2(c[1] - a[1], c[0] - a[0])
   };
 }

@@ -1,4 +1,20 @@
-# 0.6.4
+# Changelog
+
+## 0.6.6
+- Asynchrone Scan-Ergebnisse sind an eine Slot-Generation gebunden; ältere OCR-Läufe können kein neueres Foto mehr überschreiben.
+- Manuell gewählte QR-Profile (insbesondere Tesla) werden erneut mit `detectQrProfile()` gelesen statt durch die OCR-Geometrie geschickt.
+- Derselbe unveränderte Vergleich kann nur einmal gespeichert werden; nach Foto-, Profil-, OCR- oder manueller Feldänderung wird Speichern wieder freigegeben.
+- Schlechte Bildqualität wird als Hinweis angezeigt, blockiert die Freigabe aber nicht.
+- Fehler beim Schreiben oder Leeren des lokalen Protokolls werden sichtbar gemeldet.
+- INTERN2: Wenn PaddleOCR eine lange H-Satz-Zeile zusammen mit `Stor.Cl./WPC` als eine Textbox erkennt, wird der Alias virtuell aus der Zeile ausgeschnitten und nur dessen Geometrie als Anker verwendet.
+
+## 0.6.5
+- VW-Geometrie verwendet die Höhe des Textankers statt dessen Breite; kurze Werkbezeichnungen wie „Volkswagen AG“ verzerren die Feldpositionen nicht mehr.
+- Benachbarte OCR-Textzeilen können gemeinsam einen Anker bilden, z. B. „Stor.Cl.“ + „/ WPC“ und „Alte“ + „Materialnummer“.
+- Das sichtbare Scanprotokoll entspricht jetzt dem Excel-Export.
+- Spalten „Nr“ und „Produktprofil“ entfernt.
+
+# 0.6.5
 
 - Mobilgeräte (Android, iPhone, iPad) starten standardmäßig im stabilen OCR-Modus: WASM, 1 Thread, Recognition-Batch 1 und reduzierte Bildgröße. Desktop bleibt standardmäßig im schnellen AUTO-Modus.
 - Manuelle Wahl zwischen stabilem und schnellem Modus wird pro Browser gespeichert; Crash-Recovery bleibt aktiv.

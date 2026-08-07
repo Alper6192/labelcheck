@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.4",
+  "appVersion": "0.6.6",
   "exportedAt": "2026-08-07T09:22:21.048702Z",
   "profiles": [
     {
@@ -1696,7 +1696,8 @@
             0.5425,
             0.61
           ]
-        ]
+        ],
+        "localizeAlias": true
       },
       "fields": [
         {

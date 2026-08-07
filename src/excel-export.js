@@ -1,8 +1,22 @@
 import * as XLSX from "xlsx";
 
-export function exportRecords(records) {
-  const rows = (records || []).map((record, index) => ({
-    Nr: index + 1,
+export const LOG_COLUMNS = [
+  { key: "Zeit", width: 20 },
+  { key: "Ergebnis", width: 24 },
+  { key: "Batch Produkt", width: 20 },
+  { key: "Batch Lieferschein", width: 22 },
+  { key: "IDH Produkt", width: 18 },
+  { key: "IDH Lieferschein", width: 20 },
+  { key: "Gewicht Produkt", width: 20 },
+  { key: "Gewicht Lieferschein", width: 22 },
+  { key: "Lieferscheinnummer", width: 22 },
+  { key: "Fassnummer Produkt", width: 20 },
+  { key: "Lieferscheinprofil", width: 22 },
+  { key: "Manuell korrigiert", width: 20 }
+];
+
+export function recordsToRows(records) {
+  return (records || []).map((record) => ({
     Zeit: formatLocalTimestamp(record.timestamp),
     Ergebnis: resultLabel(record),
     "Batch Produkt": safe(record.product?.batch),
@@ -13,19 +27,16 @@ export function exportRecords(records) {
     "Gewicht Lieferschein": safe(record.vda?.weight),
     Lieferscheinnummer: safe(record.vda?.delivery_note),
     "Fassnummer Produkt": safe(record.product?.drum_number),
-    Produktprofil: safe(record.productProfile),
     Lieferscheinprofil: safe(record.vdaProfile),
     "Manuell korrigiert": record.manual ? "Ja" : "Nein"
   }));
+}
 
-  const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = [
-    { wch: 6 }, { wch: 20 }, { wch: 24 },
-    { wch: 20 }, { wch: 22 }, { wch: 18 }, { wch: 20 },
-    { wch: 20 }, { wch: 22 }, { wch: 22 }, { wch: 20 },
-    { wch: 22 }, { wch: 24 }, { wch: 20 }
-  ];
-  if (rows.length) ws["!autofilter"] = { ref: `A1:N${rows.length + 1}` };
+export function exportRecords(records) {
+  const rows = recordsToRows(records);
+  const ws = XLSX.utils.json_to_sheet(rows, { header: LOG_COLUMNS.map((column) => column.key) });
+  ws["!cols"] = LOG_COLUMNS.map((column) => ({ wch: column.width }));
+  if (rows.length) ws["!autofilter"] = { ref: `A1:L${rows.length + 1}` };
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Kontrollen");

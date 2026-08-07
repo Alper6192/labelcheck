@@ -59,7 +59,7 @@ export function createProfile(role = "vda", index = 1) {
     name: role === "product" ? `Produktprofil ${stamp}` : `VDA-Profil ${stamp}`,
     role,
     active: true,
-    anchor: { aliases: [], poly: [] },
+    anchor: { aliases: [], poly: [], localizeAlias: false },
     fields: []
   };
 }
@@ -94,7 +94,8 @@ export function normalizeProfile(profile, index = 0) {
       aliases: Array.isArray(profile?.anchor?.aliases)
         ? profile.anchor.aliases.map((value) => String(value).trim()).filter(Boolean)
         : [],
-      poly: normalizeNormalizedPoly(profile?.anchor?.poly)
+      poly: normalizeNormalizedPoly(profile?.anchor?.poly),
+      localizeAlias: profile?.anchor?.localizeAlias === true
     },
     fields: fields
       .filter((field) => FIELD_PRESETS[field?.key])

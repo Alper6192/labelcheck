@@ -32,3 +32,25 @@ test("Scanner prüft QR-Profile vor PaddleOCR", () => {
   assert.match(source, /extractQrProfileFields/);
   assert.match(source, /QR-Code/);
 });
+
+
+test("Scanner verwirft veraltete asynchrone Scan-Ergebnisse per Generation", () => {
+  assert.match(source, /generation:\s*0/);
+  assert.match(source, /isCurrentSlotRequest/);
+  assert.match(source, /expectedGeneration/);
+});
+
+test("Manuell gewähltes QR-Profil wird erneut mit detectQrProfile ausgewertet", () => {
+  assert.match(source, /slot\.profile\?\.source\?\.type === "qr"/);
+  assert.match(source, /detectQrProfile\(slot\.prepared\.canvas, \[slot\.profile\], key\)/);
+});
+
+test("Speichern desselben Vergleichs wird bis zur nächsten Änderung gesperrt", () => {
+  assert.match(source, /dataRevision === lastSavedRevision/);
+  assert.match(source, /lastSavedRevision = dataRevision/);
+});
+
+test("Bildqualität wird nur als Hinweis angezeigt", () => {
+  assert.match(source, /Hinweis: Bild/);
+  assert.match(source, /imageQualityHint/);
+});

@@ -135,3 +135,54 @@ test("Vergleich überspringt IDH, wenn der Lieferschein dieses Feld nicht vergle
   assert.equal(comparison.status, "released");
   assert.deepEqual(comparison.rows.map((row) => row.key), ["batch", "weight"]);
 });
+
+test("VW-Geometrie skaliert nicht mit der Länge des erkannten Ankertexts", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen", "Volkswagen Sachsen GmbH"], poly: [[0.2,0.1],[0.6,0.1],[0.6,0.15],[0.2,0.15]] },
+    fields: [
+      { key: "batch", label: "Batch", required: true, compare: true, regex: "^D\\d{9}$", sourceRegex: "^D\\d{9}$", normalizer: "batch", poly: [[0.70,0.62],[0.88,0.62],[0.88,0.68],[0.70,0.68]] },
+      { key: "idh", label: "IDH", required: true, compare: true, regex: "^\\d{7}$", sourceRegex: "^\\d{7}$", normalizer: "digits", poly: [[0.50,0.72],[0.62,0.72],[0.62,0.79],[0.50,0.79]] }
+    ]
+  };
+  const items = [
+    item("Volkswagen AG", .99, [[300,100],[450,100],[450,150],[300,150]]),
+    item("D562707959", .99, [[675,620],[855,620],[855,680],[675,680]]),
+    item("13026259 2892943", .99, [[300,720],[620,720],[620,790],[300,790]])
+  ];
+  const result = extractProfileFields(items, profile, { width: 1000, height: 1000 });
+  assert.equal(result.fields.batch.value, "D562707959");
+  assert.equal(result.fields.idh.value, "2892943");
+});
+
+test("Getrennte OCR-Boxen können gemeinsam einen Textanker bilden", () => {
+  const profile = {
+    id: "INTERN2", name: "Intern2", role: "vda", active: true,
+    anchor: { aliases: ["Stor.Cl./WPC"], poly: [[0.50,0.50],[0.65,0.50],[0.65,0.55],[0.50,0.55]] },
+    fields: []
+  };
+  const result = autoSelectProfile([
+    item("Stor.Cl.", .96, [[500,500],[570,500],[570,540],[500,540]]),
+    item("/ WPC", .94, [[575,502],[645,502],[645,542],[575,542]])
+  ], [profile], "vda");
+  assert.equal(result?.profile?.id, "INTERN2");
+  assert.equal(result?.anchorMatch?.item?.joined, true);
+});
+
+
+test("INTERN2 lokalisiert Stor.Cl./WPC innerhalb einer langen H-Satz-OCR-Zeile", () => {
+  const profile = {
+    id: "INTERN2", name: "Intern2", role: "vda", active: true,
+    anchor: { aliases: ["Stor.Cl./WPC"], localizeAlias: true, poly: [[0.54,0.58],[0.64,0.58],[0.64,0.61],[0.54,0.61]] },
+    fields: []
+  };
+  const result = autoSelectProfile([
+    item("H-Sätze: H351/H373/H319/H315/H351/H335/H317/H334Stor.Cl./WPC 11 /1", .97, [[250,580],[900,580],[900,620],[250,620]])
+  ], [profile], "vda");
+  assert.equal(result?.profile?.id, "INTERN2");
+  assert.equal(result?.anchorMatch?.item?.anchorFragment, true);
+  assert.equal(result?.anchorMatch?.item?.text, "Stor.Cl./WPC");
+  const xs = result.anchorMatch.item.poly.map((point) => point[0]);
+  assert.ok(Math.min(...xs) > 650, "virtueller Anker muss im rechten Teil der langen OCR-Zeile liegen");
+  assert.ok(Math.max(...xs) - Math.min(...xs) < 180, "virtueller Anker darf nicht die gesamte H-Satz-Zeile umfassen");
+});

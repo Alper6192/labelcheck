@@ -75,3 +75,12 @@ test("Tesla-Profil verwendet den QR-Parser und benötigt keine IDH", () => {
   assert.equal(profile?.fields?.some((field) => field.key === "idh"), false);
   assert.equal(profile?.fields?.find((field) => field.key === "delivery_note")?.required, true);
 });
+
+
+test("Intern2 lokalisiert seinen Anker innerhalb zusammengezogener OCR-Zeilen", () => {
+  const raw = readConfig();
+  const profile = raw.profiles.find((entry) => entry.id === "INTERN2");
+  assert.equal(profile?.anchor?.localizeAlias, true);
+  const normalized = normalizeProfileConfig(raw, String(raw.appVersion || ""));
+  assert.equal(normalized.profiles.find((entry) => entry.id === "INTERN2")?.anchor?.localizeAlias, true);
+});

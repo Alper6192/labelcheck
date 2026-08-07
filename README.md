@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.6.4
+# LabelCheck PaddleOCR 0.6.6
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 
@@ -9,6 +9,13 @@ LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Pr
 - Eine manuelle Moduswahl wird lokal pro Browser gespeichert.
 - Ein erkannter Browserabsturz während OCR erzwingt beim nächsten Start automatisch den stabilen Modus.
 - Die PP-OCRv5-Modelle werden beim GitHub-Actions-Build in die Pages-Site kopiert und zur Laufzeit same-origin geladen.
+
+## Robustheit 0.6.6
+
+- Neue Fotos besitzen eine interne Generation; verspätete OCR-Ergebnisse älterer Fotos werden verworfen.
+- Ein unveränderter Vergleich kann nicht versehentlich mehrfach gespeichert werden.
+- Bei auffälliger Schärfe/Belichtung erscheint nur ein Hinweis; die Freigabelogik wird dadurch nicht blockiert.
+- INTERN2 bleibt auch dann positionsstabil, wenn `Stor.Cl./WPC` mit einer langen H-Satz-Zeile in derselben OCR-Textbox erkannt wird.
 
 ## Tesla
 

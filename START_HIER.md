@@ -1,4 +1,4 @@
-# Start – LabelCheck 0.6.4
+# Start – LabelCheck 0.6.6
 
 1. Projektinhalt in das GitHub-Repository kopieren.
 2. `public/config/label-profiles.json` enthält den zuletzt bereitgestellten Profilstand plus Tesla.
