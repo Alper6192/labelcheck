@@ -1,7 +1,7 @@
 import { PaddleOCR } from "@paddleocr/paddleocr-js";
 import { MODEL_OPTIONS } from "./config.js";
 import { safeError } from "./utils.js";
-import { RUNTIME_POLICY } from "./runtime-policy.js";
+import { getRuntimePolicy } from "./runtime-policy.js";
 
 const DISPOSE_TIMEOUT_MS = 5000;
 
@@ -23,7 +23,7 @@ export class PaddleOcrEngine {
   #generation = 0;
   #summary = null;
   #lastRuntime = null;
-  #mode = `Web Worker · ${RUNTIME_POLICY.label}`;
+  #mode = `Web Worker · ${getRuntimePolicy().label}`;
 
   get ready() {
     return Boolean(this.#ocr);
@@ -80,7 +80,8 @@ export class PaddleOcrEngine {
 
     const startedAt = performance.now();
     const options = createCommonOptions(model);
-    onStatus(`PaddleOCR lädt im Web Worker · ${RUNTIME_POLICY.label} …`);
+    const policy = getRuntimePolicy();
+    onStatus(`PaddleOCR lädt im Web Worker · ${policy.label} …`);
 
     try {
       this.#ocr = await PaddleOCR.create({ ...options, worker: true });
@@ -159,7 +160,7 @@ export class PaddleOcrEngine {
     this.#modelKey = null;
     this.#summary = null;
     this.#lastRuntime = null;
-    this.#mode = `Web Worker · ${RUNTIME_POLICY.label}`;
+    this.#mode = `Web Worker · ${getRuntimePolicy().label}`;
     this.#queue = Promise.resolve();
     this.#pendingCount = 0;
   }
@@ -176,6 +177,7 @@ export class PaddleOcrEngine {
 }
 
 export function createCommonOptions(model) {
+  const policy = getRuntimePolicy();
   const wasmPaths = new URL("./ort/", window.location.href).href;
   const modelBase = new URL("./models/", window.location.href);
   return {
@@ -188,18 +190,19 @@ export function createCommonOptions(model) {
       url: new URL(model.textRecognitionModelFile, modelBase).href
     },
     textDetectionBatchSize: 1,
-    textRecognitionBatchSize: RUNTIME_POLICY.textRecognitionBatchSize,
+    textRecognitionBatchSize: policy.textRecognitionBatchSize,
     ortOptions: {
-      backend: RUNTIME_POLICY.backend,
+      backend: policy.backend,
       wasmPaths,
-      numThreads: RUNTIME_POLICY.numThreads,
+      numThreads: policy.numThreads,
       simd: true
     }
   };
 }
 
 export function createRuntimeDiagnostics(summary = null, runtime = null) {
-  const requestedBackend = runtime?.requestedBackend ?? summary?.backend ?? RUNTIME_POLICY.backend;
+  const policy = getRuntimePolicy();
+  const requestedBackend = runtime?.requestedBackend ?? summary?.backend ?? policy.backend;
   const detProvider = runtime?.detProvider ?? summary?.detProvider ?? null;
   const recProvider = runtime?.recProvider ?? summary?.recProvider ?? null;
   return {
@@ -209,7 +212,7 @@ export function createRuntimeDiagnostics(summary = null, runtime = null) {
     webgpuAvailable: runtime?.webgpuAvailable ?? summary?.webgpuAvailable ?? Boolean(globalThis.navigator?.gpu),
     hardwareConcurrency: Number(globalThis.navigator?.hardwareConcurrency || 0) || null,
     crossOriginIsolated: globalThis.crossOriginIsolated === true,
-    configuredThreads: RUNTIME_POLICY.numThreads,
+    configuredThreads: policy.numThreads,
     simdRequested: true
   };
 }
@@ -223,7 +226,7 @@ export function describeRuntimeMode(summary = null, runtime = null) {
     const provider = det === rec ? det : `${det}/${rec}`;
     return `Web Worker · ${provider}`;
   }
-  return `Web Worker · ${RUNTIME_POLICY.label}`;
+  return `Web Worker · ${getRuntimePolicy().label}`;
 }
 
 export function formatRuntimeDetails(summary = null, runtime = null) {

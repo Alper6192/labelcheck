@@ -1,14 +1,18 @@
 import { clamp } from "./utils.js";
 
-export async function prepareImage(file, maxSide) {
+export async function prepareImage(file, maxSide, options = {}) {
   if (!(file instanceof Blob)) throw new TypeError("Ungültige Bilddatei.");
 
-  const bitmap = await createBitmap(file);
-  const originalWidth = bitmap.width;
-  const originalHeight = bitmap.height;
-  const scale = Math.min(1, Number(maxSide) / Math.max(originalWidth, originalHeight));
-  const width = Math.max(1, Math.round(originalWidth * scale));
-  const height = Math.max(1, Math.round(originalHeight * scale));
+  const decoded = await createBitmap(file, {
+    maxSide,
+    resizeDuringDecode: options.resizeDuringDecode === true
+  });
+  const bitmap = decoded.bitmap;
+  const originalWidth = decoded.originalWidth || bitmap.width;
+  const originalHeight = decoded.originalHeight || bitmap.height;
+  const scale = Math.min(1, Number(maxSide) / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -28,16 +32,45 @@ export async function prepareImage(file, maxSide) {
     height,
     originalWidth,
     originalHeight,
+    decodedAtReducedSize: decoded.resizedDuringDecode === true,
     quality
   };
 }
 
-async function createBitmap(file) {
+async function createBitmap(file, { maxSide, resizeDuringDecode }) {
   if ("createImageBitmap" in window) {
+    if (resizeDuringDecode) {
+      try {
+        const dimensions = await readEncodedImageDimensions(file);
+        if (dimensions && Math.max(dimensions.width, dimensions.height) > Number(maxSide)) {
+          const scale = Number(maxSide) / Math.max(dimensions.width, dimensions.height);
+          const resizeWidth = Math.max(1, Math.round(dimensions.width * scale));
+          const resizeHeight = Math.max(1, Math.round(dimensions.height * scale));
+          const bitmap = await createImageBitmap(file, {
+            imageOrientation: "from-image",
+            resizeWidth,
+            resizeHeight,
+            resizeQuality: "high"
+          });
+          return {
+            bitmap,
+            originalWidth: dimensions.width,
+            originalHeight: dimensions.height,
+            resizedDuringDecode: true
+          };
+        }
+      } catch {
+        // Browser unterstützt Resize-beim-Decodieren nicht oder Dateiformat ist
+        // unbekannt. Der normale Decode-Pfad bleibt als kompatibler Fallback.
+      }
+    }
+
     try {
-      return await createImageBitmap(file, { imageOrientation: "from-image" });
+      const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+      return { bitmap, originalWidth: bitmap.width, originalHeight: bitmap.height, resizedDuringDecode: false };
     } catch {
-      return await createImageBitmap(file);
+      const bitmap = await createImageBitmap(file);
+      return { bitmap, originalWidth: bitmap.width, originalHeight: bitmap.height, resizedDuringDecode: false };
     }
   }
 
@@ -47,10 +80,58 @@ async function createBitmap(file) {
     image.decoding = "async";
     image.src = url;
     await image.decode();
-    return image;
+    return { bitmap: image, originalWidth: image.naturalWidth || image.width, originalHeight: image.naturalHeight || image.height, resizedDuringDecode: false };
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/** Liest JPEG-/PNG-Abmessungen ohne vollständiges Dekodieren des Fotos. */
+export async function readEncodedImageDimensions(file) {
+  const prefix = new Uint8Array(await file.slice(0, Math.min(file.size, 512 * 1024)).arrayBuffer());
+  return parseEncodedImageDimensions(prefix, file.type);
+}
+
+export function parseEncodedImageDimensions(bytes, mimeType = "") {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 12) return null;
+  const mime = String(mimeType || "").toLowerCase();
+
+  const isPng = mime.includes("png") || (
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+  );
+  if (isPng && bytes.length >= 24) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const width = view.getUint32(16, false);
+    const height = view.getUint32(20, false);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
+  const isJpeg = mime.includes("jpeg") || mime.includes("jpg") || (bytes[0] === 0xff && bytes[1] === 0xd8);
+  if (!isJpeg) return null;
+
+  let offset = 2;
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    while (offset < bytes.length && bytes[offset] === 0xff) offset += 1;
+    const marker = bytes[offset++];
+    if (marker === 0xd8 || marker === 0xd9) continue;
+    if (marker === 0xda) break;
+    if (offset + 1 >= bytes.length) break;
+    const length = (bytes[offset] << 8) | bytes[offset + 1];
+    if (length < 2 || offset + length > bytes.length) break;
+
+    const isSof = [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker);
+    if (isSof && length >= 7) {
+      const height = (bytes[offset + 3] << 8) | bytes[offset + 4];
+      const width = (bytes[offset + 5] << 8) | bytes[offset + 6];
+      return width > 0 && height > 0 ? { width, height } : null;
+    }
+    offset += length;
+  }
+  return null;
 }
 
 function measureQuality(sourceCanvas) {
@@ -117,8 +198,6 @@ export function releasePreparedImage(prepared) {
   const canvas = prepared?.canvas;
   if (!canvas) return;
   try {
-    // Das Zurücksetzen der Canvas-Dimensionen gibt den großen Pixelpuffer in
-    // Safari wesentlich zuverlässiger frei als nur die JS-Referenz zu löschen.
     canvas.width = 1;
     canvas.height = 1;
   } catch {

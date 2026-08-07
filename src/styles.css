@@ -160,3 +160,5 @@ button.danger { background: #6d2030; border-color: #a73c50; }
   .mode-toolbar label { width: 100%; margin-left: 0; grid-template-columns: 1fr; }
   .editor-stage { min-height: 220px; }
 }
+
+.compatibility-option{display:flex!important;align-items:center;justify-content:space-between;gap:.75rem;min-width:15rem}.compatibility-option input{width:1.25rem;height:1.25rem;accent-color:currentColor}.compatibility-option span{white-space:nowrap}

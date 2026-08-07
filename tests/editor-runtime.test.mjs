@@ -15,13 +15,14 @@ test("Scanner und Profileditor verwenden dieselbe OCR-Engine", () => {
   assert.match(editorSource, /from "\.\/ocr-engine\.js"/);
 });
 
-test("Gemeinsame Engine nutzt einheitlichen AUTO-Pfad und weiterhin genau einen Worker", () => {
+test("Gemeinsame Engine nutzt dynamische Runtime-Policy und weiterhin genau einen Worker", () => {
   assert.match(engineSource, /worker:\s*true/);
-  assert.match(engineSource, /backend:\s*RUNTIME_POLICY\.backend/);
-  assert.match(engineSource, /numThreads:\s*RUNTIME_POLICY\.numThreads/);
-  assert.match(engineSource, /textRecognitionBatchSize:\s*RUNTIME_POLICY\.textRecognitionBatchSize/);
+  assert.match(engineSource, /backend:\s*policy\.backend/);
+  assert.match(engineSource, /numThreads:\s*policy\.numThreads/);
+  assert.match(engineSource, /textRecognitionBatchSize:\s*policy\.textRecognitionBatchSize/);
   assert.match(policySource, /backend:\s*"auto"/);
-  assert.doesNotMatch(policySource, /family:\s*"ios"|backend:\s*"wasm"/);
+  assert.match(policySource, /backend:\s*"wasm"/);
+  assert.match(policySource, /ocr-crash-recovery/);
   assert.doesNotMatch(engineSource, /worker:\s*false/);
 });
 

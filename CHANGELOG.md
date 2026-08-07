@@ -140,9 +140,11 @@
 - Oberfläche auf eine eindeutige Standardmodell-Option reduziert.
 - Test ergänzt, der verhindert, dass erneut `lang: de` in die Browserkonfiguration gelangt.
 
-## 0.6.2
-- iOS-Sonderpfad wieder entfernt; iPhone, Android und Desktop verwenden dieselbe AUTO/WebGPU-WASM-Strategie.
-- PP-OCRv5 Detektions- und Erkennungsmodelle werden beim GitHub-Build in `public/models/` gespiegelt.
-- Scanner und Editor laden OCR-Modelle danach ausschließlich same-origin von GitHub Pages; kein direkter Baidu/BOS-Modellabruf im Firmennetz mehr.
-- Nutzerkonfiguration auf Basis von `label-profiles(1).json` übernommen.
-- INTERN1-Anker auf `Alte Materialnummer` präzisiert, KGM als Gewichtseinheit ergänzt und Scania-Batch mit Doppelpunkt-Suffix unterstützt.
+## 0.6.3
+- Automatischer OCR-Crash-Recovery-Modus für verwaltete Firmengeräte.
+- Bleibt während einer Inferenz ein Crash-Marker stehen, startet LabelCheck beim nächsten Laden automatisch im Kompatibilitätsmodus.
+- Kompatibilitätsmodus: WASM statt WebGPU, 1 Thread, Recognition-Batch 1, max. 1200 px, Detektorlimit 640 px.
+- Kamerafotos werden im Kompatibilitätsmodus nach Möglichkeit bereits beim `createImageBitmap`-Decode verkleinert, um große RGBA-Zwischenpuffer zu vermeiden.
+- Manueller Schalter für den Kompatibilitätsmodus im Scanner.
+- Android/iOS werden nicht mehr unterschiedlich behandelt.
+- Layoutprofil wird bei jedem neuen Foto weiterhin auf „Automatisch“ zurückgesetzt.

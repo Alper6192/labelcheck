@@ -36,6 +36,3 @@ GitHub Pages veröffentlicht den erzeugten `dist`-Ordner über GitHub Actions.
 ## Eigene Profile und Build-Tests
 
 Ab Version 0.5.9 sind die fachlichen Extraktionstests von `public/config/label-profiles.json` getrennt. Die im Editor exportierte Profildatei darf daher beliebige eigene Kunden- und Produktprofile enthalten. Der Build prüft nur noch die technische Gültigkeit der produktiven JSON-Datei.
-
-### Firmennetz / lokale OCR-Assets
-Seit 0.6.2 werden nicht nur die ONNX-Runtime-Dateien, sondern auch die beiden PP-OCRv5-Modellarchive beim GitHub-Actions-Build in die Pages-Site kopiert. Zur Laufzeit lädt LabelCheck die Modelle aus `./models/` derselben GitHub-Pages-Origin. Dadurch ist kein direkter Zugriff des Endgeräts auf Paddle/Baidu BOS für die OCR-Modelle nötig.

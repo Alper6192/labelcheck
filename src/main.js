@@ -2,7 +2,15 @@ import "./styles.css";
 import { APP_VERSION, MODEL_OPTIONS, QUALITY_PRESETS } from "./config.js";
 import { PaddleOcrEngine, formatRuntimeDetails } from "./ocr-engine.js";
 import { prepareImage, releasePreparedImage } from "./image-tools.js";
-import { RUNTIME_POLICY } from "./runtime-policy.js";
+import {
+  clearOcrInFlight,
+  getCompatibilityReason,
+  getRuntimePolicy,
+  isCompatibilityMode,
+  markOcrInFlight,
+  recoverCompatibilityMode,
+  setCompatibilityMode
+} from "./runtime-policy.js";
 import { renderComparison, renderFieldEditor, renderPreview } from "./render.js";
 import { applyManualValue, autoSelectProfile, extractProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
@@ -10,6 +18,7 @@ import { clearRecords, loadRecords, saveRecord } from "./storage.js";
 import { exportRecords } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
+const crashRecovery = recoverCompatibilityMode();
 const engine = new PaddleOcrEngine();
 let profiles = [];
 let records = loadRecords();
@@ -22,6 +31,7 @@ setupOptions();
 setupSlot("product");
 setupSlot("vda");
 setupActions();
+setupCompatibilityMode();
 renderAll();
 Promise.all([
   loadProfiles().then((loaded) => { profiles = loaded; populateProfiles(); }),
@@ -74,6 +84,24 @@ function setupActions() {
   el("debugButton").onclick = exportDebug;
 }
 
+
+function setupCompatibilityMode() {
+  const toggle = el("compatibilityToggle");
+  if (!toggle) return;
+  toggle.checked = isCompatibilityMode();
+  toggle.addEventListener("change", async () => {
+    const enabled = toggle.checked;
+    clearOcrInFlight();
+    setCompatibilityMode(enabled, "manual");
+    await engine.dispose();
+    setEngineStatus(enabled
+      ? "Kompatibilitätsmodus aktiviert · PaddleOCR wird neu geladen …"
+      : "Normalmodus aktiviert · PaddleOCR wird neu geladen …", "wait");
+    await initializeEngine(true);
+    renderAll();
+  });
+}
+
 function populateProfiles() {
   for (const key of ["product", "vda"]) {
     const select = el(`${key}Profile`);
@@ -89,7 +117,12 @@ async function initializeEngine(force = false) {
   try {
     const info = await engine.initialize("standard", (message) => setEngineStatus(message, "wait"), force);
     setEngineStatus(`PaddleOCR bereit · ${info.mode}`, "ok");
-    el("engineDetails").textContent = `Initialisierung ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary)}`;
+    const reason = getCompatibilityReason();
+    el("engineDetails").textContent = [
+      `Initialisierung ${formatMilliseconds(info.initMs)}`,
+      formatRuntimeDetails(info.summary),
+      isCompatibilityMode() && reason === "ocr-crash-recovery" ? "Kompatibilitätsmodus nach vorherigem OCR-Absturz automatisch aktiviert" : ""
+    ].filter(Boolean).join(" · ");
     return true;
   } catch (error) {
     setEngineStatus(`PaddleOCR nicht bereit: ${safeError(error)}`, "bad");
@@ -98,14 +131,15 @@ async function initializeEngine(force = false) {
 }
 
 function currentPreset() {
+  const policy = getRuntimePolicy();
   const requested = QUALITY_PRESETS[el("qualitySelect")?.value] || QUALITY_PRESETS.balanced;
   return {
     ...requested,
-    maxImageSide: RUNTIME_POLICY.scannerMaxImageSide
-      ? Math.min(requested.maxImageSide, RUNTIME_POLICY.scannerMaxImageSide)
+    maxImageSide: policy.scannerMaxImageSide
+      ? Math.min(requested.maxImageSide, policy.scannerMaxImageSide)
       : requested.maxImageSide,
-    textDetLimitSideLen: RUNTIME_POLICY.scannerDetLimitSideLen
-      ? Math.min(requested.textDetLimitSideLen, RUNTIME_POLICY.scannerDetLimitSideLen)
+    textDetLimitSideLen: policy.scannerDetLimitSideLen
+      ? Math.min(requested.textDetLimitSideLen, policy.scannerDetLimitSideLen)
       : requested.textDetLimitSideLen
   };
 }
@@ -132,13 +166,24 @@ async function loadFile(key, file) {
 
   try {
     const preset = currentPreset();
-    slot.prepared = await prepareImage(file, preset.maxImageSide);
+    const policy = getRuntimePolicy();
+    slot.prepared = await prepareImage(file, preset.maxImageSide, {
+      resizeDuringDecode: policy.resizeDuringDecode
+    });
+    markOcrInFlight("photo-prepared", {
+      slot: key,
+      backend: policy.backend,
+      width: slot.prepared.width,
+      height: slot.prepared.height,
+      appVersion: APP_VERSION
+    });
     slot.state = "ready";
     renderSlot(key);
     // Safari/iOS bekommt einen Paint-Zyklus, bevor der OCR-Worker startet.
     await nextPaint();
     await analyzeSlot(key);
   } catch (error) {
+    clearOcrInFlight();
     slot.error = safeError(error);
     slot.state = "error";
     renderSlot(key);
@@ -147,17 +192,29 @@ async function loadFile(key, file) {
 
 async function analyzeSlot(key) {
   const slot = slots[key];
-  if (!slot.prepared || !(await initializeEngine())) return;
+  if (!slot.prepared) return;
+  if (!(await initializeEngine())) {
+    clearOcrInFlight();
+    return;
+  }
   slot.state = "analyzing";
   renderSlot(key);
   await nextPaint();
 
   try {
     const preset = currentPreset();
+    const policy = getRuntimePolicy();
+    markOcrInFlight("predict", {
+      slot: key,
+      backend: policy.backend,
+      width: slot.prepared.width,
+      height: slot.prepared.height,
+      appVersion: APP_VERSION
+    });
     const out = await engine.predict(slot.prepared.canvas, {
       textDetLimitSideLen: preset.textDetLimitSideLen,
       textDetLimitType: "min",
-      textDetMaxSideLimit: RUNTIME_POLICY.family === "ios" ? 1800 : 2400,
+      textDetMaxSideLimit: policy.textDetMaxSideLimit,
       textDetThresh: 0.25,
       textDetBoxThresh: preset.textDetBoxThresh,
       textDetUnclipRatio: 1.55,
@@ -177,6 +234,8 @@ async function analyzeSlot(key) {
   } catch (error) {
     slot.error = safeError(error);
     slot.state = "error";
+  } finally {
+    clearOcrInFlight();
   }
   renderAll();
 }
@@ -246,10 +305,11 @@ function renderAll() {
 
 function renderSlot(key) {
   const slot = slots[key];
-  renderPreview(el(`${key}Preview`), slot.prepared, slot.extraction?.overlays || [], RUNTIME_POLICY.previewMaxSide);
+  const policy = getRuntimePolicy();
+  renderPreview(el(`${key}Preview`), slot.prepared, slot.extraction?.overlays || [], policy.previewMaxSide);
   const status = el(`${key}Status`);
   if (slot.state === "analyzing") {
-    status.textContent = `PaddleOCR analysiert …${RUNTIME_POLICY.family === "ios" ? " · iPhone-Sicherheitsmodus" : ""}`;
+    status.textContent = `PaddleOCR analysiert …${policy.compatibilityMode ? " · Kompatibilitätsmodus" : ""}`;
     status.className = "slot-status wait";
   } else if (slot.state === "error") {
     status.textContent = `Fehler: ${slot.error}`;
@@ -300,7 +360,8 @@ function exportDebug() {
   const payload = {
     exportedAt: new Date().toISOString(),
     appVersion: APP_VERSION,
-    runtimePolicy: RUNTIME_POLICY,
+    runtimePolicy: getRuntimePolicy(),
+    crashRecovery,
     product: debugSlot(slots.product),
     vda: debugSlot(slots.vda),
     comparison

@@ -36,7 +36,7 @@ for (const model of MODELS) {
   console.log(`Lade OCR-Modell für Pages-Build: ${model.file}`);
   const response = await fetch(model.url, {
     redirect: "follow",
-    headers: { "user-agent": "LabelCheck-GitHub-Pages-Build/0.6.2" }
+    headers: { "user-agent": "LabelCheck-GitHub-Pages-Build/0.6.3" }
   });
   if (!response.ok) {
     throw new Error(`OCR-Modell konnte nicht geladen werden: ${model.file} · HTTP ${response.status}`);
