@@ -45,7 +45,7 @@ export function extractProfileFields(items, profile, imageSize) {
     return { ...emptyExtraction(), profile, warning: "Profilanker wurde nicht sicher erkannt." };
   }
 
-  const transform = buildTransform(anchorMatch.referencePoly, anchorMatch.item.poly, imageSize, anchorMatch.scaleFrom);
+  const transform = buildTransform(anchorMatch.referencePoly, anchorMatch.item.poly, imageSize, anchorMatch.scaleFrom, anchorMatch.alignFrom);
   const fields = {};
   const candidates = {};
   const expectedPolys = {};
@@ -61,7 +61,7 @@ export function extractProfileFields(items, profile, imageSize) {
   for (const field of profile.fields || []) {
     const expected = expectedPolys[field.key];
     let candidate = candidates[field.key] || null;
-    let source = candidate ? "ocr" : "missing";
+    let source = candidate ? (candidate.source || "ocr") : "missing";
 
     if (field.key === "drum_number") {
       const derived = deriveDrumCandidate(items, candidates.batch, field, expected);
@@ -198,6 +198,7 @@ function findProfileAnchor(items, profile) {
       ...match,
       referencePoly: anchor.poly,
       scaleFrom: anchor.scaleFrom === "height" ? "height" : "width",
+      alignFrom: anchor.alignFrom === "left" ? "left" : "center",
       fallback: index > 0,
       anchorIndex: index
     };
@@ -281,18 +282,20 @@ function anchorSimilarity(text, target) {
   return dice(text, target);
 }
 
-function buildTransform(referenceAnchorPoly, liveAnchorPoly, imageSize, scaleFrom = "width") {
+function buildTransform(referenceAnchorPoly, liveAnchorPoly, imageSize, scaleFrom = "width", alignFrom = "center") {
   const ref = polyGeometry(scaleNormalizedPoly(referenceAnchorPoly, imageSize));
   const live = polyGeometry(liveAnchorPoly);
   // Einige Profile besitzen bewusst verschieden lange Textvarianten desselben
   // Ankers (z. B. "Volkswagen Sachsen GmbH" vs. "Volkswagen AG"). In diesem
-  // Fall darf die Textbreite nicht den Maßstab des gesamten Labels bestimmen.
-  // Die Buchstabenhöhe ist von der Alias-Länge unabhängig und liefert dafür
-  // den deutlich stabileren Skalierungsfaktor.
+  // Fall darf die Textbreite weder den Maßstab noch die horizontale Verschiebung
+  // des gesamten Labels bestimmen. Mit scaleFrom=height + alignFrom=left wird
+  // deshalb an Buchstabenhöhe und linker Textkante ausgerichtet.
   const scale = scaleFrom === "height"
     ? live.height / Math.max(ref.height, 1)
     : live.width / Math.max(ref.width, 1);
-  return { refCenter: ref.center, liveCenter: live.center, scale, rotation: live.angle - ref.angle, scaleFrom };
+  const refOrigin = alignFrom === "left" ? ref.leftCenter : ref.center;
+  const liveOrigin = alignFrom === "left" ? live.leftCenter : live.center;
+  return { refCenter: refOrigin, liveCenter: liveOrigin, scale, rotation: live.angle - ref.angle, scaleFrom, alignFrom };
 }
 
 function transformPoly(normalized, transform, imageSize) {
@@ -306,6 +309,16 @@ function transformPoly(normalized, transform, imageSize) {
 }
 
 function chooseCandidate(items, expectedPoly, field) {
+  // Für Layouts mit stabilen gedruckten Feldbezeichnungen ist die Beziehung
+  // "Wert unter/rechts von Beschriftung" robuster als eine große globale
+  // Suchzone. Das verhindert insbesondere Verwechslungen zwischen ähnlich
+  // formatierten Nummern (Supplier ID, Referenzbeleg, Lieferschein usw.).
+  if (field?.locator?.aliases?.length) {
+    const located = chooseCandidateByLocator(items, field);
+    if (located) return located;
+    if (field.locator.strict === true) return null;
+  }
+
   const expected = boundsFromPoly(expectedPoly);
   const cx = expected.x + expected.width / 2;
   const cy = expected.y + expected.height / 2;
@@ -339,6 +352,104 @@ function chooseCandidate(items, expectedPoly, field) {
       }
 
       if (!best || score > best.selectionScore) best = { ...fragment, selectionScore: score };
+    }
+  }
+  return best;
+}
+
+function chooseCandidateByLocator(items, field) {
+  const locator = field?.locator || {};
+  const aliases = Array.isArray(locator.aliases) ? locator.aliases.filter(Boolean) : [];
+  if (!aliases.length) return null;
+
+  const minAliasScore = Math.max(0, Math.min(1, Number(locator.minAliasScore || 0.72)));
+  const labels = [];
+  for (const item of items || []) {
+    for (const alias of aliases) {
+      const similarity = anchorSimilarity(normalizeText(item?.text), normalizeText(alias));
+      if (similarity < minAliasScore) continue;
+      const range = findAliasRange(item?.text, alias);
+      const localized = range ? {
+        ...item,
+        text: String(item?.text || "").slice(range.start, range.end).trim() || alias,
+        poly: approximateTextFragmentPoly(item?.poly, String(item?.text || "").length, range.start, range.end),
+        sourceText: String(item?.text || "")
+      } : item;
+      labels.push({ item: localized, alias, similarity });
+    }
+  }
+  if (!labels.length) return null;
+
+  const sourceRegex = field.sourceRegex || field.regex;
+  const fragments = [];
+  for (const item of items || []) {
+    for (const fragment of matchingFieldFragments(item, sourceRegex)) fragments.push(fragment);
+  }
+  if (!fragments.length) return null;
+
+  const direction = String(locator.direction || "below_or_right");
+  const maxDistanceFactor = Math.max(1, Number(locator.maxDistance || 7));
+  let best = null;
+
+  for (const label of labels) {
+    const lb = boundsFromPoly(label.item.poly);
+    const lcx = lb.x + lb.width / 2;
+    const lcy = lb.y + lb.height / 2;
+    const unit = Math.max(12, lb.height || 0);
+    const maxDistance = maxDistanceFactor * unit + 24;
+
+    for (const fragment of fragments) {
+      const b = boundsFromPoly(fragment.poly);
+      const fcx = b.x + b.width / 2;
+      const fcy = b.y + b.height / 2;
+      const belowGap = b.y - (lb.y + lb.height);
+      const rightGap = b.x - (lb.x + lb.width);
+      const horizontalGap = b.x > lb.x + lb.width
+        ? b.x - (lb.x + lb.width)
+        : lb.x > b.x + b.width
+          ? lb.x - (b.x + b.width)
+          : 0;
+      const verticalGap = b.y > lb.y + lb.height
+        ? b.y - (lb.y + lb.height)
+        : lb.y > b.y + b.height
+          ? lb.y - (b.y + b.height)
+          : 0;
+
+      let allowed = false;
+      let relationDistance = Infinity;
+      if (direction === "below") {
+        allowed = fcy >= lcy + unit * 0.15 && belowGap <= maxDistance;
+        relationDistance = Math.hypot(horizontalGap * 0.75, Math.max(0, belowGap));
+      } else if (direction === "right") {
+        allowed = fcx >= lcx + unit * 0.15 && rightGap <= maxDistance;
+        relationDistance = Math.hypot(Math.max(0, rightGap), verticalGap * 0.75);
+      } else {
+        const isBelow = fcy >= lcy + unit * 0.15 && belowGap <= maxDistance;
+        const isRight = fcx >= lcx + unit * 0.15 && rightGap <= maxDistance;
+        allowed = isBelow || isRight;
+        const belowDistance = isBelow ? Math.hypot(horizontalGap * 0.75, Math.max(0, belowGap)) : Infinity;
+        const rightDistance = isRight ? Math.hypot(Math.max(0, rightGap), verticalGap * 0.75) : Infinity;
+        relationDistance = Math.min(belowDistance, rightDistance);
+      }
+      if (!allowed || relationDistance > maxDistance) continue;
+
+      let score = Math.max(0, 1 - relationDistance / maxDistance) * 0.55
+        + Number(fragment.score || 0) * 0.25
+        + label.similarity * 0.20;
+
+      if (locator.preferRightmost === true) {
+        score += Math.max(0, Math.min(0.55, (fcx - lcx) / Math.max(1, maxDistance) * 0.55));
+      }
+      if (locator.preferUnit === true && /\b(?:KG|KGM|G|L|LTR)\b/i.test(String(fragment.text || ""))) {
+        score += 0.35;
+      }
+      if (locator.preferBatch === true && /^D\d{8,10}/i.test(String(fragment.text || ""))) {
+        score += 0.35;
+      }
+
+      if (!best || score > best.selectionScore) {
+        best = { ...fragment, selectionScore: score, source: "ocr-locator", locatorAlias: label.alias };
+      }
     }
   }
   return best;
@@ -499,6 +610,7 @@ function polyGeometry(poly) {
   const d = points[3] || [bounds.x, bounds.y + bounds.height];
   return {
     center: [bounds.x + bounds.width / 2, bounds.y + bounds.height / 2],
+    leftCenter: [(a[0] + d[0]) / 2, (a[1] + d[1]) / 2],
     width: Math.hypot(c[0] - a[0], c[1] - a[1]) || bounds.width,
     height: Math.hypot(d[0] - a[0], d[1] - a[1]) || bounds.height,
     angle: Math.atan2(c[1] - a[1], c[0] - a[0])

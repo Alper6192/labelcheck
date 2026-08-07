@@ -334,3 +334,87 @@ test("Scania-Netto darf knapp rechts neben der Sollbox liegen und gewinnt gegen 
   ], profile, { width: 1000, height: 500 });
   assert.equal(result.fields.weight.value, "1300 KG");
 });
+
+test("Locator bindet interne LSN an Transportauftrag statt Referenzbeleg", () => {
+  const profile = {
+    id: "INTERN1", name: "Intern1", role: "vda", active: true,
+    anchor: { aliases: ["Alte Materialnummer"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [{
+      key: "delivery_note", label: "Lieferscheinnummer", required: false, compare: false,
+      regex: "^\\d{7,12}$", sourceRegex: "^\\d{7,12}$", normalizer: "digits",
+      locator: { aliases: ["Transportauftrag - Position"], direction: "below", maxDistance: 4.5, strict: true },
+      poly: [[0.6,0.55],[0.8,0.55],[0.8,0.62],[0.6,0.62]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("Alte Materialnummer", .99, [[100,50],[300,50],[300,90],[100,90]]),
+    item("Referenzbeleg", .99, [[600,180],[760,180],[760,200],[600,200]]),
+    item("2008801748", .999, [[600,205],[760,205],[760,230],[600,230]]),
+    item("Transportauftrag - Position", .99, [[600,245],[850,245],[850,268],[600,268]]),
+    item("1006753383 - 0006", .995, [[600,275],[850,275],[850,305],[600,305]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "1006753383");
+  assert.equal(result.fields.delivery_note.source, "ocr-locator");
+  assert.equal(result.fields.delivery_note.raw, "1006753383");
+});
+
+test("VW-Locator liest Delivery Note, Netto, Batch und letzte 7 IDH-Ziffern semantisch", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen", "Volkswagen AG"], scaleFrom: "height", alignFrom: "left", poly: [[0.2,0.1],[0.6,0.1],[0.6,0.2],[0.2,0.2]] },
+    fields: [
+      { key: "delivery_note", label: "Lieferscheinnummer", required: false, compare: false,
+        regex: "^\\d{7,12}$", sourceRegex: "^\\d{7,12}$", normalizer: "digits",
+        locator: { aliases: ["Delivery note"], direction: "below", maxDistance: 5.5, strict: true },
+        poly: [[0.1,0.3],[0.2,0.3],[0.2,0.35],[0.1,0.35]] },
+      { key: "idh", label: "IDH", required: true, compare: true,
+        regex: "^\\d{7}$", sourceRegex: "^(?:\\d{7,8}|\\d{7,10}\\s+\\d{7,8}|\\d{14,18})$", normalizer: "last_digits", digits: 7,
+        locator: { aliases: ["Delivery number / IDH"], direction: "below", maxDistance: 8, preferRightmost: true, strict: true },
+        poly: [[0.2,0.75],[0.5,0.75],[0.5,0.82],[0.2,0.82]] },
+      { key: "batch", label: "Batch", required: true, compare: true,
+        regex: "^D\\d{8,10}$", sourceRegex: "^D\\d{8,10}(?:\\s*[/|I1]\\s*\\d{4})?$", normalizer: "batch",
+        locator: { aliases: ["Batch Nr"], direction: "below_or_right", maxDistance: 6, preferBatch: true, strict: true },
+        poly: [[0.7,0.65],[0.85,0.65],[0.85,0.7],[0.7,0.7]] },
+      { key: "weight", label: "Gewicht", required: true, compare: true,
+        regex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+        sourceRegex: "^(?:\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?|\\d+(?:[.,]\\d+)?\\s*[/|I]\\s*\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?)$",
+        normalizer: "net_weight",
+        locator: { aliases: ["Gross / Net weight"], direction: "below_or_right", maxDistance: 6, preferRightmost: true, preferUnit: true, strict: true },
+        poly: [[0.7,0.45],[0.9,0.45],[0.9,0.5],[0.7,0.5]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("Volkswagen Navarra S.A.", .99, [[200,50],[430,50],[430,100],[200,100]]),
+    item("Supplier ID", .99, [[90,135],[180,135],[180,155],[90,155]]),
+    item("0015386600", .999, [[90,158],[210,158],[210,182],[90,182]]),
+    item("Delivery note", .99, [[90,190],[205,190],[205,212],[90,212]]),
+    item("970014634", .998, [[100,218],[220,218],[220,245],[100,245]]),
+    item("Gross / Net weight", .99, [[650,245],[820,245],[820,265],[650,265]]),
+    item("1400 / 1150 KG", .995, [[650,270],[850,270],[850,300],[650,300]]),
+    item("Batch Nr", .99, [[650,320],[725,320],[725,340],[650,340]]),
+    item("D561900936", .999, [[730,318],[875,318],[875,345],[730,345]]),
+    item("Delivery number / IDH", .99, [[100,365],[300,365],[300,388],[100,388]]),
+    item("970014634 26711186", .999, [[110,398],[480,398],[480,432],[110,432]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "970014634");
+  assert.equal(result.fields.weight.value, "1150 KG");
+  assert.equal(result.fields.batch.value, "D561900936");
+  assert.equal(result.fields.idh.value, "6711186");
+  for (const key of ["delivery_note", "weight", "batch", "idh"]) {
+    assert.equal(result.fields[key].source, "ocr-locator", key);
+  }
+});
+
+test("VW alignFrom left verhindert horizontale Verschiebung bei unterschiedlich langen Ankern", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen"], scaleFrom: "height", alignFrom: "left", poly: [[0.2,0.1],[0.6,0.1],[0.6,0.2],[0.2,0.2]] },
+    fields: []
+  };
+  const result = extractProfileFields([
+    item("Volkswagen Navarra S.A.", .99, [[200,50],[430,50],[430,100],[200,100]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.transform.alignFrom, "left");
+  assert.deepEqual(result.transform.refCenter.map(Math.round), [200, 75]);
+  assert.deepEqual(result.transform.liveCenter.map(Math.round), [200, 75]);
+});

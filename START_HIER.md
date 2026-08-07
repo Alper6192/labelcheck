@@ -1,4 +1,4 @@
-# Start – LabelCheck 0.6.10
+# Start – LabelCheck 0.6.11
 
 1. Projektinhalt in das GitHub-Repository kopieren.
 2. `public/config/label-profiles.json` enthält den zuletzt bereitgestellten Profilstand mit Intern2-Sondererkennung und Tesla.

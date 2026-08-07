@@ -1,3 +1,10 @@
+# 0.6.11
+
+- VW-Felder werden zusätzlich über ihre gedruckten Feldbezeichnungen lokalisiert (Delivery note, Delivery number / IDH, Gross / Net weight, Batch Nr.).
+- VW-Anker richtet unterschiedlich lange Volkswagen-Namen an der linken Textkante aus; Textbreite verschiebt das Profil nicht mehr.
+- INTERN1/INTERN2: Lieferscheinnummer wird ausschließlich unter „Transportauftrag - Position“ gesucht; Referenzbeleg ist kein LSN-Kandidat mehr.
+- Locator-Regeln sind bewusst strikt: Wird die Feldbezeichnung nicht sicher gefunden, bleibt das Feld leer statt eine ähnlich formatierte falsche Nummer zu übernehmen.
+
 # 0.6.10
 
 - VW: Profilskalierung nutzt bei unterschiedlich langen Volkswagen-Ankern die Ankerhöhe statt der Textbreite.

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.10",
-  "exportedAt": "2026-08-07T11:11:13.203Z",
+  "appVersion": "0.6.11",
+  "exportedAt": "2026-08-07T13:22:00.000Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1185,7 +1185,8 @@
         ],
         "localizeAlias": false,
         "fallbacks": [],
-        "scaleFrom": "height"
+        "scaleFrom": "height",
+        "alignFrom": "left"
       },
       "fields": [
         {
@@ -1213,7 +1214,18 @@
               0.7125007593014426,
               0.6687653913022414
             ]
-          ]
+          ],
+          "locator": {
+            "aliases": [
+              "Batch Nr",
+              "Batch No",
+              "Batch number"
+            ],
+            "direction": "below_or_right",
+            "maxDistance": 6,
+            "preferBatch": true,
+            "strict": true
+          }
         },
         {
           "key": "idh",
@@ -1221,7 +1233,7 @@
           "required": true,
           "compare": true,
           "regex": "^\\d{7}$",
-          "sourceRegex": "^(?:\\d{7}|\\d{7,8}\\s*\\d{7})$",
+          "sourceRegex": "^(?:\\d{7,8}|\\d{7,10}\\s+\\d{7,8}|\\d{14,18})$",
           "normalizer": "last_digits",
           "poly": [
             [
@@ -1241,7 +1253,18 @@
               0.7882708020665258
             ]
           ],
-          "digits": 7
+          "digits": 7,
+          "locator": {
+            "aliases": [
+              "Delivery number / IDH",
+              "Delivery number IDH",
+              "Delivery number"
+            ],
+            "direction": "below",
+            "maxDistance": 8,
+            "preferRightmost": true,
+            "strict": true
+          }
         },
         {
           "key": "weight",
@@ -1249,8 +1272,8 @@
           "required": true,
           "compare": true,
           "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "normalizer": "weight",
+          "sourceRegex": "^(?:\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?|\\d+(?:[.,]\\d+)?\\s*[/|I]\\s*\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?)$",
+          "normalizer": "net_weight",
           "poly": [
             [
               0.7161492259055263,
@@ -1269,7 +1292,19 @@
               0.4276790531422029
             ]
           ],
-          "digits": 4
+          "digits": 4,
+          "locator": {
+            "aliases": [
+              "Gross / Net weight",
+              "Gross/Net weight",
+              "Gross Net weight"
+            ],
+            "direction": "below_or_right",
+            "maxDistance": 6,
+            "preferRightmost": true,
+            "preferUnit": true,
+            "strict": true
+          }
         },
         {
           "key": "delivery_note",
@@ -1297,8 +1332,17 @@
               0.43061707442043945
             ]
           ],
-          "minOverlap": 0.02,
-          "searchRadius": 1.35
+          "minOverlap": 0,
+          "searchRadius": 1.35,
+          "locator": {
+            "aliases": [
+              "Delivery note",
+              "Delivery Note"
+            ],
+            "direction": "below",
+            "maxDistance": 5.5,
+            "strict": true
+          }
         }
       ]
     },
@@ -1702,7 +1746,16 @@
             ]
           ],
           "minOverlap": 0.02,
-          "searchRadius": 1.25
+          "searchRadius": 1.25,
+          "locator": {
+            "aliases": [
+              "Transportauftrag - Position",
+              "Transportauftrag Position"
+            ],
+            "direction": "below",
+            "maxDistance": 4.5,
+            "strict": true
+          }
         }
       ]
     },
@@ -1858,7 +1911,16 @@
             ]
           ],
           "minOverlap": 0.02,
-          "searchRadius": 1.25
+          "searchRadius": 1.25,
+          "locator": {
+            "aliases": [
+              "Transportauftrag - Position",
+              "Transportauftrag Position"
+            ],
+            "direction": "below",
+            "maxDistance": 4.5,
+            "strict": true
+          }
         }
       ]
     },

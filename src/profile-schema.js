@@ -190,6 +190,7 @@ function normalizeAnchor(anchor) {
     poly: normalizeNormalizedPoly(anchor?.poly),
     localizeAlias: anchor?.localizeAlias === true,
     scaleFrom: anchor?.scaleFrom === "height" ? "height" : "width",
+    alignFrom: anchor?.alignFrom === "left" ? "left" : "center",
     fallbacks: Array.isArray(anchor?.fallbacks)
       ? anchor.fallbacks.map((fallback) => ({
           aliases: Array.isArray(fallback?.aliases)
@@ -197,7 +198,8 @@ function normalizeAnchor(anchor) {
             : [],
           poly: normalizeNormalizedPoly(fallback?.poly),
           localizeAlias: fallback?.localizeAlias === true,
-          scaleFrom: fallback?.scaleFrom === "height" ? "height" : "width"
+          scaleFrom: fallback?.scaleFrom === "height" ? "height" : "width",
+          alignFrom: fallback?.alignFrom === "left" ? "left" : "center"
         })).filter((fallback) => fallback.aliases.length && fallback.poly.length >= 4)
       : []
   };

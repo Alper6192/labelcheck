@@ -122,19 +122,30 @@ test("Seat akzeptiert 5-stellige IDH und keine 9-stellige Lieferscheinnummer als
   assert.equal(idh?.minOverlap, 0.05);
 });
 
-test("VW skaliert bei unterschiedlich langen Ankertexten über die Ankerhöhe", () => {
+test("VW richtet unterschiedlich lange Anker über Höhe und linke Kante aus", () => {
   const vw = readConfig().profiles.find((profile) => profile.id === "VW");
   assert.equal(vw?.anchor?.scaleFrom, "height");
-  assert.equal(vw?.fields?.find((field) => field.key === "delivery_note")?.minOverlap, 0.02);
+  assert.equal(vw?.anchor?.alignFrom, "left");
 });
 
-test("Interne Profile binden die Lieferscheinnummer räumlich an ihren Feldbereich", () => {
+test("Interne Profile binden die Lieferscheinnummer an Transportauftrag - Position", () => {
   const raw = readConfig();
   for (const id of ["INTERN1", "INTERN2"]) {
     const field = raw.profiles.find((profile) => profile.id === id)?.fields?.find((entry) => entry.key === "delivery_note");
-    assert.equal(field?.minOverlap, 0.02, id);
-    assert.equal(field?.searchRadius, 1.25, id);
+    assert.ok(field?.locator?.aliases?.includes("Transportauftrag - Position"), id);
+    assert.equal(field?.locator?.direction, "below", id);
+    assert.equal(field?.locator?.strict, true, id);
   }
+});
+
+test("VW-Felder verwenden semantische Beschriftungs-Locators", () => {
+  const vw = readConfig().profiles.find((profile) => profile.id === "VW");
+  const byKey = Object.fromEntries(vw.fields.map((field) => [field.key, field]));
+  assert.ok(byKey.delivery_note.locator.aliases.includes("Delivery note"));
+  assert.ok(byKey.idh.locator.aliases.includes("Delivery number / IDH"));
+  assert.ok(byKey.weight.locator.aliases.includes("Gross / Net weight"));
+  assert.ok(byKey.batch.locator.aliases.includes("Batch Nr"));
+  for (const key of ["delivery_note", "idh", "weight", "batch"]) assert.equal(byKey[key].locator.strict, true, key);
 });
 
 test("Scania bevorzugt beim Gewicht den rechten Wert mit Einheit", () => {
@@ -145,9 +156,11 @@ test("Scania bevorzugt beim Gewicht den rechten Wert mit Einheit", () => {
   assert.equal(field?.preferUnit, true);
 });
 
-test("Schema-Normalisierung erhält VWs height-Skalierung", () => {
+test("Schema-Normalisierung erhält VWs height- und left-Ankerausrichtung", () => {
   const raw = readConfig();
   const normalized = normalizeProfileConfig(raw, String(raw.appVersion || ""));
   const vw = normalized.profiles.find((profile) => profile.id === "VW");
   assert.equal(vw?.anchor?.scaleFrom, "height");
+  assert.equal(vw?.anchor?.alignFrom, "left");
+  assert.equal(vw?.fields?.find((field) => field.key === "delivery_note")?.locator?.strict, true);
 });
