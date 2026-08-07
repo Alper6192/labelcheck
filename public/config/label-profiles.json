@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.11",
-  "exportedAt": "2026-08-07T13:22:00.000Z",
+  "appVersion": "0.6.12",
+  "exportedAt": "2026-08-07T15:36:00.000Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1233,7 +1233,7 @@
           "required": true,
           "compare": true,
           "regex": "^\\d{7}$",
-          "sourceRegex": "^(?:\\d{7,8}|\\d{7,10}\\s+\\d{7,8}|\\d{14,18})$",
+          "sourceRegex": "^(?:\\d{7,10}|\\d{7,10}\\s+\\d{7,8}|\\d{14,18})$",
           "normalizer": "last_digits",
           "poly": [
             [
@@ -1260,7 +1260,7 @@
               "Delivery number IDH",
               "Delivery number"
             ],
-            "direction": "below",
+            "direction": "below_or_right",
             "maxDistance": 8,
             "preferRightmost": true,
             "strict": true
@@ -1297,14 +1297,17 @@
             "aliases": [
               "Gross / Net weight",
               "Gross/Net weight",
-              "Gross Net weight"
+              "Gross Net weight",
+              "Gross / Net wt",
+              "Gross Net wt"
             ],
             "direction": "below_or_right",
-            "maxDistance": 6,
+            "maxDistance": 7,
             "preferRightmost": true,
             "preferUnit": true,
             "strict": true
-          }
+          },
+          "fallbackStrategy": "net_pair"
         },
         {
           "key": "delivery_note",
@@ -1312,8 +1315,8 @@
           "required": false,
           "compare": false,
           "regex": "^\\d{7,12}$",
-          "sourceRegex": "^\\d{7,12}$",
-          "normalizer": "digits",
+          "sourceRegex": "^(?:\\d{7,10}|\\d{7,10}\\s+\\d{7,8}|\\d{14,18})$",
+          "normalizer": "leading_delivery_digits",
           "poly": [
             [
               0.1785383331368344,
@@ -1332,17 +1335,19 @@
               0.43061707442043945
             ]
           ],
-          "minOverlap": 0,
-          "searchRadius": 1.35,
           "locator": {
             "aliases": [
-              "Delivery note",
-              "Delivery Note"
+              "Delivery number / IDH",
+              "Delivery number IDH",
+              "Delivery number"
             ],
-            "direction": "below",
-            "maxDistance": 5.5,
+            "direction": "below_or_right",
+            "maxDistance": 8,
+            "preferLeftmost": true,
             "strict": true
-          }
+          },
+          "tailDigits": 7,
+          "combinedMinDigits": 14
         }
       ]
     },
@@ -1752,8 +1757,8 @@
               "Transportauftrag - Position",
               "Transportauftrag Position"
             ],
-            "direction": "below",
-            "maxDistance": 4.5,
+            "direction": "below_or_right",
+            "maxDistance": 6.5,
             "strict": true
           }
         }
@@ -1917,8 +1922,8 @@
               "Transportauftrag - Position",
               "Transportauftrag Position"
             ],
-            "direction": "below",
-            "maxDistance": 4.5,
+            "direction": "below_or_right",
+            "maxDistance": 6.5,
             "strict": true
           }
         }

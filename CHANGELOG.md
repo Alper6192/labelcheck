@@ -1,3 +1,12 @@
+# Changelog
+
+## 0.6.12
+
+- Intern1/Intern2: Lieferscheinnummer wird auch erkannt, wenn `Transportauftrag - Position` und der Wert in derselben OCR-Zeile liegen.
+- VW: Lieferscheinnummer wird robust aus der großen unteren Zeile `Delivery number / IDH` abgeleitet; links = LSN, letzte 7 Ziffern = IDH.
+- VW: Gross/Net-Gewicht hat einen inhaltsbasierten Fallback auf reine `Brutto / Netto Einheit`-Muster, falls die kleine Feldbeschriftung von OCR nicht gelesen wird.
+- Anzeige: OCR-Locator- und OCR-Pattern-Treffer werden wieder als OCR-Treffer mit Konfidenz angezeigt statt fälschlich als „nicht erkannt“.
+
 # 0.6.11
 
 - VW-Felder werden zusätzlich über ihre gedruckten Feldbezeichnungen lokalisiert (Delivery note, Delivery number / IDH, Gross / Net weight, Batch Nr.).

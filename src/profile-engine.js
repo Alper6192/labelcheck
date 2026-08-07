@@ -149,6 +149,14 @@ export function normalizeFieldValue(key, value, field = {}) {
     const count = Math.max(1, Number(field.digits || 4));
     return digits.length >= count ? digits.slice(-count) : digits;
   }
+  if (normalizer === "leading_delivery_digits") {
+    const groups = text.match(/\d+/g) || [];
+    if (groups.length >= 2) return groups[0];
+    const digits = text.replace(/\D/g, "");
+    const tailDigits = Math.max(1, Number(field.tailDigits || 7));
+    const combinedMinDigits = Math.max(tailDigits + 7, Number(field.combinedMinDigits || 14));
+    return digits.length >= combinedMinDigits ? digits.slice(0, -tailDigits) : digits;
+  }
   if (normalizer === "digits") return text.replace(/\D/g, "");
   if (normalizer === "weight") {
     return text.replace(/,/g, ".").replace(/\bKGM\b/g, "KG").replace(/\s+/g, " ");
@@ -316,6 +324,10 @@ function chooseCandidate(items, expectedPoly, field) {
   if (field?.locator?.aliases?.length) {
     const located = chooseCandidateByLocator(items, field);
     if (located) return located;
+    if (field.fallbackStrategy === "net_pair") {
+      const patternCandidate = chooseNetPairCandidate(items);
+      if (patternCandidate) return patternCandidate;
+    }
     if (field.locator.strict === true) return null;
   }
 
@@ -440,6 +452,9 @@ function chooseCandidateByLocator(items, field) {
       if (locator.preferRightmost === true) {
         score += Math.max(0, Math.min(0.55, (fcx - lcx) / Math.max(1, maxDistance) * 0.55));
       }
+      if (locator.preferLeftmost === true) {
+        score += Math.max(0, Math.min(0.55, (lcx - fcx) / Math.max(1, maxDistance) * 0.55 + 0.28));
+      }
       if (locator.preferUnit === true && /\b(?:KG|KGM|G|L|LTR)\b/i.test(String(fragment.text || ""))) {
         score += 0.35;
       }
@@ -450,6 +465,31 @@ function chooseCandidateByLocator(items, field) {
       if (!best || score > best.selectionScore) {
         best = { ...fragment, selectionScore: score, source: "ocr-locator", locatorAlias: label.alias };
       }
+    }
+  }
+  return best;
+}
+
+function chooseNetPairCandidate(items) {
+  let best = null;
+  const pattern = /(\d+(?:[.,]\d+)?)\s*[/|I]\s*(\d+(?:[.,]\d+)?)\s*(KG|KGM|G|L|LTR)?/ig;
+  for (const item of items || []) {
+    const text = String(item?.text || "");
+    for (const match of text.matchAll(pattern)) {
+      const raw = String(match[0] || "").trim();
+      if (!raw) continue;
+      const start = Number(match.index || 0);
+      const end = start + String(match[0] || "").length;
+      const hasUnit = Boolean(match[3]);
+      const candidate = {
+        ...item,
+        text: raw,
+        poly: approximateTextFragmentPoly(item.poly, text.length, start, end),
+        sourceText: text,
+        source: "ocr-pattern",
+        selectionScore: Number(item?.score || 0) + (hasUnit ? 0.35 : 0.15)
+      };
+      if (!best || candidate.selectionScore > best.selectionScore) best = candidate;
     }
   }
   return best;

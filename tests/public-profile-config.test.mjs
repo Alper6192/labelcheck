@@ -133,7 +133,7 @@ test("Interne Profile binden die Lieferscheinnummer an Transportauftrag - Positi
   for (const id of ["INTERN1", "INTERN2"]) {
     const field = raw.profiles.find((profile) => profile.id === id)?.fields?.find((entry) => entry.key === "delivery_note");
     assert.ok(field?.locator?.aliases?.includes("Transportauftrag - Position"), id);
-    assert.equal(field?.locator?.direction, "below", id);
+    assert.equal(field?.locator?.direction, "below_or_right", id);
     assert.equal(field?.locator?.strict, true, id);
   }
 });
@@ -141,9 +141,11 @@ test("Interne Profile binden die Lieferscheinnummer an Transportauftrag - Positi
 test("VW-Felder verwenden semantische Beschriftungs-Locators", () => {
   const vw = readConfig().profiles.find((profile) => profile.id === "VW");
   const byKey = Object.fromEntries(vw.fields.map((field) => [field.key, field]));
-  assert.ok(byKey.delivery_note.locator.aliases.includes("Delivery note"));
+  assert.ok(byKey.delivery_note.locator.aliases.includes("Delivery number / IDH"));
+  assert.equal(byKey.delivery_note.normalizer, "leading_delivery_digits");
   assert.ok(byKey.idh.locator.aliases.includes("Delivery number / IDH"));
   assert.ok(byKey.weight.locator.aliases.includes("Gross / Net weight"));
+  assert.equal(byKey.weight.fallbackStrategy, "net_pair");
   assert.ok(byKey.batch.locator.aliases.includes("Batch Nr"));
   for (const key of ["delivery_note", "idh", "weight", "batch"]) assert.equal(byKey[key].locator.strict, true, key);
 });

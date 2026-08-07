@@ -418,3 +418,79 @@ test("VW alignFrom left verhindert horizontale Verschiebung bei unterschiedlich 
   assert.deepEqual(result.transform.refCenter.map(Math.round), [200, 75]);
   assert.deepEqual(result.transform.liveCenter.map(Math.round), [200, 75]);
 });
+
+
+test("Interne LSN funktioniert auch wenn Beschriftung und Wert in derselben OCR-Zeile liegen", () => {
+  const profile = {
+    id: "INTERN2", name: "Intern2", role: "vda", active: true,
+    anchor: { aliases: ["Prüflos"], localizeAlias: true, poly: [[0.6,0.2],[0.7,0.2],[0.7,0.25],[0.6,0.25]] },
+    fields: [{
+      key: "delivery_note", label: "Lieferscheinnummer", required: false, compare: false,
+      regex: "^\\d{7,12}$", sourceRegex: "^\\d{7,12}$", normalizer: "digits",
+      locator: { aliases: ["Transportauftrag - Position"], direction: "below_or_right", maxDistance: 6.5, strict: true },
+      poly: [[0.6,0.5],[0.8,0.5],[0.8,0.56],[0.6,0.56]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("Prüflos", .99, [[600,100],[700,100],[700,125],[600,125]]),
+    item("Referenzbeleg 2008737224", .99, [[600,170],[850,170],[850,195],[600,195]]),
+    item("Transportauftrag - Position 1006727978 - 0003", .995, [[600,220],[970,220],[970,250],[600,250]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "1006727978");
+  assert.equal(result.fields.delivery_note.source, "ocr-locator");
+});
+
+test("VW LSN und IDH werden aus derselben großen unteren Zeile getrennt", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen AG"], scaleFrom: "height", alignFrom: "left", poly: [[0.2,0.1],[0.5,0.1],[0.5,0.18],[0.2,0.18]] },
+    fields: [
+      { key: "delivery_note", label: "Lieferscheinnummer", required: false, compare: false,
+        regex: "^\\d{7,12}$", sourceRegex: "^(?:\\d{7,10}|\\d{7,10}\\s+\\d{7,8}|\\d{14,18})$",
+        normalizer: "leading_delivery_digits", tailDigits: 7, combinedMinDigits: 14,
+        locator: { aliases: ["Delivery number / IDH"], direction: "below_or_right", maxDistance: 8, preferLeftmost: true, strict: true },
+        poly: [[0.1,0.7],[0.25,0.7],[0.25,0.78],[0.1,0.78]] },
+      { key: "idh", label: "IDH", required: true, compare: true,
+        regex: "^\\d{7}$", sourceRegex: "^(?:\\d{7,10}|\\d{7,10}\\s+\\d{7,8}|\\d{14,18})$",
+        normalizer: "last_digits", digits: 7,
+        locator: { aliases: ["Delivery number / IDH"], direction: "below_or_right", maxDistance: 8, preferRightmost: true, strict: true },
+        poly: [[0.25,0.7],[0.45,0.7],[0.45,0.78],[0.25,0.78]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("Volkswagen AG", .99, [[200,50],[380,50],[380,90],[200,90]]),
+    item("Delivery number / IDH", .99, [[90,340],[250,340],[250,365],[90,365]]),
+    item("13026260 2892944", .999, [[100,375],[430,375],[430,415],[100,415]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "13026260");
+  assert.equal(result.fields.idh.value, "2892944");
+});
+
+test("VW LSN trennt auch eine zusammengeklebte untere Ziffernfolge", () => {
+  assert.equal(normalizeFieldValue("delivery_note", "130262602892944", {
+    normalizer: "leading_delivery_digits", tailDigits: 7, combinedMinDigits: 14
+  }), "13026260");
+});
+
+test("VW Netto-Fallback findet Brutto-Netto-Paar auch ohne kleine Feldbeschriftung", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen AG"], scaleFrom: "height", alignFrom: "left", poly: [[0.2,0.1],[0.5,0.1],[0.5,0.18],[0.2,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+      sourceRegex: "^(?:\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?|\\d+(?:[.,]\\d+)?\\s*[/|I]\\s*\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?)$",
+      normalizer: "net_weight", fallbackStrategy: "net_pair",
+      locator: { aliases: ["Gross / Net weight"], direction: "below_or_right", maxDistance: 7, preferRightmost: true, preferUnit: true, strict: true },
+      poly: [[0.7,0.45],[0.9,0.45],[0.9,0.5],[0.7,0.5]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("Volkswagen AG", .99, [[200,50],[380,50],[380,90],[200,90]]),
+    item("Quantity", .99, [[650,140],[720,140],[720,160],[650,160]]),
+    item("1150 KGM", .999, [[730,140],[850,140],[850,165],[730,165]]),
+    item("1400 / 1150 KG", .98, [[650,260],[850,260],[850,290],[650,290]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "1150 KG");
+  assert.equal(result.fields.weight.source, "ocr-pattern");
+});
