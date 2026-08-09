@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#061423">
+  <title>LabelCheck – Profileditor</title>
+</head>
+<body>
+<header>
+  <div class="header-row">
+    <div>
+      <h1>LabelCheck Profileditor <small id="version"></small></h1>
+      <p>PaddleOCR-Textboxen als Anker oder Feldzonen übernehmen, verschieben, vergrößern und als JSON exportieren.</p>
+    </div>
+    <a class="nav-link" href="./index.html">Zum Scanner</a>
+  </div>
+  <div class="privacy">Der Editor läuft lokal im Browser. Das Masterbild wird nicht in die exportierte JSON eingebettet und nicht hochgeladen.</div>
+</header>
+
+<main class="editor-main">
+  <section class="card">
+    <div class="card-head"><h2>Konfiguration</h2><span id="configStatus">wird geladen …</span></div>
+    <div class="card-body editor-toolbar">
+      <div class="actions compact-actions">
+        <button id="reloadConfigButton">Repository-Konfiguration neu laden</button>
+        <label class="file-button">JSON importieren<input id="configInput" type="file" accept=".json,application/json"></label>
+        <button id="exportConfigButton" class="good">label-profiles.json exportieren</button>
+      </div>
+      <div class="actions compact-actions">
+        <button id="newProfileButton">Neues Profil</button>
+        <button id="duplicateProfileButton">Profil duplizieren</button>
+        <button id="deleteProfileButton" class="danger">Profil löschen</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="editor-layout">
+    <aside class="card editor-sidebar">
+      <div class="card-head"><h2>Profile</h2><span id="profileCount">0</span></div>
+      <div class="card-body">
+        <select id="profileSelect" class="profile-list" size="12"></select>
+        <div class="form-grid one-column editor-meta">
+          <label>Profil-ID<input id="profileId" type="text"></label>
+          <label>Name<input id="profileName" type="text"></label>
+          <label>Rolle<select id="profileRole"><option value="product">Produktlabel</option><option value="vda">VDA-Label</option></select></label>
+          <label class="checkbox-row"><input id="profileActive" type="checkbox"> Profil aktiv</label>
+          <label>Anker-Aliase<textarea id="anchorAliases" rows="5" placeholder="Ein Alias pro Zeile, z. B. Mercedes-Benz AG"></textarea></label>
+        </div>
+      </div>
+    </aside>
+
+    <div class="editor-workspace">
+      <section class="card">
+        <div class="card-head"><h2>Masterbild und PaddleOCR</h2><span id="editorEngineBadge" class="engine-badge wait">PaddleOCR wird vorbereitet …</span></div>
+        <div class="card-body">
+          <div class="editor-upload-row">
+            <label class="file-button primary">Masterbild laden<input id="masterInput" type="file" accept="image/*"></label>
+            <button id="runOcrButton" disabled>PaddleOCR auf Masterbild</button>
+            <label class="file-button">OCR-JSON importieren<input id="ocrJsonInput" type="file" accept=".json,application/json"></label>
+            <button id="cancelOcrButton" class="danger" disabled>Analyse abbrechen</button>
+            <button id="initializeEditorButton">Modell neu laden</button>
+            <button id="clearOcrButton">OCR-Boxen ausblenden</button>
+            <button id="clearMasterButton">Masterbild entfernen</button>
+          </div>
+          <div id="editorEngineDetails" class="muted">Erster Start lädt PP-OCRv5 mobile.</div>
+          <div class="mode-toolbar">
+            <button id="selectModeButton" class="active-mode">OCR-Box auswählen</button>
+            <button id="drawModeButton">Freie Zone zeichnen</button>
+            <button id="editModeButton">Zuordnung verschieben/ändern</button>
+            <label>Zonenrand beim Übernehmen
+              <input id="paddingInput" type="range" min="0" max="50" step="5" value="20">
+              <span id="paddingValue">20 %</span>
+            </label>
+          </div>
+          <div class="assignment-toolbar">
+            <button id="assignAnchorButton" class="anchor-button">Auswahl = Kunden-/Produktanker</button>
+            <button data-field="batch">Batch</button>
+            <button data-field="drum_number">Fassnummer</button>
+            <button id="assignBatchDrumButton" class="good">Batch + Fassnummer</button>
+            <button data-field="idh">IDH</button>
+            <button data-field="weight">Gewicht</button>
+            <button data-field="delivery_note">Lieferscheinnummer</button>
+          </div>
+          <p id="editorHint" class="editor-hint">Masterbild laden. Dann PaddleOCR starten oder direkt eine freie Zone zeichnen.</p>
+          <div id="editorStage" class="editor-stage empty">
+            <div id="editorPlaceholder" class="placeholder">Noch kein Masterbild</div>
+            <canvas id="editorImageCanvas"></canvas>
+            <canvas id="editorOverlayCanvas"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="editor-bottom-grid">
+        <article class="card">
+          <div class="card-head"><h2>Aktuelle Auswahl</h2></div>
+          <div class="card-body">
+            <div id="selectionInfo" class="selection-info">Keine OCR-Box oder freie Zone ausgewählt.</div>
+            <div id="assignmentList" class="assignment-list"></div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head"><h2>Eigenschaften</h2><span id="selectedAssignmentName">keine Zuordnung</span></div>
+          <div class="card-body">
+            <div id="anchorProperties" class="property-empty">Wähle einen Anker oder ein Feld aus.</div>
+            <div id="fieldProperties" class="form-grid one-column hidden">
+              <label>Bezeichnung<input id="fieldLabel" type="text"></label>
+              <label>Regex für den fertigen Wert<input id="fieldRegex" type="text" spellcheck="false"></label>
+              <label>Regex für den OCR-Rohtext<input id="fieldSourceRegex" type="text" spellcheck="false"></label>
+              <div id="regexStatus" class="regex-status"></div>
+              <label>Bereinigung<select id="fieldNormalizer">
+                <option value="text">Text unverändert</option>
+                <option value="digits">Nur Ziffern</option>
+                <option value="batch">Batch vor / übernehmen</option>
+                <option value="weight">Gewicht normalisieren</option>
+                <option value="net_weight">Netto-Gewicht (rechter Wert)</option>
+                <option value="leading_delivery_digits">Lieferscheinnummer aus Kombizeile</option>
+                <option value="last_digits">Letzte Ziffern übernehmen</option>
+              </select></label>
+              <label id="digitsRow">Anzahl der letzten Ziffern<input id="fieldDigits" type="number" min="1" max="12" value="4"></label>
+              <label>Nachbarfeld<select id="fieldAdjacentTo"><option value="">kein Nachbarfeld</option><option value="batch">rechts neben Batch suchen</option></select></label>
+              <label class="checkbox-row"><input id="fieldRequired" type="checkbox"> Pflichtfeld</label>
+              <label class="checkbox-row"><input id="fieldCompare" type="checkbox"> Produkt und VDA vergleichen</label>
+              <button id="deleteAssignmentButton" class="danger">Diese Zuordnung löschen</button>
+            </div>
+          </div>
+        </article>
+      </section>
+    </div>
+  </section>
+</main>
+<script type="module" src="/src/editor.js"></script>
+</body>
+</html>
