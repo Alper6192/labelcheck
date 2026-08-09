@@ -1,3 +1,11 @@
+## 0.6.15 – Scania Gross/Net-Paar robust (2026-08-09)
+
+- Scania-Gewicht hängt nicht mehr davon ab, dass PaddleOCR `KG` exakt erkennt.
+- Eine Gross/Net-Zeile mit zwei 3–5-stelligen Werten liefert immer den rechten Wert als Netto.
+- Funktioniert auch bei getrennten OCR-Boxen (`1550`, `/`, `1300`, `KG`) und bei OCR-Fehlern wie `K6`/`KC`.
+- Eine einzelne einheitenlose Zahl wie `1550` bleibt weiterhin ausgeschlossen.
+- Version auf 0.6.15 erhöht.
+
 ## 0.6.14 – Scania Engine-Fix (2026-08-09)
 
 - Versionsnummer bei jeder funktionalen Änderung erhöht.

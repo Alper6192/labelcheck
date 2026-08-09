@@ -671,3 +671,42 @@ test("VW Quantity-Gewicht verbindet getrennte Zahl und KGM-Einheit", () => {
   assert.equal(result.fields.weight.value, "1150 KG");
   assert.equal(result.fields.weight.valid, true);
 });
+
+test("Scania Gross/Net funktioniert auch wenn OCR die Einheit als K6 liest", () => {
+  const profile = {
+    id: "SCANIA", name: "Scania", role: "vda", active: true,
+    anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$", normalizer: "net_weight",
+      poly: [[0.66,0.38],[0.90,0.38],[0.90,0.44],[0.66,0.44]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("SCANIA AB (PUBL)", .99, [[100,50],[300,50],[300,90],[100,90]]),
+    item("1550 / 1300 K6", .95, [[650,310],[910,310],[910,355],[650,355]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "1300 KG");
+  assert.equal(result.fields.weight.valid, true);
+});
+
+test("Scania Gross/Net nimmt rechten Wert auch wenn OCR die Einheit komplett verliert", () => {
+  const profile = {
+    id: "SCANIA", name: "Scania", role: "vda", active: true,
+    anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$", normalizer: "net_weight",
+      poly: [[0.66,0.38],[0.90,0.38],[0.90,0.44],[0.66,0.44]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("SCANIA AB (PUBL)", .99, [[100,50],[300,50],[300,90],[100,90]]),
+    item("1550", .99, [[650,310],[740,310],[740,355],[650,355]]),
+    item("/", .95, [[748,310],[765,310],[765,355],[748,355]]),
+    item("1300", .96, [[775,310],[860,310],[860,355],[775,355]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "1300 KG");
+  assert.equal(result.fields.weight.source, "ocr-scania-pair");
+  assert.equal(result.fields.weight.valid, true);
+});

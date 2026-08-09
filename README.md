@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.6.14
+# LabelCheck PaddleOCR 0.6.15
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 

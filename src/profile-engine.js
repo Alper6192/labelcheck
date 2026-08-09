@@ -611,15 +611,28 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
   const scale = Math.max(20, expected.height || 0, expected.width * 0.22 || 0);
   let best = null;
 
-  const consider = (text, poly, score = 0, sourceText = text, pairGap = null) => {
-    const normalized = String(text || "").trim().toUpperCase()
-      .replace(/,/g, ".")
-      .replace(/\bKGM\b/g, "KG")
-      .replace(/\bK\b/g, "KG")
-      .replace(/\s+/g, " ");
-    // Ein Scania-Gewicht ist absichtlich NUR gültig, wenn K/KG erkannt wurde.
-    // Eine nackte Bruttozahl wie 1550 darf niemals Kandidat sein.
-    if (!/^\d{1,5}(?:\.\d+)?\s*KG$/.test(normalized)) return;
+  const normalizeUnit = (unit) => {
+    const value = String(unit || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    // Typische PaddleOCR-Verwechslungen bei kleinem "KG" auf Scania-Labels.
+    if (["K", "KG", "K6", "KC", "KO", "K0", "KQ", "K9"].includes(value)) return "KG";
+    return "";
+  };
+
+  const nearExpectedRow = (poly, factor = 6.5) => {
+    const b = boundsFromPoly(poly);
+    const bx = b.x + b.width / 2;
+    const by = b.y + b.height / 2;
+    // Die im Editor gespeicherte Box kann oberhalb der realen Wertzeile liegen.
+    // Deshalb nur grob auf die rechte Labelhälfte / Gewichtszeile begrenzen.
+    const dx = Math.abs(bx - cx);
+    const dy = Math.abs(by - cy);
+    return dx <= scale * factor + expected.width && dy <= scale * factor + 70;
+  };
+
+  const consider = (number, poly, score = 0, sourceText = "", pairGap = null, inferred = false) => {
+    const numeric = String(number || "").trim().replace(/,/g, ".");
+    if (!/^\d{3,5}(?:\.\d+)?$/.test(numeric)) return;
+    if (!nearExpectedRow(poly)) return;
 
     const b = boundsFromPoly(poly);
     const bx = b.x + b.width / 2;
@@ -627,72 +640,98 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
     const dx = bx - cx;
     const dy = by - cy;
     const distance = Math.hypot(dx, dy);
-
-    // Die Sollbox dient nur noch zum Ranking, NICHT als Ausschlusskriterium.
-    // Das ist wichtig, weil der reale Netto-Wert bei Scania deutlich rechts von
-    // der im Editor markierten Gross/Net-Zone liegen kann.
     const proximity = 1 / (1 + distance / Math.max(1, scale * 2.5));
     const rightness = Math.max(0, Math.min(1, 0.5 + dx / Math.max(1, scale * 6)));
-    const gapBonus = pairGap == null ? 0.18 : 0.30 / (1 + Math.max(0, pairGap) / Math.max(1, scale));
-    const selectionScore = proximity * 0.28 + Number(score || 0) * 0.22 + rightness * 0.20 + gapBonus + 0.30;
+    const gapBonus = pairGap == null ? 0.12 : 0.32 / (1 + Math.max(0, pairGap) / Math.max(1, scale));
+    const inferredBonus = inferred ? 0.24 : 0.34;
+    const selectionScore = proximity * 0.24 + Number(score || 0) * 0.20 + rightness * 0.20 + gapBonus + inferredBonus;
+
     const candidate = {
-      text: normalized,
+      text: `${numeric} KG`,
       poly,
       score: Number(score || 0),
       selectionScore,
-      source: "ocr-scania-net",
-      sourceText
+      source: inferred ? "ocr-scania-pair" : "ocr-scania-net",
+      sourceText: String(sourceText || `${numeric} KG`)
     };
     if (!best || candidate.selectionScore > best.selectionScore) best = candidate;
   };
 
-  // 1) Wichtigster Fall: Einheit steht zusammen mit dem Nettowert in derselben
-  // OCR-Box. Auch aus "1550 / 1300 KG" wird nur "1300 KG" extrahiert.
+  // 1) Gross/Net bereits in EINER OCR-Box. Für Scania reicht die Struktur
+  // "Zahl / Zahl" (oder auch nur zwei Zahlen in derselben kurzen Zeile) aus;
+  // die Einheit darf von OCR fehlerhaft oder gar nicht erkannt worden sein.
+  // Beispiel: "1550 / 1300 KG", "1550 / 1300 K6", "1550 1300" -> 1300 KG.
   for (const item of items || []) {
-    const text = String(item?.text || "");
-    const pattern = /(\d{1,5}(?:[.,]\d+)?)\s*(KG|K)(?=$|[^A-Z0-9])/ig;
-    for (const match of text.matchAll(pattern)) {
+    const raw = String(item?.text || "").trim();
+    if (!raw) continue;
+    const groups = Array.from(raw.matchAll(/\d{3,5}(?:[.,]\d+)?/g));
+    if (groups.length < 2) continue;
+
+    // Nur die letzten beiden plausiblen kurzen Werte betrachten. Damit fallen
+    // Batch-, IDH- und Barcode-Zeilen mit langen Nummern automatisch heraus.
+    const left = groups[groups.length - 2];
+    const right = groups[groups.length - 1];
+    const between = raw.slice(Number(left.index || 0) + String(left[0]).length, Number(right.index || 0));
+    const tail = raw.slice(Number(right.index || 0) + String(right[0]).length);
+    const hasSeparator = /[\/|I\\]/i.test(between);
+    const unitLike = tail.match(/\b(KG|K6|KC|KO|K0|KQ|K9|K)\b/i);
+
+    // Ohne Separator/Einheit nur akzeptieren, wenn es eine kurze OCR-Zeile ist
+    // und sie räumlich in der Scania-Gewichtsregion liegt.
+    if (!hasSeparator && !unitLike && raw.length > 24) continue;
+    if (!nearExpectedRow(item.poly, 7.5)) continue;
+
+    const start = Number(right.index || 0);
+    const end = start + String(right[0]).length + (unitLike ? String(unitLike[0]).length + 1 : 0);
+    const poly = approximateTextFragmentPoly(item.poly, raw.length, start, Math.min(raw.length, end));
+    consider(right[0], poly, item.score, raw, 0, !normalizeUnit(unitLike?.[1]));
+  }
+
+  // 2) Nettowert und Einheit in derselben OCR-Box, z. B. "1300 KG" oder
+  // OCR-Verwechslungen wie "1300 K6" / "1300 KC".
+  for (const item of items || []) {
+    const raw = String(item?.text || "");
+    const pattern = /(\d{3,5}(?:[.,]\d+)?)\s*(KG|K6|KC|KO|K0|KQ|K9|K)(?=$|[^A-Z0-9])/ig;
+    for (const match of raw.matchAll(pattern)) {
       const start = Number(match.index || 0);
       const end = start + String(match[0] || "").length;
-      const poly = approximateTextFragmentPoly(item.poly, text.length, start, end);
-      consider(`${match[1]} ${match[2]}`, poly, item.score, text, 0);
+      const poly = approximateTextFragmentPoly(item.poly, raw.length, start, end);
+      consider(match[1], poly, item.score, raw, 0, false);
     }
   }
 
-  // 2) PaddleOCR kann Zahl und Einheit in getrennte Boxen aufteilen. Dann wird
-  // jedes K/KG mit der unmittelbar links davor liegenden Zahl derselben Zeile
-  // verbunden. Die kürzeste plausible Lücke gewinnt; dadurch kann 1550 nicht
-  // an das weiter rechts stehende KG gekoppelt werden, wenn 1300 dazwischenliegt.
+  // 3) PaddleOCR zerlegt die Gross/Net-Zeile in mehrere Boxen. Zuerst werden
+  // reine 3–5-stellige Zahlen gesammelt. Wenn zwei davon horizontal auf einer
+  // Zeile stehen, ist bei Scania die rechte Zahl der Nettowert. Die Einheit ist
+  // für diese Paarentscheidung NICHT erforderlich.
   const numbers = [];
   const units = [];
   for (const item of items || []) {
-    const source = String(item?.text || "");
-    const text = source.trim().toUpperCase();
+    const raw = String(item?.text || "").trim();
+    const upper = raw.toUpperCase();
     const b = boundsFromPoly(item.poly);
 
-    // Einheit kann als eigene Box oder mit etwas Satzzeichen erkannt werden.
-    if (/^[^A-Z0-9]*K(?:G)?[^A-Z0-9]*$/.test(text)) {
-      units.push({ item, text: /KG/.test(text) ? "KG" : "K", bounds: b, cx: b.x + b.width / 2, cy: b.y + b.height / 2 });
+    const unit = normalizeUnit(upper);
+    if (unit) {
+      units.push({ item, text: unit, bounds: b, cx: b.x + b.width / 2, cy: b.y + b.height / 2 });
     }
 
-    for (const match of source.matchAll(/\d{1,5}(?:[.,]\d+)?/g)) {
-      const start = Number(match.index || 0);
-      const end = start + String(match[0] || "").length;
-      const poly = approximateTextFragmentPoly(item.poly, source.length, start, end);
-      const nb = boundsFromPoly(poly);
-      numbers.push({ item, text: match[0], poly, bounds: nb, cx: nb.x + nb.width / 2, cy: nb.y + nb.height / 2 });
+    if (/^\d{3,5}(?:[.,]\d+)?$/.test(raw)) {
+      numbers.push({ item, text: raw, poly: item.poly, bounds: b, cx: b.x + b.width / 2, cy: b.y + b.height / 2 });
     }
   }
 
+  // 3a) Zahl + separate Einheit. Das bleibt der stärkste Split-Fall.
   for (const unit of units) {
     const plausible = [];
     for (const number of numbers) {
       const h = Math.max(8, number.bounds.height, unit.bounds.height);
       const vertical = Math.abs(number.cy - unit.cy);
-      if (vertical > h * 1.15 + 7) continue;
+      if (vertical > h * 1.35 + 9) continue;
       const gap = unit.bounds.x - (number.bounds.x + number.bounds.width);
-      if (gap < -h * 0.25 || gap > h * 7 + 55) continue;
-      plausible.push({ number, gap, h });
+      if (gap < -h * 0.4 || gap > h * 8 + 70) continue;
+      if (!nearExpectedRow(number.poly, 7.5)) continue;
+      plausible.push({ number, gap });
     }
     plausible.sort((a, b) => a.gap - b.gap);
     const chosen = plausible[0];
@@ -704,7 +743,29 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
     const y2 = Math.max(number.bounds.y + number.bounds.height, unit.bounds.y + unit.bounds.height);
     const poly = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
     const pairScore = (Number(number.item.score || 0) + Number(unit.item.score || 0)) / 2;
-    consider(`${number.text} ${unit.text}`, poly, pairScore, `${number.item.text} ${unit.item.text}`, gap);
+    consider(number.text, poly, pairScore, `${number.item.text} ${unit.item.text}`, gap, false);
+  }
+
+  // 3b) Gross und Net als zwei reine Zahlenboxen, Einheit von OCR fehlt völlig.
+  // Es werden nur eng benachbarte horizontale Paare in der erwarteten Region
+  // akzeptiert. Der rechte Wert wird als KG inferiert.
+  for (const left of numbers) {
+    for (const right of numbers) {
+      if (left === right || right.cx <= left.cx) continue;
+      const h = Math.max(8, left.bounds.height, right.bounds.height);
+      if (Math.abs(left.cy - right.cy) > h * 1.15 + 8) continue;
+      const gap = right.bounds.x - (left.bounds.x + left.bounds.width);
+      if (gap < -h * 0.25 || gap > h * 7 + 65) continue;
+      if (!nearExpectedRow(left.poly, 7.5) || !nearExpectedRow(right.poly, 7.5)) continue;
+
+      const x1 = Math.min(left.bounds.x, right.bounds.x);
+      const y1 = Math.min(left.bounds.y, right.bounds.y);
+      const x2 = Math.max(left.bounds.x + left.bounds.width, right.bounds.x + right.bounds.width);
+      const y2 = Math.max(left.bounds.y + left.bounds.height, right.bounds.y + right.bounds.height);
+      const poly = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
+      const pairScore = (Number(left.item.score || 0) + Number(right.item.score || 0)) / 2;
+      consider(right.text, poly, pairScore, `${left.item.text} / ${right.item.text}`, gap, true);
+    }
   }
 
   return best;
