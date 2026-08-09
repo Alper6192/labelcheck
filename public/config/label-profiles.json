@@ -1113,8 +1113,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "sourceRegex": "^(?:\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?)$",
+          "regex": "^\\d+(?:[.,]\\d+)?\\s*KG$",
+          "sourceRegex": "^(?:\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?)$",
           "normalizer": "net_weight",
           "poly": [
             [
@@ -1249,7 +1249,7 @@
           "required": true,
           "compare": true,
           "regex": "^\\d{7}$",
-          "sourceRegex": "^(?:\\d{7,10}|\\d{7,10}\\s+\\d{7,8}|\\d{14,18})$",
+          "sourceRegex": "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$",
           "normalizer": "last_digits",
           "poly": [
             [
@@ -1280,7 +1280,8 @@
             "maxDistance": 8,
             "preferRightmost": true,
             "strict": true
-          }
+          },
+          "strategy": "vw_delivery_pair"
         },
         {
           "key": "weight",
@@ -1288,8 +1289,8 @@
           "required": true,
           "compare": true,
           "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "sourceRegex": "^(?:\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?|\\d+(?:[.,]\\d+)?\\s*[/|I]\\s*\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?)$",
-          "normalizer": "net_weight",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?\\s*(?:KGM|LTR)$",
+          "normalizer": "weight",
           "poly": [
             [
               0.7161492259055263,
@@ -1311,19 +1312,15 @@
           "digits": 4,
           "locator": {
             "aliases": [
-              "Gross / Net weight",
-              "Gross/Net weight",
-              "Gross Net weight",
-              "Gross / Net wt",
-              "Gross Net wt"
+              "Quantity"
             ],
             "direction": "below_or_right",
-            "maxDistance": 7,
-            "preferRightmost": true,
+            "maxDistance": 5.5,
             "preferUnit": true,
-            "strict": true
+            "strict": false
           },
-          "fallbackStrategy": "net_pair"
+          "strategy": "quantity_weight",
+          "searchRadius": 2.2
         },
         {
           "key": "delivery_note",
@@ -1331,7 +1328,7 @@
           "required": false,
           "compare": false,
           "regex": "^\\d{7,12}$",
-          "sourceRegex": "^(?:\\d{7,10}|\\d{7,10}\\s+\\d{7,8}|\\d{14,18})$",
+          "sourceRegex": "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$",
           "normalizer": "leading_delivery_digits",
           "poly": [
             [
@@ -1363,7 +1360,8 @@
             "strict": true
           },
           "tailDigits": 7,
-          "combinedMinDigits": 14
+          "combinedMinDigits": 14,
+          "strategy": "vw_delivery_pair"
         }
       ]
     },

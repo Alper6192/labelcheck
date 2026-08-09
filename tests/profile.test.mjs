@@ -494,3 +494,115 @@ test("VW Netto-Fallback findet Brutto-Netto-Paar auch ohne kleine Feldbeschriftu
   assert.equal(result.fields.weight.value, "1150 KG");
   assert.equal(result.fields.weight.source, "ocr-pattern");
 });
+
+test("Scania akzeptiert allein nur Gewicht mit K oder KG", () => {
+  const profile = {
+    id: "SCANIA", name: "Scania", role: "vda", active: true,
+    anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$",
+      sourceRegex: "^(?:\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?)$",
+      normalizer: "net_weight", searchRadius: 1.8, minOverlap: 0,
+      preferRightmost: true, preferUnit: true,
+      poly: [[0.66,0.50],[0.90,0.50],[0.90,0.60],[0.66,0.60]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("SCANIA AB (PUBL)", .99, [[100,50],[300,50],[300,90],[100,90]]),
+    item("1550", .9999, [[660,250],[760,250],[760,300],[660,300]]),
+    item("1300 K", .91, [[770,250],[900,250],[900,300],[770,300]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "1300 KG");
+  assert.equal(result.fields.weight.valid, true);
+});
+
+test("VW liest LSN und IDH direkt aus der großen unteren Zeile ohne Beschriftung", () => {
+  const baseField = {
+    sourceRegex: "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$",
+    strategy: "vw_delivery_pair"
+  };
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen AG"], scaleFrom: "height", alignFrom: "left", poly: [[0.2,0.1],[0.5,0.1],[0.5,0.18],[0.2,0.18]] },
+    fields: [
+      { ...baseField, key: "delivery_note", label: "Lieferscheinnummer", required: false, compare: false,
+        regex: "^\\d{7,12}$", normalizer: "leading_delivery_digits", tailDigits: 7, combinedMinDigits: 14,
+        poly: [[0.1,0.35],[0.25,0.35],[0.25,0.42],[0.1,0.42]] },
+      { ...baseField, key: "idh", label: "IDH", required: true, compare: true,
+        regex: "^\\d{7}$", normalizer: "last_digits", digits: 7,
+        poly: [[0.15,0.72],[0.55,0.72],[0.55,0.80],[0.15,0.80]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("Volkswagen AG", .99, [[200,50],[380,50],[380,90],[200,90]]),
+    item("0002303800", .999, [[80,165],[210,165],[210,190],[80,190]]),
+    item("(6J) UN 333361199 000100613", .999, [[80,290],[540,290],[540,330],[80,330]]),
+    item("13014402 2503891", .995, [[100,390],[470,390],[470,440],[100,440]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "13014402");
+  assert.equal(result.fields.idh.value, "2503891");
+  assert.equal(result.fields.delivery_note.source, "ocr-vw-pair");
+  assert.equal(result.fields.idh.source, "ocr-vw-pair");
+});
+
+test("VW Kombizeile funktioniert auch bei getrennten OCR-Boxen", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen AG"], scaleFrom: "height", alignFrom: "left", poly: [[0.2,0.1],[0.5,0.1],[0.5,0.18],[0.2,0.18]] },
+    fields: [
+      { key: "delivery_note", label: "Lieferscheinnummer", regex: "^\\d{7,12}$", sourceRegex: "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$", normalizer: "leading_delivery_digits", tailDigits: 7, combinedMinDigits: 14, strategy: "vw_delivery_pair", poly: [[0.1,0.35],[0.25,0.35],[0.25,0.42],[0.1,0.42]] },
+      { key: "idh", label: "IDH", regex: "^\\d{7}$", sourceRegex: "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$", normalizer: "last_digits", digits: 7, strategy: "vw_delivery_pair", poly: [[0.15,0.72],[0.55,0.72],[0.55,0.80],[0.15,0.80]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("Volkswagen AG", .99, [[200,50],[380,50],[380,90],[200,90]]),
+    item("13012900", .99, [[100,390],[270,390],[270,440],[100,440]]),
+    item("2822940", .98, [[285,390],[440,390],[440,440],[285,440]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.delivery_note.value, "13012900");
+  assert.equal(result.fields.idh.value, "2822940");
+});
+
+test("VW Gewicht nimmt Quantity mit KGM/LTR und ignoriert Gross-Net-KG", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen AG"], scaleFrom: "height", alignFrom: "left", poly: [[0.2,0.1],[0.5,0.1],[0.5,0.18],[0.2,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+      sourceRegex: "^\\d+(?:[.,]\\d+)?\\s*(?:KGM|LTR)$",
+      normalizer: "weight", strategy: "quantity_weight", searchRadius: 2.2,
+      poly: [[0.70,0.30],[0.90,0.30],[0.90,0.38],[0.70,0.38]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("Volkswagen AG", .99, [[200,50],[380,50],[380,90],[200,90]]),
+    item("18600 KGM", .96, [[700,150],[880,150],[880,185],[700,185]]),
+    item("18600 / 18600 KG", .999, [[650,260],[900,260],[900,300],[650,300]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "18600 KG");
+  assert.equal(result.fields.weight.source, "ocr-quantity");
+});
+
+test("VW Quantity-Gewicht verbindet getrennte Zahl und KGM-Einheit", () => {
+  const profile = {
+    id: "VW", name: "VW", role: "vda", active: true,
+    anchor: { aliases: ["Volkswagen AG"], scaleFrom: "height", alignFrom: "left", poly: [[0.2,0.1],[0.5,0.1],[0.5,0.18],[0.2,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+      sourceRegex: "^\\d+(?:[.,]\\d+)?\\s*(?:KGM|LTR)$",
+      normalizer: "weight", strategy: "quantity_weight", searchRadius: 2.2,
+      poly: [[0.70,0.30],[0.90,0.30],[0.90,0.38],[0.70,0.38]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("Volkswagen AG", .99, [[200,50],[380,50],[380,90],[200,90]]),
+    item("1150", .99, [[700,150],[790,150],[790,185],[700,185]]),
+    item("KGM", .98, [[800,150],[860,150],[860,185],[800,185]]),
+    item("1400 / 1150 KG", .999, [[650,260],[900,260],[900,300],[650,300]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "1150 KG");
+  assert.equal(result.fields.weight.valid, true);
+});

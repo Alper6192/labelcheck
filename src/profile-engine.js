@@ -159,10 +159,20 @@ export function normalizeFieldValue(key, value, field = {}) {
   }
   if (normalizer === "digits") return text.replace(/\D/g, "");
   if (normalizer === "weight") {
-    return text.replace(/,/g, ".").replace(/\bKGM\b/g, "KG").replace(/\s+/g, " ");
+    return text
+      .replace(/,/g, ".")
+      .replace(/\bKGM\b/g, "KG")
+      .replace(/\bK\b/g, "KG")
+      .replace(/\s+/g, " ");
   }
   if (normalizer === "net_weight") {
-    const normalized = text.replace(/,/g, ".").replace(/\bKGM\b/g, "KG").replace(/\s+/g, " ");
+    // Scania kann die Einheit gelegentlich nur als "K" statt "KG" erkennen.
+    // Für die weitere Verarbeitung behandeln wir K und KGM eindeutig als KG.
+    const normalized = text
+      .replace(/,/g, ".")
+      .replace(/\bKGM\b/g, "KG")
+      .replace(/\bK\b/g, "KG")
+      .replace(/\s+/g, " ");
     const values = Array.from(normalized.matchAll(/(\d+(?:\.\d+)?)(?:\s*(KG|G|L|LTR))?/g));
     if (!values.length) return normalized;
     const match = values[values.length - 1];
@@ -173,7 +183,12 @@ export function normalizeFieldValue(key, value, field = {}) {
 }
 
 export function normalizedWeight(value) {
-  const match = String(value || "").toUpperCase().replace(/,/g, ".").match(/(\d+(?:\.\d+)?)\s*(KG|KGM|G|L|LTR)?/);
+  const prepared = String(value || "")
+    .toUpperCase()
+    .replace(/,/g, ".")
+    .replace(/\bKGM\b/g, "KG")
+    .replace(/\bK\b/g, "KG");
+  const match = prepared.match(/(\d+(?:\.\d+)?)\s*(KG|G|L|LTR)?/);
   if (!match) return null;
   const number = Number(match[1]);
   let unit = match[2] || "KG";
@@ -317,6 +332,23 @@ function transformPoly(normalized, transform, imageSize) {
 }
 
 function chooseCandidate(items, expectedPoly, field) {
+  // VW: Die große unterste Zeile besteht aus Lieferscheinnummer + IDH. Diese
+  // Zahlenzeile ist deutlich zuverlässiger als die sehr kleine Beschriftung
+  // "Delivery number / IDH". Deshalb wird sie direkt erkannt und für beide
+  // Felder verwendet; die jeweilige Normalisierung trennt links/rechts.
+  if (field?.strategy === "vw_delivery_pair") {
+    const pair = chooseVwDeliveryPairCandidate(items);
+    if (pair) return pair;
+  }
+
+  // VW: Das gewünschte Gewicht ist die obere Quantity-Angabe. Auf diesen
+  // Labels trägt sie KGM oder LTR, während Gross/Net unten typischerweise KG
+  // verwendet. Die Einheit ist damit ein sehr stabiler inhaltlicher Filter.
+  if (field?.strategy === "quantity_weight") {
+    const quantity = chooseQuantityWeightCandidate(items, expectedPoly, field);
+    if (quantity) return quantity;
+  }
+
   // Für Layouts mit stabilen gedruckten Feldbezeichnungen ist die Beziehung
   // "Wert unter/rechts von Beschriftung" robuster als eine große globale
   // Suchzone. Das verhindert insbesondere Verwechslungen zwischen ähnlich
@@ -467,6 +499,148 @@ function chooseCandidateByLocator(items, field) {
       }
     }
   }
+  return best;
+}
+
+
+function chooseVwDeliveryPairCandidate(items) {
+  let best = null;
+
+  const consider = (left, right, poly, score, sourceText = "") => {
+    const delivery = String(left || "").replace(/\D/g, "");
+    const idh = String(right || "").replace(/\D/g, "");
+    if (!/^\d{7,10}$/.test(delivery) || !/^\d{7}$/.test(idh)) return;
+    const bounds = boundsFromPoly(poly);
+    // Die untere VW-Zeile ist groß gedruckt. Die Texthöhe hilft, sie von
+    // kleineren Nummernzeilen im oberen Labelbereich zu unterscheiden.
+    const sizeBonus = Math.min(0.8, Math.max(0, bounds.height) / 45);
+    const candidate = {
+      text: `${delivery} ${idh}`,
+      poly: normalizePoly(poly),
+      score: Number(score || 0),
+      selectionScore: Number(score || 0) + sizeBonus,
+      source: "ocr-vw-pair",
+      sourceText: String(sourceText || `${delivery} ${idh}`)
+    };
+    if (!best || candidate.selectionScore > best.selectionScore) best = candidate;
+  };
+
+  // Häufig liefert PaddleOCR die komplette große Zeile als ein Element.
+  for (const item of items || []) {
+    const original = String(item?.text || "").trim();
+    if (!original) continue;
+    const cleaned = original
+      .replace(/DELIVERY\s*NUMBER\s*\/?\s*IDH/ig, " ")
+      .replace(/[^0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned) continue;
+
+    const groups = cleaned.match(/\d+/g) || [];
+    if (groups.length === 2) {
+      consider(groups[0], groups[1], item.poly, item.score, original);
+      continue;
+    }
+    if (groups.length === 1 && /^\d{14,17}$/.test(groups[0])) {
+      const digits = groups[0];
+      consider(digits.slice(0, -7), digits.slice(-7), item.poly, item.score, original);
+    }
+  }
+
+  // Je nach Foto kann PaddleOCR die beiden großen Nummern getrennt erkennen.
+  const numeric = [];
+  for (const item of items || []) {
+    const raw = String(item?.text || "").trim();
+    const compact = raw.replace(/\s+/g, "");
+    if (!/^\d{7,10}$/.test(compact)) continue;
+    const b = boundsFromPoly(item.poly);
+    numeric.push({ item, digits: compact, bounds: b, cx: b.x + b.width / 2, cy: b.y + b.height / 2 });
+  }
+
+  for (const left of numeric) {
+    for (const right of numeric) {
+      if (left === right || !/^\d{7}$/.test(right.digits)) continue;
+      if (right.cx <= left.cx) continue;
+      const h = Math.max(8, left.bounds.height, right.bounds.height);
+      if (Math.abs(left.cy - right.cy) > h * 0.8 + 5) continue;
+      const gap = right.bounds.x - (left.bounds.x + left.bounds.width);
+      if (gap > h * 8 + 40) continue;
+      if (gap < -h * 0.8) continue;
+
+      const x1 = Math.min(left.bounds.x, right.bounds.x);
+      const y1 = Math.min(left.bounds.y, right.bounds.y);
+      const x2 = Math.max(left.bounds.x + left.bounds.width, right.bounds.x + right.bounds.width);
+      const y2 = Math.max(left.bounds.y + left.bounds.height, right.bounds.y + right.bounds.height);
+      const poly = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
+      consider(
+        left.digits,
+        right.digits,
+        poly,
+        (Number(left.item.score || 0) + Number(right.item.score || 0)) / 2,
+        `${left.item.text} ${right.item.text}`
+      );
+    }
+  }
+
+  return best;
+}
+
+function chooseQuantityWeightCandidate(items, expectedPoly, field) {
+  const expected = boundsFromPoly(expectedPoly);
+  const cx = expected.x + expected.width / 2;
+  const cy = expected.y + expected.height / 2;
+  const radius = Math.max(expected.width, expected.height) * Number(field.searchRadius || 2.2) + 40;
+  const sourceRegex = field.sourceRegex || field.regex;
+  let best = null;
+
+  const consider = (candidate) => {
+    if (!candidate?.text || !validateField(candidate.text, sourceRegex)) return;
+    const b = boundsFromPoly(candidate.poly);
+    const dx = (b.x + b.width / 2) - cx;
+    const dy = (b.y + b.height / 2) - cy;
+    const distance = Math.hypot(dx, dy);
+    if (distance > radius) return;
+    const proximity = Math.max(0, 1 - distance / radius);
+    const unitBonus = /\b(?:KGM|LTR)\b/i.test(String(candidate.text || "")) ? 0.45 : 0;
+    const score = proximity * 0.55 + Number(candidate.score || 0) * 0.30 + unitBonus;
+    const enriched = { ...candidate, selectionScore: score, source: candidate.source || "ocr-quantity" };
+    if (!best || enriched.selectionScore > best.selectionScore) best = enriched;
+  };
+
+  // Normalfall: Zahl und Einheit befinden sich in derselben OCR-Box.
+  for (const item of items || []) {
+    for (const fragment of matchingFieldFragments(item, sourceRegex)) consider({ ...fragment, source: "ocr-quantity" });
+  }
+
+  // Fallback: OCR trennt z. B. "1150" und "KGM" in zwei benachbarte Boxen.
+  const numbers = [];
+  const units = [];
+  for (const item of items || []) {
+    const text = String(item?.text || "").trim().toUpperCase();
+    const b = boundsFromPoly(item.poly);
+    if (/^\d+(?:[.,]\d+)?$/.test(text)) numbers.push({ item, text, bounds: b, cy: b.y + b.height / 2 });
+    if (/^(?:KGM|LTR)$/.test(text)) units.push({ item, text, bounds: b, cy: b.y + b.height / 2 });
+  }
+  for (const number of numbers) {
+    for (const unit of units) {
+      const h = Math.max(8, number.bounds.height, unit.bounds.height);
+      if (Math.abs(number.cy - unit.cy) > h * 0.8 + 4) continue;
+      const gap = unit.bounds.x - (number.bounds.x + number.bounds.width);
+      if (gap < -h * 0.5 || gap > h * 4 + 25) continue;
+      const x1 = Math.min(number.bounds.x, unit.bounds.x);
+      const y1 = Math.min(number.bounds.y, unit.bounds.y);
+      const x2 = Math.max(number.bounds.x + number.bounds.width, unit.bounds.x + unit.bounds.width);
+      const y2 = Math.max(number.bounds.y + number.bounds.height, unit.bounds.y + unit.bounds.height);
+      consider({
+        text: `${number.text} ${unit.text}`,
+        poly: [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
+        score: (Number(number.item.score || 0) + Number(unit.item.score || 0)) / 2,
+        sourceText: `${number.item.text} ${unit.item.text}`,
+        source: "ocr-quantity"
+      });
+    }
+  }
+
   return best;
 }
 

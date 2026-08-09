@@ -103,15 +103,21 @@ test("VW verwendet für die IDH die letzten 7 Ziffern der untersten Zahlenzeile"
   assert.equal(idh?.normalizer, "last_digits");
   assert.equal(idh?.digits, 7);
   assert.equal(idh?.regex, "^\\d{7}$");
-  assert.match(idh?.sourceRegex || "", /\\d\{7,8\}/);
+  assert.equal(idh?.strategy, "vw_delivery_pair");
+  assert.match(idh?.sourceRegex || "", /\\d\{7\}/);
 });
 
-test("Scania-Gewicht verwendet Netto-Logik und räumliche Überlappung", () => {
+test("Scania-Gewicht verlangt K/KG und verwendet Netto-Logik", () => {
   const scania = readConfig().profiles.find((profile) => profile.id === "SCANIA");
   const weight = scania?.fields?.find((field) => field.key === "weight");
   assert.equal(weight?.normalizer, "net_weight");
   assert.equal(weight?.minOverlap, 0);
   assert.equal(weight?.searchRadius, 1.8);
+  const re = new RegExp(weight?.sourceRegex || "", "i");
+  assert.equal(re.test("1550"), false);
+  assert.equal(re.test("1300 KG"), true);
+  assert.equal(re.test("1300 K"), true);
+  assert.equal(re.test("1550 / 1300 KG"), true);
 });
 
 test("Seat akzeptiert 5-stellige IDH und keine 9-stellige Lieferscheinnummer als IDH", () => {
@@ -138,16 +144,20 @@ test("Interne Profile binden die Lieferscheinnummer an Transportauftrag - Positi
   }
 });
 
-test("VW-Felder verwenden semantische Beschriftungs-Locators", () => {
+test("VW nutzt die große Kombizeile und das obere Quantity-Gewicht", () => {
   const vw = readConfig().profiles.find((profile) => profile.id === "VW");
   const byKey = Object.fromEntries(vw.fields.map((field) => [field.key, field]));
-  assert.ok(byKey.delivery_note.locator.aliases.includes("Delivery number / IDH"));
+  assert.equal(byKey.delivery_note.strategy, "vw_delivery_pair");
   assert.equal(byKey.delivery_note.normalizer, "leading_delivery_digits");
-  assert.ok(byKey.idh.locator.aliases.includes("Delivery number / IDH"));
-  assert.ok(byKey.weight.locator.aliases.includes("Gross / Net weight"));
-  assert.equal(byKey.weight.fallbackStrategy, "net_pair");
+  assert.equal(byKey.idh.strategy, "vw_delivery_pair");
+  assert.equal(byKey.idh.normalizer, "last_digits");
+  assert.equal(byKey.weight.strategy, "quantity_weight");
+  assert.equal(byKey.weight.normalizer, "weight");
+  assert.match(byKey.weight.sourceRegex, /KGM\|LTR/);
+  assert.ok(byKey.weight.locator.aliases.includes("Quantity"));
+  assert.equal(byKey.weight.locator.strict, false);
   assert.ok(byKey.batch.locator.aliases.includes("Batch Nr"));
-  for (const key of ["delivery_note", "idh", "weight", "batch"]) assert.equal(byKey[key].locator.strict, true, key);
+  assert.equal(byKey.batch.locator.strict, true);
 });
 
 test("Scania bevorzugt beim Gewicht den rechten Wert mit Einheit", () => {

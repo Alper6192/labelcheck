@@ -52,3 +52,8 @@ test("OCR-Modelle werden same-origin von GitHub Pages geladen", () => {
   assert.match(engineSource, /textRecognitionModelAsset/);
   assert.doesNotMatch(engineSource, /paddle-model-ecology\.bj\.bcebos\.com/);
 });
+
+test("Profileditor bewahrt Netto- und VW-Kombizeilen-Normalizer", () => {
+  assert.match(editorHtml, /option value="net_weight"/);
+  assert.match(editorHtml, /option value="leading_delivery_digits"/);
+});

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.12 – VW/Scania-Erkennungspatch (2026-08-09)
+
+- Scania: Ein einzelner Gewichtskandidat ist nur noch gültig, wenn OCR direkt `K` oder `KG` erkennt. Bei `1550 / 1300 KG` liefert `net_weight` weiterhin zwingend den rechten Wert. `K` wird intern wie `KG` behandelt.
+- VW: Lieferscheinnummer und IDH werden primär direkt aus der großen unteren Zahlenzeile gelesen. Die kleine Beschriftung `Delivery number / IDH` ist dafür nicht mehr erforderlich. Die IDH sind die letzten 7 Ziffern, der vordere Block ist die Lieferscheinnummer.
+- VW: Gewicht wird aus der oberen Quantity-Angabe gewählt und muss im OCR-Rohtext `KGM` oder `LTR` enthalten. Die darunterliegende `Gross / Net weight`-Zeile mit `KG` wird für dieses Feld nicht mehr verwendet.
+- VW: Auch getrennte OCR-Boxen (`1150` + `KGM` bzw. LSN + IDH) werden zusammengeführt.
+- Profileditor: `net_weight` und `leading_delivery_digits` sind als Bereinigungsoptionen sichtbar, damit diese Regeln beim späteren Bearbeiten nicht versehentlich überschrieben werden.
+- Zusätzliche Regressionstests für Scania und VW.
+
 ## 0.6.12
 
 - Intern1/Intern2: Lieferscheinnummer wird auch erkannt, wenn `Transportauftrag - Position` und der Wert in derselben OCR-Zeile liegen.
