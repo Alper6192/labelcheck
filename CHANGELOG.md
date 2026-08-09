@@ -1,3 +1,13 @@
+## 0.6.14 – Scania Engine-Fix (2026-08-09)
+
+- Versionsnummer bei jeder funktionalen Änderung erhöht.
+- Scania-Gewicht ist jetzt ein fester Engine-Sonderfall für Profil `SCANIA` + Feld `weight`; kein optionaler `strategy`-Schlüssel in der JSON mehr erforderlich.
+- Einzelne Bruttozahlen ohne `K`/`KG` werden niemals als Scania-Gewicht akzeptiert.
+- Aus `1550 / 1300 KG` wird gezielt `1300 KG` extrahiert.
+- Getrennte OCR-Boxen `1300` + `KG`/`K` werden zeilenbasiert verbunden; die nächstliegende Zahl links der Einheit gewinnt.
+- Die Sollbox dient bei Scania nur noch zum Ranking und verwirft einen rechts liegenden Nettowert nicht mehr.
+- VW-Verhalten aus dem vorherigen Patch bleibt unverändert.
+
 ## 0.6.12 – Scania Split-OCR-Patch (2026-08-09)
 
 - Scania: Nettogewicht wird jetzt auch dann erkannt, wenn PaddleOCR `1300` und `KG`/`K` in getrennte OCR-Boxen aufteilt.

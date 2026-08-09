@@ -54,7 +54,7 @@ export function extractProfileFields(items, profile, imageSize) {
   for (const field of profile.fields || []) {
     const expected = transformPoly(field.poly, transform, imageSize);
     expectedPolys[field.key] = expected;
-    const candidate = chooseCandidate(items, expected, field);
+    const candidate = chooseCandidate(items, expected, field, profile);
     if (candidate) candidates[field.key] = candidate;
   }
 
@@ -331,7 +331,17 @@ function transformPoly(normalized, transform, imageSize) {
   });
 }
 
-function chooseCandidate(items, expectedPoly, field) {
+function chooseCandidate(items, expectedPoly, field, profile = null) {
+  // Scania ist ein fester Profil-Sonderfall. Er darf NICHT von einem optionalen
+  // Config-Schlüssel abhängen, weil eine im Editor neu exportierte Konfiguration
+  // solche Engine-Hinweise verändern oder entfernen kann. Sobald Profil + Feld
+  // eindeutig SCANIA/weight sind, wird die robuste Netto-Auswahl verwendet.
+  if (String(profile?.id || "").toUpperCase() === "SCANIA" && field?.key === "weight") {
+    const net = chooseScaniaNetWeightCandidate(items, expectedPoly, field);
+    if (net) return net;
+    return null;
+  }
+
   // Scania: Gross und Net werden von PaddleOCR je nach Foto als eine gemeinsame
   // Box oder in mehrere Boxen zerlegt (z. B. "1550", "1300", "KG").
   // Deshalb wird das Nettogewicht hier gezielt aus der rechten Zahl mit K/KG
@@ -598,78 +608,103 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
   const expected = boundsFromPoly(expectedPoly);
   const cx = expected.x + expected.width / 2;
   const cy = expected.y + expected.height / 2;
-  const radius = Math.max(expected.width, expected.height) * Number(field.searchRadius || 1.8) + 55;
+  const scale = Math.max(20, expected.height || 0, expected.width * 0.22 || 0);
   let best = null;
 
-  const consider = (text, poly, score = 0, sourceText = text) => {
+  const consider = (text, poly, score = 0, sourceText = text, pairGap = null) => {
     const normalized = String(text || "").trim().toUpperCase()
       .replace(/,/g, ".")
+      .replace(/\bKGM\b/g, "KG")
       .replace(/\bK\b/g, "KG")
       .replace(/\s+/g, " ");
-    if (!/^\d{1,4}(?:\.\d+)?\s*KG$/.test(normalized)) return;
+    // Ein Scania-Gewicht ist absichtlich NUR gültig, wenn K/KG erkannt wurde.
+    // Eine nackte Bruttozahl wie 1550 darf niemals Kandidat sein.
+    if (!/^\d{1,5}(?:\.\d+)?\s*KG$/.test(normalized)) return;
+
     const b = boundsFromPoly(poly);
     const bx = b.x + b.width / 2;
     const by = b.y + b.height / 2;
-    const distance = Math.hypot(bx - cx, by - cy);
-    if (distance > radius) return;
-    const proximity = Math.max(0, 1 - distance / radius);
-    const rightness = Math.max(0, Math.min(1, 0.5 + (bx - cx) / Math.max(1, radius)));
-    const selectionScore = proximity * 0.45 + Number(score || 0) * 0.25 + rightness * 0.30;
-    const candidate = { text: normalized, poly, score: Number(score || 0), selectionScore, source: "ocr-scania-net", sourceText };
+    const dx = bx - cx;
+    const dy = by - cy;
+    const distance = Math.hypot(dx, dy);
+
+    // Die Sollbox dient nur noch zum Ranking, NICHT als Ausschlusskriterium.
+    // Das ist wichtig, weil der reale Netto-Wert bei Scania deutlich rechts von
+    // der im Editor markierten Gross/Net-Zone liegen kann.
+    const proximity = 1 / (1 + distance / Math.max(1, scale * 2.5));
+    const rightness = Math.max(0, Math.min(1, 0.5 + dx / Math.max(1, scale * 6)));
+    const gapBonus = pairGap == null ? 0.18 : 0.30 / (1 + Math.max(0, pairGap) / Math.max(1, scale));
+    const selectionScore = proximity * 0.28 + Number(score || 0) * 0.22 + rightness * 0.20 + gapBonus + 0.30;
+    const candidate = {
+      text: normalized,
+      poly,
+      score: Number(score || 0),
+      selectionScore,
+      source: "ocr-scania-net",
+      sourceText
+    };
     if (!best || candidate.selectionScore > best.selectionScore) best = candidate;
   };
 
-  // 1) Einheit und Wert befinden sich in derselben OCR-Box. Das deckt sowohl
-  // "1300 KG" als auch die komplette Zeile "1550 / 1300 KG" ab: gesucht wird
-  // bewusst nur die Zahl, an der K/KG direkt hängt.
+  // 1) Wichtigster Fall: Einheit steht zusammen mit dem Nettowert in derselben
+  // OCR-Box. Auch aus "1550 / 1300 KG" wird nur "1300 KG" extrahiert.
   for (const item of items || []) {
     const text = String(item?.text || "");
-    const pattern = /(\d{1,4}(?:[.,]\d+)?)\s*(KG|K)\b/ig;
+    const pattern = /(\d{1,5}(?:[.,]\d+)?)\s*(KG|K)(?=$|[^A-Z0-9])/ig;
     for (const match of text.matchAll(pattern)) {
       const start = Number(match.index || 0);
       const end = start + String(match[0] || "").length;
       const poly = approximateTextFragmentPoly(item.poly, text.length, start, end);
-      consider(`${match[1]} ${match[2]}`, poly, item.score, text);
+      consider(`${match[1]} ${match[2]}`, poly, item.score, text, 0);
     }
   }
 
-  // 2) PaddleOCR trennt Zahl und Einheit in zwei Boxen. Zahlen werden bewusst
-  // auch aus Boxen wie "/ 1300" extrahiert. Gepairt wird nur mit einem K/KG,
-  // das auf derselben Zeile unmittelbar rechts davon steht.
+  // 2) PaddleOCR kann Zahl und Einheit in getrennte Boxen aufteilen. Dann wird
+  // jedes K/KG mit der unmittelbar links davor liegenden Zahl derselben Zeile
+  // verbunden. Die kürzeste plausible Lücke gewinnt; dadurch kann 1550 nicht
+  // an das weiter rechts stehende KG gekoppelt werden, wenn 1300 dazwischenliegt.
   const numbers = [];
   const units = [];
   for (const item of items || []) {
-    const text = String(item?.text || "").trim().toUpperCase();
+    const source = String(item?.text || "");
+    const text = source.trim().toUpperCase();
     const b = boundsFromPoly(item.poly);
-    if (/^K(?:G)?$/.test(text)) {
-      units.push({ item, text, bounds: b, cx: b.x + b.width / 2, cy: b.y + b.height / 2 });
-      continue;
+
+    // Einheit kann als eigene Box oder mit etwas Satzzeichen erkannt werden.
+    if (/^[^A-Z0-9]*K(?:G)?[^A-Z0-9]*$/.test(text)) {
+      units.push({ item, text: /KG/.test(text) ? "KG" : "K", bounds: b, cx: b.x + b.width / 2, cy: b.y + b.height / 2 });
     }
-    for (const match of String(item?.text || "").matchAll(/\d{1,4}(?:[.,]\d+)?/g)) {
+
+    for (const match of source.matchAll(/\d{1,5}(?:[.,]\d+)?/g)) {
       const start = Number(match.index || 0);
       const end = start + String(match[0] || "").length;
-      const poly = approximateTextFragmentPoly(item.poly, String(item?.text || "").length, start, end);
+      const poly = approximateTextFragmentPoly(item.poly, source.length, start, end);
       const nb = boundsFromPoly(poly);
       numbers.push({ item, text: match[0], poly, bounds: nb, cx: nb.x + nb.width / 2, cy: nb.y + nb.height / 2 });
     }
   }
 
-  for (const number of numbers) {
-    for (const unit of units) {
+  for (const unit of units) {
+    const plausible = [];
+    for (const number of numbers) {
       const h = Math.max(8, number.bounds.height, unit.bounds.height);
-      if (Math.abs(number.cy - unit.cy) > h * 0.85 + 5) continue;
+      const vertical = Math.abs(number.cy - unit.cy);
+      if (vertical > h * 1.15 + 7) continue;
       const gap = unit.bounds.x - (number.bounds.x + number.bounds.width);
-      if (gap < -h * 0.35 || gap > h * 3.8 + 24) continue;
-      const x1 = Math.min(number.bounds.x, unit.bounds.x);
-      const y1 = Math.min(number.bounds.y, unit.bounds.y);
-      const x2 = Math.max(number.bounds.x + number.bounds.width, unit.bounds.x + unit.bounds.width);
-      const y2 = Math.max(number.bounds.y + number.bounds.height, unit.bounds.y + unit.bounds.height);
-      const poly = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
-      const pairScore = (Number(number.item.score || 0) + Number(unit.item.score || 0)) / 2;
-      // Engere Zahl-Einheit-Abstände sind besonders plausibel. So gewinnt bei
-      // "1550   1300   KG" die 1300 und nicht die weiter links stehende 1550.
-      consider(`${number.text} ${unit.text}`, poly, pairScore + Math.max(0, 0.2 - gap / Math.max(1, h * 20)), `${number.item.text} ${unit.item.text}`);
+      if (gap < -h * 0.25 || gap > h * 7 + 55) continue;
+      plausible.push({ number, gap, h });
     }
+    plausible.sort((a, b) => a.gap - b.gap);
+    const chosen = plausible[0];
+    if (!chosen) continue;
+    const { number, gap } = chosen;
+    const x1 = Math.min(number.bounds.x, unit.bounds.x);
+    const y1 = Math.min(number.bounds.y, unit.bounds.y);
+    const x2 = Math.max(number.bounds.x + number.bounds.width, unit.bounds.x + unit.bounds.width);
+    const y2 = Math.max(number.bounds.y + number.bounds.height, unit.bounds.y + unit.bounds.height);
+    const poly = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
+    const pairScore = (Number(number.item.score || 0) + Number(unit.item.score || 0)) / 2;
+    consider(`${number.text} ${unit.text}`, poly, pairScore, `${number.item.text} ${unit.item.text}`, gap);
   }
 
   return best;

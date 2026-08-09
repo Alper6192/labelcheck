@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.12",
+  "appVersion": "0.6.14",
   "exportedAt": "2026-08-09T19:26:37.367Z",
   "profiles": [
     {
@@ -1138,8 +1138,7 @@
           "searchRadius": 1.8,
           "minOverlap": 0,
           "preferRightmost": true,
-          "preferUnit": true,
-          "strategy": "scania_net_weight"
+          "preferUnit": true
         },
         {
           "key": "delivery_note",
