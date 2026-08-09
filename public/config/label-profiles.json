@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "appVersion": "0.6.12",
-  "exportedAt": "2026-08-07T18:10:58.421Z",
+  "exportedAt": "2026-08-09T19:03:17.048Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1753,7 +1753,7 @@
           "compare": false,
           "regex": "^\\d{10}\\s*-\\s*\\d{4}$",
           "sourceRegex": "^\\d{10}\\s*[-–—/|I]\\s*\\d{4}$",
-          "normalizer": "digits",
+          "normalizer": "text",
           "poly": [
             [
               0.5825197186654684,
@@ -1921,7 +1921,7 @@
           "compare": false,
           "regex": "^\\d{10}\\s*-\\s*\\d{4}$",
           "sourceRegex": "^\\d{10}\\s*[-–—/|I]\\s*\\d{4}$",
-          "normalizer": "digits",
+          "normalizer": "text",
           "poly": [
             [
               0.6334275098842659,
