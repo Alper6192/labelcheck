@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "appVersion": "0.6.15",
+  "appVersion": "0.6.16",
   "exportedAt": "2026-08-09T19:26:37.367Z",
   "profiles": [
     {
@@ -415,7 +415,7 @@
           "required": true,
           "compare": true,
           "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?\\s*(?:KG|KGM|G|L|LTR)$",
           "normalizer": "weight",
           "poly": [
             [

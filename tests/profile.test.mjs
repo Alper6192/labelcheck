@@ -710,3 +710,38 @@ test("Scania Gross/Net nimmt rechten Wert auch wenn OCR die Einheit komplett ver
   assert.equal(result.fields.weight.source, "ocr-scania-pair");
   assert.equal(result.fields.weight.valid, true);
 });
+
+
+test("Henkel-Fassnummer kann nicht als Produktgewicht verwendet werden", () => {
+  const henkel = structuredClone(product);
+  henkel.id = "HENKEL";
+  const withoutWeight = productItems.filter((entry) => entry.text !== "25 KG" && entry.text !== "10001" && entry.text !== "D562900431");
+  withoutWeight.push(item("D562900431 /0007", .99, [[858,404],[1155,399],[1155,437],[858,437]]));
+  const result = extractProfileFields(withoutWeight, henkel, { width: 1800, height: 1013 });
+  assert.equal(result.fields.drum_number.value, "0007");
+  assert.equal(result.fields.weight.value, "");
+  assert.equal(result.fields.weight.valid, false);
+});
+
+test("Henkel-Produktgewicht verlangt Einheit und bleibt trotz Fassnummer korrekt", () => {
+  const henkel = structuredClone(product);
+  henkel.id = "HENKEL";
+  const withDrum = productItems.filter((entry) => entry.text !== "10001" && entry.text !== "D562900431");
+  withDrum.push(item("D562900431 /0007", .99, [[858,404],[1155,399],[1155,437],[858,437]]));
+  const result = extractProfileFields(withDrum, henkel, { width: 1800, height: 1013 });
+  assert.equal(result.fields.drum_number.value, "0007");
+  assert.equal(result.fields.weight.value, "25 KG");
+  assert.equal(result.fields.weight.valid, true);
+});
+
+test("Henkel-Produktgewicht verbindet getrennte Zahl- und Einheitsbox", () => {
+  const henkel = structuredClone(product);
+  henkel.id = "HENKEL";
+  const split = productItems.filter((entry) => entry.text !== "25 KG" && entry.text !== "10001" && entry.text !== "D562900431");
+  split.push(item("D562900431 /0007", .99, [[858,404],[1155,399],[1155,437],[858,437]]));
+  split.push(item("25", .97, [[1004,333],[1090,329],[1092,380],[1005,384]]));
+  split.push(item("KG", .96, [[1095,333],[1157,329],[1159,380],[1095,384]]));
+  const result = extractProfileFields(split, henkel, { width: 1800, height: 1013 });
+  assert.equal(result.fields.weight.value, "25 KG");
+  assert.equal(result.fields.drum_number.value, "0007");
+});

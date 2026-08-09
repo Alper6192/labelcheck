@@ -332,6 +332,15 @@ function transformPoly(normalized, transform, imageSize) {
 }
 
 function chooseCandidate(items, expectedPoly, field, profile = null) {
+  // Henkel-Produktlabel: Eine reine Zahl darf nie als Gewicht gelten.
+  // Besonders die 4-stellige Fassnummer (z. B. 0007) liegt nahe am Batch
+  // und konnte bisher wegen der optionalen Einheit als Gewicht gewinnen.
+  // Für Produktgewicht ist deshalb eine echte Einheit zwingend; getrennte
+  // OCR-Boxen wie "25" + "KG" werden gezielt zusammengesetzt.
+  if (String(profile?.id || "").toUpperCase() === "HENKEL" && field?.key === "weight") {
+    return chooseHenkelProductWeightCandidate(items, expectedPoly, field);
+  }
+
   // Scania ist ein fester Profil-Sonderfall. Er darf NICHT von einem optionalen
   // Config-Schlüssel abhängen, weil eine im Editor neu exportierte Konfiguration
   // solche Engine-Hinweise verändern oder entfernen kann. Sobald Profil + Feld
@@ -765,6 +774,80 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
       const poly = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
       const pairScore = (Number(left.item.score || 0) + Number(right.item.score || 0)) / 2;
       consider(right.text, poly, pairScore, `${left.item.text} / ${right.item.text}`, gap, true);
+    }
+  }
+
+  return best;
+}
+
+function chooseHenkelProductWeightCandidate(items, expectedPoly, field) {
+  const expected = boundsFromPoly(expectedPoly);
+  const cx = expected.x + expected.width / 2;
+  const cy = expected.y + expected.height / 2;
+  const radius = Math.max(expected.width, expected.height) * Number(field.searchRadius || 2.4) + 45;
+  const strictRegex = "^\\d+(?:[.,]\\d+)?\\s*(?:KG|KGM|G|L|LTR)$";
+  let best = null;
+
+  const consider = (candidate) => {
+    if (!candidate?.text || !validateField(candidate.text, strictRegex)) return;
+    const b = boundsFromPoly(candidate.poly);
+    const dx = (b.x + b.width / 2) - cx;
+    const dy = (b.y + b.height / 2) - cy;
+    const distance = Math.hypot(dx, dy);
+    if (distance > radius) return;
+    const proximity = Math.max(0, 1 - distance / radius);
+    const unit = String(candidate.text || "").match(/\b(KGM|KG|G|LTR|L)\b/i)?.[1]?.toUpperCase() || "";
+    const unitBonus = unit ? 0.5 : 0;
+    const score = proximity * 0.55 + Number(candidate.score || 0) * 0.30 + unitBonus;
+    const enriched = { ...candidate, selectionScore: score, source: candidate.source || "ocr-product-weight" };
+    if (!best || enriched.selectionScore > best.selectionScore) best = enriched;
+  };
+
+  // Wert + Einheit bereits gemeinsam erkannt, auch wenn noch weiterer Text
+  // wie "Contents:" in derselben OCR-Zeile steht.
+  for (const item of items || []) {
+    const raw = String(item?.text || "");
+    const pattern = /\d+(?:[.,]\d+)?\s*(?:KGM|KG|G|LTR|L)\b/ig;
+    for (const match of raw.matchAll(pattern)) {
+      const start = Number(match.index || 0);
+      const end = start + String(match[0] || "").length;
+      consider({
+        ...item,
+        text: String(match[0] || "").trim(),
+        poly: approximateTextFragmentPoly(item.poly, raw.length, start, end),
+        sourceText: raw,
+        source: "ocr-product-weight"
+      });
+    }
+  }
+
+  // OCR kann Zahl und Einheit in zwei Boxen zerlegen. Nur sehr nahe Boxen
+  // derselben Zeile werden verbunden; eine nackte Zahl allein bleibt ungültig.
+  const numbers = [];
+  const units = [];
+  for (const item of items || []) {
+    const text = String(item?.text || "").trim().toUpperCase();
+    const b = boundsFromPoly(item.poly);
+    if (/^\d+(?:[.,]\d+)?$/.test(text)) numbers.push({ item, text, bounds: b, cy: b.y + b.height / 2 });
+    if (/^(?:KGM|KG|G|LTR|L)$/.test(text)) units.push({ item, text, bounds: b, cy: b.y + b.height / 2 });
+  }
+  for (const number of numbers) {
+    for (const unit of units) {
+      const h = Math.max(8, number.bounds.height, unit.bounds.height);
+      if (Math.abs(number.cy - unit.cy) > h * 0.9 + 5) continue;
+      const gap = unit.bounds.x - (number.bounds.x + number.bounds.width);
+      if (gap < -h * 0.4 || gap > h * 4 + 28) continue;
+      const x1 = Math.min(number.bounds.x, unit.bounds.x);
+      const y1 = Math.min(number.bounds.y, unit.bounds.y);
+      const x2 = Math.max(number.bounds.x + number.bounds.width, unit.bounds.x + unit.bounds.width);
+      const y2 = Math.max(number.bounds.y + number.bounds.height, unit.bounds.y + unit.bounds.height);
+      consider({
+        text: `${number.text} ${unit.text}`,
+        poly: [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
+        score: (Number(number.item.score || 0) + Number(unit.item.score || 0)) / 2,
+        sourceText: `${number.item.text} ${unit.item.text}`,
+        source: "ocr-product-weight"
+      });
     }
   }
 

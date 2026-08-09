@@ -1,3 +1,12 @@
+## 0.6.16 – Produktgewicht von Fassnummer getrennt (2026-08-09)
+
+- Henkel-Produktgewicht akzeptiert keine einheitenlosen Zahlen mehr.
+- Fassnummern wie `0007` können dadurch nicht mehr als Gewicht übernommen werden.
+- Getrennte OCR-Boxen wie `25` + `KG` werden für das Produktgewicht zusammengesetzt.
+- Falls kein Wert mit plausibler Einheit gefunden wird, bleibt Gewicht leer statt eine Fassnummer zu verwenden.
+- Fassnummer aus Batch-Suffix wird in der Oberfläche als abgeleiteter OCR-Wert gekennzeichnet.
+- Version auf 0.6.16 erhöht.
+
 ## 0.6.15 – Scania Gross/Net-Paar robust (2026-08-09)
 
 - Scania-Gewicht hängt nicht mehr davon ab, dass PaddleOCR `KG` exakt erkennt.
