@@ -1,3 +1,10 @@
+## 0.6.12 – Scania Split-OCR-Patch (2026-08-09)
+
+- Scania: Nettogewicht wird jetzt auch dann erkannt, wenn PaddleOCR `1300` und `KG`/`K` in getrennte OCR-Boxen aufteilt.
+- Scania: Bei `1550 / 1300 KG` wird ausschließlich die Zahl verwendet, an der die Einheit `K`/`KG` hängt; die einheitenlose Bruttozahl `1550` kann nicht gewinnen.
+- Scania: Zusammengehörige Zahl- und Einheitenboxen werden nur auf derselben Zeile und bei kleinem horizontalem Abstand gekoppelt.
+- VW-Fixes aus dem vorherigen 0.6.12-Patch bleiben unverändert.
+
 # Changelog
 
 ## 0.6.12 – VW/Scania-Erkennungspatch (2026-08-09)

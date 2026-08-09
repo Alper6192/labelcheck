@@ -111,6 +111,7 @@ test("Scania-Gewicht verlangt K/KG und verwendet Netto-Logik", () => {
   const scania = readConfig().profiles.find((profile) => profile.id === "SCANIA");
   const weight = scania?.fields?.find((field) => field.key === "weight");
   assert.equal(weight?.normalizer, "net_weight");
+  assert.equal(weight?.strategy, "scania_net_weight");
   assert.equal(weight?.minOverlap, 0);
   assert.equal(weight?.searchRadius, 1.8);
   const re = new RegExp(weight?.sourceRegex || "", "i");

@@ -517,6 +517,50 @@ test("Scania akzeptiert allein nur Gewicht mit K oder KG", () => {
   assert.equal(result.fields.weight.valid, true);
 });
 
+
+test("Scania setzt getrennte OCR-Boxen 1300 + KG zum Nettogewicht zusammen", () => {
+  const profile = {
+    id: "SCANIA", name: "Scania", role: "vda", active: true,
+    anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$",
+      sourceRegex: "^(?:\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?)$",
+      normalizer: "net_weight", strategy: "scania_net_weight", searchRadius: 1.8, minOverlap: 0,
+      preferRightmost: true, preferUnit: true,
+      poly: [[0.66,0.50],[0.90,0.50],[0.90,0.60],[0.66,0.60]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("SCANIA AB (PUBL)", .99, [[100,50],[300,50],[300,90],[100,90]]),
+    item("1550", .999, [[650,250],[735,250],[735,295],[650,295]]),
+    item("/", .95, [[742,250],[758,250],[758,295],[742,295]]),
+    item("1300", .94, [[770,250],[845,250],[845,295],[770,295]]),
+    item("KG", .91, [[852,250],[900,250],[900,295],[852,295]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "1300 KG");
+  assert.equal(result.fields.weight.valid, true);
+  assert.equal(result.fields.weight.source, "ocr-scania-net");
+});
+
+test("Scania extrahiert aus kompletter Gross-Net-Zeile nur den Wert mit KG", () => {
+  const profile = {
+    id: "SCANIA", name: "Scania", role: "vda", active: true,
+    anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
+    fields: [{
+      key: "weight", label: "Gewicht", required: true, compare: true,
+      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$", normalizer: "net_weight", strategy: "scania_net_weight",
+      poly: [[0.66,0.50],[0.90,0.50],[0.90,0.60]]
+    }]
+  };
+  const result = extractProfileFields([
+    item("SCANIA AB (PUBL)", .99, [[100,50],[300,50],[300,90],[100,90]]),
+    item("1550 / 1300 KG", .95, [[650,250],[900,250],[900,300],[650,300]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "1300 KG");
+  assert.equal(result.fields.weight.valid, true);
+});
+
 test("VW liest LSN und IDH direkt aus der großen unteren Zeile ohne Beschriftung", () => {
   const baseField = {
     sourceRegex: "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$",

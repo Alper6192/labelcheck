@@ -332,6 +332,15 @@ function transformPoly(normalized, transform, imageSize) {
 }
 
 function chooseCandidate(items, expectedPoly, field) {
+  // Scania: Gross und Net werden von PaddleOCR je nach Foto als eine gemeinsame
+  // Box oder in mehrere Boxen zerlegt (z. B. "1550", "1300", "KG").
+  // Deshalb wird das Nettogewicht hier gezielt aus der rechten Zahl mit K/KG
+  // zusammengesetzt. Eine einheitenlose Bruttozahl kann nie gewinnen.
+  if (field?.strategy === "scania_net_weight") {
+    const net = chooseScaniaNetWeightCandidate(items, expectedPoly, field);
+    if (net) return net;
+  }
+
   // VW: Die große unterste Zeile besteht aus Lieferscheinnummer + IDH. Diese
   // Zahlenzeile ist deutlich zuverlässiger als die sehr kleine Beschriftung
   // "Delivery number / IDH". Deshalb wird sie direkt erkannt und für beide
@@ -579,6 +588,87 @@ function chooseVwDeliveryPairCandidate(items) {
         (Number(left.item.score || 0) + Number(right.item.score || 0)) / 2,
         `${left.item.text} ${right.item.text}`
       );
+    }
+  }
+
+  return best;
+}
+
+function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
+  const expected = boundsFromPoly(expectedPoly);
+  const cx = expected.x + expected.width / 2;
+  const cy = expected.y + expected.height / 2;
+  const radius = Math.max(expected.width, expected.height) * Number(field.searchRadius || 1.8) + 55;
+  let best = null;
+
+  const consider = (text, poly, score = 0, sourceText = text) => {
+    const normalized = String(text || "").trim().toUpperCase()
+      .replace(/,/g, ".")
+      .replace(/\bK\b/g, "KG")
+      .replace(/\s+/g, " ");
+    if (!/^\d{1,4}(?:\.\d+)?\s*KG$/.test(normalized)) return;
+    const b = boundsFromPoly(poly);
+    const bx = b.x + b.width / 2;
+    const by = b.y + b.height / 2;
+    const distance = Math.hypot(bx - cx, by - cy);
+    if (distance > radius) return;
+    const proximity = Math.max(0, 1 - distance / radius);
+    const rightness = Math.max(0, Math.min(1, 0.5 + (bx - cx) / Math.max(1, radius)));
+    const selectionScore = proximity * 0.45 + Number(score || 0) * 0.25 + rightness * 0.30;
+    const candidate = { text: normalized, poly, score: Number(score || 0), selectionScore, source: "ocr-scania-net", sourceText };
+    if (!best || candidate.selectionScore > best.selectionScore) best = candidate;
+  };
+
+  // 1) Einheit und Wert befinden sich in derselben OCR-Box. Das deckt sowohl
+  // "1300 KG" als auch die komplette Zeile "1550 / 1300 KG" ab: gesucht wird
+  // bewusst nur die Zahl, an der K/KG direkt hängt.
+  for (const item of items || []) {
+    const text = String(item?.text || "");
+    const pattern = /(\d{1,4}(?:[.,]\d+)?)\s*(KG|K)\b/ig;
+    for (const match of text.matchAll(pattern)) {
+      const start = Number(match.index || 0);
+      const end = start + String(match[0] || "").length;
+      const poly = approximateTextFragmentPoly(item.poly, text.length, start, end);
+      consider(`${match[1]} ${match[2]}`, poly, item.score, text);
+    }
+  }
+
+  // 2) PaddleOCR trennt Zahl und Einheit in zwei Boxen. Zahlen werden bewusst
+  // auch aus Boxen wie "/ 1300" extrahiert. Gepairt wird nur mit einem K/KG,
+  // das auf derselben Zeile unmittelbar rechts davon steht.
+  const numbers = [];
+  const units = [];
+  for (const item of items || []) {
+    const text = String(item?.text || "").trim().toUpperCase();
+    const b = boundsFromPoly(item.poly);
+    if (/^K(?:G)?$/.test(text)) {
+      units.push({ item, text, bounds: b, cx: b.x + b.width / 2, cy: b.y + b.height / 2 });
+      continue;
+    }
+    for (const match of String(item?.text || "").matchAll(/\d{1,4}(?:[.,]\d+)?/g)) {
+      const start = Number(match.index || 0);
+      const end = start + String(match[0] || "").length;
+      const poly = approximateTextFragmentPoly(item.poly, String(item?.text || "").length, start, end);
+      const nb = boundsFromPoly(poly);
+      numbers.push({ item, text: match[0], poly, bounds: nb, cx: nb.x + nb.width / 2, cy: nb.y + nb.height / 2 });
+    }
+  }
+
+  for (const number of numbers) {
+    for (const unit of units) {
+      const h = Math.max(8, number.bounds.height, unit.bounds.height);
+      if (Math.abs(number.cy - unit.cy) > h * 0.85 + 5) continue;
+      const gap = unit.bounds.x - (number.bounds.x + number.bounds.width);
+      if (gap < -h * 0.35 || gap > h * 3.8 + 24) continue;
+      const x1 = Math.min(number.bounds.x, unit.bounds.x);
+      const y1 = Math.min(number.bounds.y, unit.bounds.y);
+      const x2 = Math.max(number.bounds.x + number.bounds.width, unit.bounds.x + unit.bounds.width);
+      const y2 = Math.max(number.bounds.y + number.bounds.height, unit.bounds.y + unit.bounds.height);
+      const poly = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
+      const pairScore = (Number(number.item.score || 0) + Number(unit.item.score || 0)) / 2;
+      // Engere Zahl-Einheit-Abstände sind besonders plausibel. So gewinnt bei
+      // "1550   1300   KG" die 1300 und nicht die weiter links stehende 1550.
+      consider(`${number.text} ${unit.text}`, poly, pairScore + Math.max(0, 0.2 - gap / Math.max(1, h * 20)), `${number.item.text} ${unit.item.text}`);
     }
   }
 

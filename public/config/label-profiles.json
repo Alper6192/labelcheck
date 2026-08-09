@@ -1138,7 +1138,8 @@
           "searchRadius": 1.8,
           "minOverlap": 0,
           "preferRightmost": true,
-          "preferUnit": true
+          "preferUnit": true,
+          "strategy": "scania_net_weight"
         },
         {
           "key": "delivery_note",
