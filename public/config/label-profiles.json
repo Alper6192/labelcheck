@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "appVersion": "0.6.16",
-  "exportedAt": "2026-08-10T15:51:56.398Z",
+  "exportedAt": "2026-08-10T15:58:53.442Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1212,7 +1212,7 @@
           "compare": true,
           "regex": "^D\\d{8,10}$",
           "sourceRegex": "^D\\d{8,10}(?:\\s*[/|I1]\\s*\\d{4})?$",
-          "normalizer": "batch",
+          "normalizer": "text",
           "poly": [
             [
               0.7139848484848484,
@@ -1241,7 +1241,8 @@
             "maxDistance": 6,
             "preferBatch": true,
             "strict": true
-          }
+          },
+          "digits": 4
         },
         {
           "key": "idh",
