@@ -17,6 +17,7 @@ import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrPro
 import { compareExtractions } from "./comparison.js";
 import { clearRecords, loadRecords, saveRecord } from "./storage.js";
 import { downloadCsvRecords, exportRecords } from "./excel-export.js";
+import { captureRearFrame, getRearCameraStream, stopMediaStream } from "./camera.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
 const crashRecovery = recoverCompatibilityMode();
@@ -26,6 +27,9 @@ let records = [];
 let comparison = null;
 let currentSaved = false;
 let saveInProgress = false;
+let cameraStream = null;
+let cameraSlotKey = null;
+let cameraRequestId = 0;
 const slots = { product: createSlot("product"), vda: createSlot("vda") };
 const el = (id) => document.getElementById(id);
 
@@ -34,6 +38,7 @@ setupOptions();
 setupSlot("product");
 setupSlot("vda");
 setupActions();
+setupCameraCapture();
 setupCompatibilityMode();
 renderAll();
 loadStoredRecords();
@@ -69,9 +74,9 @@ function setupOptions() {
 
 function setupSlot(key) {
   const input = el(`${key}Input`);
-  // Mobile browsers use capture="environment" to open the rear-facing camera.
-  // Re-apply it at runtime so camera capture consistently prefers the back camera.
-  input.setAttribute("capture", "environment");
+  // Der Datei-Input ist nur für "Auswählen" zuständig. Die Kamera selbst läuft
+  // über getUserMedia mit einer harten Rückkamera-Vorgabe.
+  input.removeAttribute("capture");
   input.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -99,6 +104,83 @@ function setupActions() {
     }
   };
   el("debugButton").onclick = exportDebug;
+}
+
+
+function setupCameraCapture() {
+  document.querySelectorAll("[data-camera-slot]").forEach((button) => {
+    button.addEventListener("click", () => openRearCamera(button.dataset.cameraSlot));
+  });
+  el("cameraCancelButton")?.addEventListener("click", closeRearCamera);
+  el("cameraCaptureButton")?.addEventListener("click", captureCameraPhoto);
+  window.addEventListener("pagehide", closeRearCamera);
+}
+
+async function openRearCamera(key) {
+  if (!["product", "vda"].includes(key)) return;
+  closeRearCamera();
+  const requestId = ++cameraRequestId;
+  cameraSlotKey = key;
+
+  const modal = el("cameraModal");
+  const video = el("cameraVideo");
+  const captureButton = el("cameraCaptureButton");
+  const status = el("cameraStatus");
+  modal.hidden = false;
+  captureButton.disabled = true;
+  status.textContent = "Rückkamera wird geöffnet …";
+
+  try {
+    const stream = await getRearCameraStream();
+    if (requestId !== cameraRequestId || cameraSlotKey !== key) {
+      stopMediaStream(stream);
+      return;
+    }
+    // Erst nach erfolgreicher Rückkamera-Auswahl wird das Bild überhaupt angezeigt.
+    cameraStream = stream;
+    video.srcObject = stream;
+    await video.play();
+    status.textContent = "Rückkamera bereit";
+    captureButton.disabled = false;
+  } catch (error) {
+    stopMediaStream(cameraStream);
+    cameraStream = null;
+    video.srcObject = null;
+    status.textContent = `Rückkamera konnte nicht geöffnet werden: ${safeError(error)}`;
+  }
+}
+
+async function captureCameraPhoto() {
+  if (!cameraStream || !cameraSlotKey) return;
+  const key = cameraSlotKey;
+  const button = el("cameraCaptureButton");
+  const status = el("cameraStatus");
+  button.disabled = true;
+  status.textContent = "Foto wird übernommen …";
+  try {
+    const file = await captureRearFrame(el("cameraVideo"), cameraPhotoFilename(key));
+    closeRearCamera();
+    await loadFile(key, file);
+  } catch (error) {
+    status.textContent = `Foto konnte nicht übernommen werden: ${safeError(error)}`;
+    button.disabled = false;
+  }
+}
+
+function closeRearCamera() {
+  cameraRequestId += 1;
+  stopMediaStream(cameraStream);
+  cameraStream = null;
+  cameraSlotKey = null;
+  const video = el("cameraVideo");
+  if (video) video.srcObject = null;
+  const modal = el("cameraModal");
+  if (modal) modal.hidden = true;
+}
+
+function cameraPhotoFilename(key, date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${key}_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}.jpg`;
 }
 
 
@@ -555,13 +637,14 @@ function renderExportStatus(result) {
   const status = el("excelExportStatus");
   if (!status || !result) return;
   if (result.method === "share-csv") {
-    status.textContent = "CSV-Datei an das Teilen-Menü übergeben.";
+    status.textContent = `CSV geteilt: ${result.filename}`;
   } else if (result.method === "download-csv") {
-    status.textContent = "CSV-Datei heruntergeladen.";
+    status.textContent = `CSV heruntergeladen: ${result.filename}`;
   } else if (result.method === "cancelled") {
     status.textContent = "Teilen abgebrochen.";
   }
 }
+
 
 function exportDebug() {
   const payload = {

@@ -54,15 +54,15 @@
         <article class="scan-card">
           <div class="scan-card-head">
             <h2>Produktlabel (quer)</h2>
-            <label for="productInput" class="mini-photo-action">▣&nbsp; Foto aufnehmen</label>
+            <button type="button" class="mini-photo-action camera-action" data-camera-slot="product">▣&nbsp; Foto aufnehmen</button>
           </div>
           <div class="scan-card-body">
-            <input id="productInput" class="native-file-input" type="file" accept="image/*" capture="environment">
+            <input id="productInput" class="native-file-input" type="file" accept="image/*">
             <div id="productPreview" class="preview"></div>
             <div id="productStatus" class="slot-status">Noch kein Bild</div>
             <div class="scan-actions">
               <label for="productInput" class="outline-action">▧&nbsp; Auswählen</label>
-              <label for="productInput" class="solid-action">▣&nbsp; Foto aufnehmen</label>
+              <button type="button" class="solid-action camera-action" data-camera-slot="product">▣&nbsp; Foto aufnehmen</button>
             </div>
             <label class="profile-label technical-field">Layoutprofil<select id="productProfile"></select></label>
             <div id="productFields" class="field-grid"></div>
@@ -72,15 +72,15 @@
         <article class="scan-card">
           <div class="scan-card-head">
             <h2>VDA-Label / TA-Label (quer)</h2>
-            <label for="vdaInput" class="mini-photo-action">▣&nbsp; Foto aufnehmen</label>
+            <button type="button" class="mini-photo-action camera-action" data-camera-slot="vda">▣&nbsp; Foto aufnehmen</button>
           </div>
           <div class="scan-card-body">
-            <input id="vdaInput" class="native-file-input" type="file" accept="image/*" capture="environment">
+            <input id="vdaInput" class="native-file-input" type="file" accept="image/*">
             <div id="vdaPreview" class="preview"></div>
             <div id="vdaStatus" class="slot-status">Noch kein Bild</div>
             <div class="scan-actions">
               <label for="vdaInput" class="outline-action">▧&nbsp; Auswählen</label>
-              <label for="vdaInput" class="solid-action">▣&nbsp; Foto aufnehmen</label>
+              <button type="button" class="solid-action camera-action" data-camera-slot="vda">▣&nbsp; Foto aufnehmen</button>
             </div>
             <label class="profile-label technical-field">Layoutprofil<select id="vdaProfile"></select></label>
             <div id="vdaFields" class="field-grid"></div>
@@ -106,6 +106,16 @@
         <div class="table-wrap"><table><thead><tr><th>Zeit</th><th>IDH Produkt</th><th>IDH VDA/TA</th><th>Batch Produkt</th><th>Batch VDA/TA</th><th>Lieferscheinnummer</th><th>Fassnummer</th><th>Gewicht Produkt</th><th>Gewicht VDA/TA</th><th>Ergebnis</th></tr></thead><tbody id="logBody"></tbody></table></div>
       </section>
     </main>
+
+    <div id="cameraModal" class="camera-modal" hidden role="dialog" aria-modal="true" aria-label="Rückkamera">
+      <div class="camera-modal-panel">
+        <div class="camera-modal-head"><strong>Rückkamera</strong><button id="cameraCancelButton" type="button" class="outline-action">Abbrechen</button></div>
+        <video id="cameraVideo" class="camera-video" autoplay playsinline muted></video>
+        <div id="cameraStatus" class="camera-status" aria-live="polite">Rückkamera wird geöffnet …</div>
+        <button id="cameraCaptureButton" type="button" class="solid-action camera-shutter" disabled>▣&nbsp; Foto aufnehmen</button>
+      </div>
+    </div>
+
 
     <footer>© Henkel – Alle Rechte vorbehalten.</footer>
   </div>

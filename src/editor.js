@@ -118,7 +118,7 @@ async function loadRepositoryConfig(confirmReplace = false) {
   try {
     const response = await fetch(new URL(`./config/label-profiles.json?t=${Date.now()}`, window.location.href), { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    state.config = normalizeProfileConfig(await response.json(), APP_VERSION);
+    state.config = normalizeProfileConfig(await response.json());
     state.sessions.clear();
     state.dirty = false;
     const first = state.config.profiles[0]?.id || "";
@@ -135,7 +135,7 @@ async function importConfig(event) {
   event.target.value = "";
   if (!file) return;
   try {
-    state.config = normalizeProfileConfig(JSON.parse(await file.text()), APP_VERSION);
+    state.config = normalizeProfileConfig(JSON.parse(await file.text()));
     state.sessions.clear();
     state.dirty = true;
     renderProfileList();
@@ -149,7 +149,6 @@ async function importConfig(event) {
 function exportConfig() {
   syncProfileMeta();
   state.config.schemaVersion = 2;
-  state.config.appVersion = APP_VERSION;
   state.config.exportedAt = new Date().toISOString();
   const warnings = validateConfig(state.config);
   if (warnings.length && !confirm(`Die Konfiguration enthält Hinweise:\n\n${warnings.join("\n")}\n\nTrotzdem exportieren?`)) return;

@@ -131,7 +131,7 @@ test("Vergleich überspringt IDH, wenn der Lieferschein dieses Feld nicht vergle
   }};
   const comparison = compareExtractions(left, right);
   assert.equal(comparison.status, "released");
-  assert.deepEqual(comparison.rows.map((row) => row.key), ["batch", "weight"]);
+  assert.deepEqual(comparison.rows.map((row) => row.key), ["batch"]);
 });
 
 test("Manuelle Profilauswahl akzeptiert keinen beliebigen OCR-Text als Anker", () => {
@@ -744,4 +744,28 @@ test("Henkel-Produktgewicht verbindet getrennte Zahl- und Einheitsbox", () => {
   const result = extractProfileFields(split, henkel, { width: 1800, height: 1013 });
   assert.equal(result.fields.weight.value, "25 KG");
   assert.equal(result.fields.drum_number.value, "0007");
+});
+
+
+test("Freigabe hängt nur von Batch ab, nicht von IDH oder Gewicht", () => {
+  const left = { fields: {
+    batch: { value: "D562808695", valid: true, required: true, compare: true },
+    idh: { value: "1111111", valid: true, required: true, compare: true },
+    weight: { value: "25 KG", valid: true, required: true, compare: true }
+  }};
+  const right = { fields: {
+    batch: { value: "D562808695", valid: true, required: true, compare: true },
+    idh: { value: "9999999", valid: true, required: true, compare: true },
+    weight: { value: "1300 KG", valid: true, required: true, compare: true }
+  }};
+  const comparison = compareExtractions(left, right);
+  assert.equal(comparison.status, "released");
+  assert.deepEqual(comparison.rows.map((row) => row.key), ["batch"]);
+});
+
+test("Fehlende IDH und fehlendes Gewicht blockieren die Batch-Freigabe nicht", () => {
+  const left = { fields: { batch: { value: "D562808695", valid: true, required: true, compare: true } }};
+  const right = { fields: { batch: { value: "D562808695", valid: true, required: true, compare: true } }};
+  const comparison = compareExtractions(left, right);
+  assert.equal(comparison.status, "released");
 });

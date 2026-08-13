@@ -1,16 +1,18 @@
 import * as XLSX from "xlsx";
 
-// Absichtlich ohne charset-Parameter: einige mobile Web-Share-Implementierungen
-// prüfen den MIME-Typ sehr streng. Die UTF-8-BOM übernimmt die Zeichencodierung.
 export const CSV_MIME = "text/csv";
+
+export function csvFilename(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `Labelcheck_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}.csv`;
+}
 
 export function createCsvFile(records, date = new Date()) {
   const rows = createRows(records);
   const ws = XLSX.utils.json_to_sheet(rows);
-  // Semikolon ist für deutschsprachige Excel-Installationen robust.
-  // BOM sorgt dafür, dass Umlaute in OneDrive/Excel korrekt erkannt werden.
   const csv = XLSX.utils.sheet_to_csv(ws, { FS: ";", RS: "\r\n" });
-  return new File(["\uFEFF", csv], csvFilename(date), {
+  const filename = csvFilename(date);
+  return new File(["\uFEFF", csv], filename, {
     type: CSV_MIME,
     lastModified: date.getTime()
   });
@@ -19,45 +21,27 @@ export function createCsvFile(records, date = new Date()) {
 export async function exportRecords(records, navigatorLike = globalThis.navigator) {
   const file = createCsvFile(records, new Date());
 
-  // Auf iOS und Android direkt das native System-Teilen-Menü anfordern.
-  // canShare() wird bewusst nicht als harte Vorbedingung verwendet, weil manche
-  // mobile Browser dort konservativer sind als beim tatsächlichen share()-Aufruf.
   if (navigatorLike && typeof navigatorLike.share === "function") {
     try {
-      await navigatorLike.share({ files: [file] });
+      // title wird zusätzlich gesetzt, damit Android-Share-Sheets und Ziel-Apps
+      // den gewünschten Dateinamen auch als sichtbaren Titel erhalten.
+      await navigatorLike.share({ files: [file], title: file.name });
       return { method: "share-csv", filename: file.name };
     } catch (error) {
-      // Abbruch durch den Benutzer darf keinen unerwarteten Download auslösen.
       if (error?.name === "AbortError") {
         return { method: "cancelled", filename: file.name };
       }
-      // Wenn Datei-Sharing im konkreten Browser nicht möglich ist, bleibt nur
-      // der normale CSV-Download als verlässlicher Fallback.
     }
   }
 
   downloadFile(file);
-  return {
-    method: "download-csv",
-    filename: file.name,
-    reason: "file-share-unavailable"
-  };
+  return { method: "download-csv", filename: file.name, reason: "file-share-unavailable" };
 }
 
 export function downloadCsvRecords(records, date = new Date()) {
   const file = createCsvFile(records, date);
   downloadFile(file);
   return { method: "download-csv", filename: file.name };
-}
-
-export function canShareFile(file, navigatorLike = globalThis.navigator) {
-  if (!navigatorLike || typeof navigatorLike.share !== "function") return false;
-  if (typeof navigatorLike.canShare !== "function") return true;
-  try {
-    return navigatorLike.canShare({ files: [file] });
-  } catch {
-    return false;
-  }
 }
 
 export function downloadFile(file, documentLike = globalThis.document, urlLike = globalThis.URL) {
@@ -72,18 +56,8 @@ export function downloadFile(file, documentLike = globalThis.document, urlLike =
   setTimeout(() => urlLike.revokeObjectURL(href), 1500);
 }
 
-export function csvFilename(date = new Date()) {
-  return `Labelcheck_${timestampPart(date)}.csv`;
-}
-
-function timestampPart(date) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
-}
-
 function createRows(records) {
-  return (records || []).map((record, index) => ({
-    Nr: index + 1,
+  return (records || []).map((record) => ({
     Zeit: formatLocalTimestamp(record.timestamp),
     Ergebnis: resultLabel(record),
     "Batch Produkt": safe(record.product?.batch),
@@ -94,7 +68,6 @@ function createRows(records) {
     "Gewicht Lieferschein": safe(record.vda?.weight),
     Lieferscheinnummer: safe(record.vda?.delivery_note),
     "Fassnummer Produkt": safe(record.product?.drum_number),
-    Produktprofil: safe(record.productProfile),
     Lieferscheinprofil: safe(record.vdaProfile),
     "Manuell korrigiert": record.manual ? "Ja" : "Nein"
   }));
