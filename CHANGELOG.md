@@ -1,3 +1,14 @@
+# Änderungen
+
+## 0.16.15
+- Exportstatus vereinfacht: „Neue Einträge senden“ und „Gesamtes Protokoll senden“.
+- Bereits bestätigte Einträge bleiben lokal sichtbar und werden als gesendet markiert.
+- „Ungesendete löschen“ entfernt ausschließlich noch nicht bestätigte Datensätze.
+- Kein eingefrorener „CSV erneut senden“-Stapel mehr; neue Einträge werden automatisch als neu erkannt.
+- Hochkantfotos werden vor OCR mit dem Hinweis „Bitte das Label quer fotografieren“ abgewiesen.
+- Rückkamera-Hinweis `capture=environment` wird bei jedem nativen Kamera-Aufruf erneut gesetzt.
+- Profil-JSON bleibt byte-identisch zum freigegebenen 0.16.7-Master.
+
 ## 0.16.14 – Produktvalidierung, reduzierte Export-UI und Kamera-Input (2026-08-13)
 
 - Produktfoto wird nur noch akzeptiert, wenn das Henkel-Produktprofil über den Anker sicher erkannt wird und eine gültige Batchnummer vorhanden ist; beliebige Fotos werden mit klarer Fehlermeldung abgewiesen.

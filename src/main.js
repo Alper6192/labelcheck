@@ -15,7 +15,7 @@ import { renderComparison, renderFieldEditor, renderPreview } from "./render.js"
 import { detectQrProfile } from "./qr-engine.js";
 import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
-import { clearPendingExport, clearRecords, loadPendingExport, loadRecords, markRecordsExported, savePendingExport, saveRecord } from "./storage.js";
+import { clearUnsentRecords, loadRecords, markRecordsExported, saveRecord } from "./storage.js";
 import { exportRecords } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
@@ -23,7 +23,6 @@ const crashRecovery = recoverCompatibilityMode();
 const engine = new PaddleOcrEngine();
 let profiles = [];
 let records = [];
-let pendingExport = null;
 let comparison = null;
 let currentSaved = false;
 let saveInProgress = false;
@@ -79,6 +78,15 @@ function setupSlot(key) {
   galleryInput.removeAttribute("capture");
   cameraInput?.setAttribute("capture", "environment");
 
+  // Vor jedem nativen Kamera-Aufruf wird der standardisierte Rückkamera-Hinweis
+  // erneut gesetzt. Die externe Kamera-App selbst entscheidet letztlich über
+  // das Objektiv; die Webseite kann einen dort manuell gewählten Lens-State
+  // nicht auslesen oder dauerhaft speichern.
+  const cameraLabels = document.querySelectorAll(`label[for="${key}CameraInput"]`);
+  cameraLabels.forEach((label) => label.addEventListener("pointerdown", () => {
+    cameraInput?.setAttribute("capture", "environment");
+  }));
+
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -92,12 +100,16 @@ function setupSlot(key) {
 function setupActions() {
   el("initializeButton").onclick = () => initializeEngine(true);
   el("saveButton").onclick = storeCurrent;
-  el("excelButton").onclick = shareProtocolExport;
+  el("newCsvButton").onclick = () => shareProtocolExport("new");
+  el("allCsvButton").onclick = () => shareProtocolExport("all");
   el("clearButton").onclick = async () => {
-    if (confirm("Lokales Protokoll wirklich leeren? Auch ein eventuell ausstehender Export wird verworfen.")) {
-      records = await clearRecords();
-      pendingExport = null;
+    const unsent = records.filter((record) => !record.exportedAt);
+    if (!unsent.length) return;
+    if (confirm(`${unsent.length} noch nicht als gesendet bestätigte Datensätze wirklich löschen?\n\nBereits als gesendet markierte Einträge bleiben im lokalen Verlauf erhalten.`)) {
+      records = await clearUnsentRecords();
       renderAll();
+      const status = el("excelExportStatus");
+      if (status) status.textContent = `${unsent.length} ungesendete Datensätze gelöscht.`;
     }
   };
   el("debugButton").onclick = exportDebug;
@@ -193,6 +205,16 @@ async function loadFile(key, file) {
     slot.prepared = await prepareImage(file, preset.maxImageSide, {
       resizeDuringDecode: policy.resizeDuringDecode
     });
+
+    // LabelCheck ist auf quer fotografierte Etiketten ausgelegt. Hochkantbilder
+    // werden nicht analysiert, sondern mit einem klaren Aufnahmehinweis beendet.
+    if (slot.prepared.height > slot.prepared.width) {
+      slot.error = "Bitte das Label quer fotografieren und erneut aufnehmen.";
+      slot.state = "orientation";
+      clearOcrInFlight();
+      renderAll();
+      return;
+    }
 
     // QR-Profile werden vor PaddleOCR geprüft. Tesla kann dadurch vollständig
     // aus dem kleinen QR-Code links unten gelesen werden und benötigt weder OCR
@@ -468,10 +490,19 @@ function renderAll() {
   saveButton.textContent = saveInProgress
     ? "Wird gespeichert …"
     : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
-  const exportable = getPendingExportRecords();
-  el("excelButton").disabled = !exportable.length;
-  el("excelButton").textContent = pendingExport ? `CSV erneut senden (${exportable.length})` : "CSV senden / speichern";
-  renderPendingExportStatus();
+  const unsentCount = records.filter((record) => !record.exportedAt).length;
+  const newCsvButton = el("newCsvButton");
+  const allCsvButton = el("allCsvButton");
+  const clearButton = el("clearButton");
+  if (newCsvButton) {
+    newCsvButton.disabled = !unsentCount;
+    newCsvButton.textContent = unsentCount ? `Neue Einträge senden (${unsentCount})` : "Keine neuen Einträge";
+  }
+  if (allCsvButton) {
+    allCsvButton.disabled = !records.length;
+    allCsvButton.textContent = records.length ? `Gesamtes Protokoll senden (${records.length})` : "Gesamtes Protokoll senden";
+  }
+  if (clearButton) clearButton.disabled = !unsentCount;
 }
 
 function renderSlot(key) {
@@ -482,6 +513,9 @@ function renderSlot(key) {
   if (slot.state === "analyzing") {
     status.textContent = `PaddleOCR analysiert …${policy.compatibilityMode ? " · Kompatibilitätsmodus" : ""}`;
     status.className = "slot-status wait";
+  } else if (slot.state === "orientation") {
+    status.textContent = `Hinweis: ${slot.error}`;
+    status.className = "slot-status warn";
   } else if (slot.state === "error") {
     status.textContent = `Fehler: ${slot.error}`;
     status.className = "slot-status bad";
@@ -535,12 +569,9 @@ function values(extraction) {
 async function loadStoredRecords() {
   try {
     records = await loadRecords();
-    pendingExport = loadPendingExport();
-    reconcilePendingExport();
   } catch (error) {
     console.warn("Scanprotokoll konnte nicht geladen werden:", error);
     records = [];
-    pendingExport = null;
   }
   renderAll();
 }
@@ -565,11 +596,13 @@ function warningExtraction(profile, warning) {
 }
 
 function renderLog() {
-  el("logCount").textContent = `${records.length} Datensätze`;
+  const unsentCount = records.filter((record) => !record.exportedAt).length;
+  el("logCount").textContent = `${records.length} Datensätze · ${unsentCount} neu`;
   const body = el("logBody");
   body.replaceChildren();
   records.slice(0, 30).forEach((record) => {
     const row = document.createElement("tr");
+    if (record.exportedAt) row.classList.add("log-row-sent");
     const drumNumber = record.product?.drum_number || record.vda?.drum_number || "–";
     const cells = [
       new Date(record.timestamp).toLocaleString(),
@@ -581,7 +614,8 @@ function renderLog() {
       drumNumber,
       record.product?.weight || "–",
       record.vda?.weight || "–",
-      record.result || "–"
+      record.result || "–",
+      record.exportedAt ? "✓ gesendet" : "neu"
     ];
     cells.forEach((value) => {
       const cell = document.createElement("td");
@@ -592,87 +626,33 @@ function renderLog() {
   });
 }
 
-function ensurePendingExport() {
-  reconcilePendingExport();
-  if (pendingExport) return pendingExport;
-  const recordIds = records.map((record) => record.id).filter(Boolean);
-  if (!recordIds.length) return null;
-  pendingExport = savePendingExport({ recordIds, createdAt: new Date().toISOString() });
-  renderAll();
-  return pendingExport;
-}
-
-function getPendingExportRecords() {
-  if (!pendingExport) return records;
-  const ids = new Set(pendingExport.recordIds || []);
-  return records.filter((record) => ids.has(record.id));
-}
-
-function reconcilePendingExport() {
-  if (!pendingExport) return;
-  const activeIds = new Set(records.map((record) => record.id));
-  const remaining = (pendingExport.recordIds || []).filter((id) => activeIds.has(id));
-  if (!remaining.length) {
-    pendingExport = clearPendingExport();
-    return;
-  }
-  if (remaining.length !== pendingExport.recordIds.length) {
-    pendingExport = savePendingExport({ ...pendingExport, recordIds: remaining });
-  }
-}
-
-async function shareProtocolExport() {
-  const batch = ensurePendingExport();
-  const exportRecordsForBatch = getPendingExportRecords();
-  if (!batch || !exportRecordsForBatch.length) return;
-  const result = await exportRecords(exportRecordsForBatch, navigator, { date: new Date(batch.createdAt) });
+async function shareProtocolExport(mode = "new") {
+  // Der Exportstapel wird beim Klick als ID-Liste eingefroren. Neue Scans, die
+  // während des Share-Sheets entstehen, können deshalb nicht versehentlich als
+  // bereits gesendet markiert werden.
+  const exportRows = mode === "all"
+    ? [...records]
+    : records.filter((record) => !record.exportedAt);
+  if (!exportRows.length) return;
+  const unsentIds = exportRows.filter((record) => !record.exportedAt).map((record) => record.id).filter(Boolean);
+  const result = await exportRecords(exportRows, navigator);
   renderExportStatus(result);
 
-  // Keine zusätzlichen dauerhaften Export-Buttons: Nach einer erfolgreichen
-  // Übergabe fragt die App einmal nach, ob wirklich in OneDrive gespeichert wurde.
-  // Bei Abbruch/"Nein" bleibt derselbe eingefrorene Stapel bestehen und kann
-  // über denselben Hauptbutton erneut gesendet werden.
-  if (result?.method === "share-csv" || result?.method === "download-csv") {
-    await confirmProtocolExport();
+  if ((result?.method === "share-csv" || result?.method === "download-csv") && unsentIds.length) {
+    const confirmed = confirm(`Wurde die CSV in OneDrive gespeichert?\n\nBei „OK“ werden ${unsentIds.length} enthaltene neue Datensätze als gesendet markiert. Sie bleiben im lokalen Verlauf erhalten und erscheinen künftig nicht mehr unter „Neue Einträge senden“.`);
+    if (confirmed) {
+      try {
+        records = await markRecordsExported(unsentIds, new Date().toISOString());
+        renderAll();
+        const status = el("excelExportStatus");
+        if (status) status.textContent = `${unsentIds.length} Datensätze als gesendet markiert.`;
+      } catch (error) {
+        alert(`Sendestatus konnte nicht gespeichert werden: ${safeError(error)}`);
+      }
+    }
   } else {
     renderAll();
   }
-}
-
-async function confirmProtocolExport() {
-  if (!pendingExport) return;
-  const exportRecordsForBatch = getPendingExportRecords();
-  if (!exportRecordsForBatch.length) {
-    pendingExport = clearPendingExport();
-    renderAll();
-    return;
-  }
-  const confirmed = confirm(`Wurde die CSV mit ${exportRecordsForBatch.length} Datensätzen wirklich in OneDrive gespeichert?\n\nNur „OK“ wählen, wenn der Speichervorgang dort abgeschlossen ist. Bei „Abbrechen“ bleibt derselbe Exportstapel erhalten.`);
-  if (!confirmed) {
-    renderAll();
-    return;
-  }
-  const exportedAt = new Date().toISOString();
-  try {
-    records = await markRecordsExported(pendingExport.recordIds, exportedAt);
-    const count = exportRecordsForBatch.length;
-    pendingExport = clearPendingExport();
-    renderAll();
-    const status = el("excelExportStatus");
-    if (status) status.textContent = `${count} Datensätze als exportiert bestätigt und aus dem aktiven Protokoll entfernt.`;
-  } catch (error) {
-    alert(`Exportbestätigung konnte nicht gespeichert werden. Die Datensätze bleiben im aktiven Protokoll: ${safeError(error)}`);
-  }
-}
-
-function renderPendingExportStatus() {
-  const status = el("excelExportStatus");
-  if (!status || !pendingExport) return;
-  const exportRecordsForBatch = getPendingExportRecords();
-  if (!exportRecordsForBatch.length) return;
-  const created = new Date(pendingExport.createdAt);
-  const filename = Number.isNaN(created.getTime()) ? "CSV" : `Labelcheck_${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}-${String(created.getDate()).padStart(2, "0")}_${String(created.getHours()).padStart(2, "0")}-${String(created.getMinutes()).padStart(2, "0")}-${String(created.getSeconds()).padStart(2, "0")}.csv`;
-  status.textContent = `Ausstehender Export: ${exportRecordsForBatch.length} Datensätze · ${filename}. Beim erneuten Senden wird exakt derselbe Stapel verwendet.`;
 }
 
 

@@ -8,13 +8,16 @@ const MAX_RECORDS = 500;
 let databasePromise = null;
 
 export async function loadRecords() {
-  if (!hasIndexedDb()) return loadLegacyRecords(true);
+  // Ab 0.16.15 bleibt auch der bereits bestätigte Exportverlauf lokal sichtbar.
+  // exportedAt kennzeichnet nur den Sendestatus; die Zeile wird nicht mehr aus
+  // dem lokalen Protokoll entfernt.
+  if (!hasIndexedDb()) return loadLegacyRecords(false);
   try {
     const db = await openDatabase();
     await migrateLegacyRecords(db);
-    return await readAllRecords(db, true, true);
+    return await readAllRecords(db, true, false);
   } catch {
-    return loadLegacyRecords(true);
+    return loadLegacyRecords(false);
   }
 }
 
@@ -33,7 +36,7 @@ export async function saveRecord(record) {
         for (const entry of surplus) store.delete(entry.id);
       });
     }
-    return await readAllRecords(db, true, true);
+    return await readAllRecords(db, true, false);
   } catch {
     return saveLegacyRecord(record);
   }
@@ -48,7 +51,7 @@ export async function markRecordsExported(ids, exportedAt = new Date().toISOStri
       ? { ...record, exportedAt }
       : record);
     saveLegacyRecords(allRecords);
-    return allRecords.filter((record) => !record.exportedAt).slice(0, MAX_RECORDS);
+    return allRecords.slice(0, MAX_RECORDS);
   }
 
   try {
@@ -59,7 +62,7 @@ export async function markRecordsExported(ids, exportedAt = new Date().toISOStri
     await requestTransaction(db, "readwrite", (store) => {
       for (const record of matches) store.put({ ...record, exportedAt });
     });
-    return await readAllRecords(db, true, true);
+    return await readAllRecords(db, true, false);
   } catch (error) {
     throw error instanceof Error ? error : new Error("Exportstatus konnte nicht gespeichert werden.");
   }
@@ -92,6 +95,26 @@ export function savePendingExport(pending) {
 export function clearPendingExport() {
   try { globalThis.localStorage?.removeItem(PENDING_EXPORT_KEY); } catch { /* best effort */ }
   return null;
+}
+
+export async function clearUnsentRecords() {
+  if (!hasIndexedDb()) {
+    const sent = loadLegacyRecords(false).filter((record) => Boolean(record.exportedAt));
+    saveLegacyRecords(sent);
+    return sent.slice(0, MAX_RECORDS);
+  }
+  try {
+    const db = await openDatabase();
+    await migrateLegacyRecords(db);
+    const allRecords = await readAllRecords(db, false, false);
+    const unsent = allRecords.filter((record) => !record.exportedAt);
+    await requestTransaction(db, "readwrite", (store) => {
+      for (const record of unsent) store.delete(record.id);
+    });
+    return await readAllRecords(db, true, false);
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Ungesendete Datensätze konnten nicht gelöscht werden.");
+  }
 }
 
 export async function clearRecords() {
@@ -191,7 +214,7 @@ function saveLegacyRecord(record) {
   const records = loadLegacyRecords(false);
   records.unshift({ ...record, id: record?.id || createRecordId() });
   saveLegacyRecords(records.slice(0, MAX_RECORDS));
-  return records.filter((entry) => !entry.exportedAt).slice(0, MAX_RECORDS);
+  return records.slice(0, MAX_RECORDS);
 }
 
 function saveLegacyRecords(records) {

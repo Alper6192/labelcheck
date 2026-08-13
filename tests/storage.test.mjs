@@ -16,10 +16,13 @@ test("Scanprotokoll bleibt auf 500 Datensätze begrenzt", () => {
   assert.match(source, /allRecords\.slice\(MAX_RECORDS\)/);
 });
 
-test("Ausstehender Export wird persistent gespeichert und exportierte Datensätze werden markiert", () => {
-  assert.match(source, /PENDING_EXPORT_KEY/);
-  assert.match(source, /loadPendingExport/);
-  assert.match(source, /savePendingExport/);
+test("Exportierte Datensätze werden markiert und bleiben im lokalen Verlauf", () => {
   assert.match(source, /markRecordsExported/);
   assert.match(source, /exportedAt/);
+  assert.match(source, /readAllRecords\(db, true, false\)/);
+});
+
+test("Ungesendete Datensätze können separat gelöscht werden", () => {
+  assert.match(source, /clearUnsentRecords/);
+  assert.match(source, /!record\.exportedAt/);
 });

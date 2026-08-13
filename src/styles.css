@@ -1418,3 +1418,15 @@ main > .card:first-child .engine-badge {
   flex-wrap: wrap;
   margin-top: 10px;
 }
+
+/* v0.16.15 – ruhiger Exportstatus und erkennbare, bereits gesendete Historie */
+.labelcheck-app .log-row-sent {
+  opacity: .62;
+}
+.labelcheck-app .log-row-sent td:last-child {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.labelcheck-app .slot-status.warn {
+  border-color: #d6a200;
+}
