@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#061423">
+  <meta name="theme-color" content="#E1000F">
   <title>LabelCheck – Profileditor</title>
+  <link rel="stylesheet" href="./src/styles.css">
 </head>
-<body>
+<body><div class="henkel-logo-wrap"><img class="henkel-logo" src="./Henkel_Logo_RGB_White.png" alt="Henkel"></div>
 <header>
   <div class="header-row">
     <div>
@@ -25,7 +26,7 @@
       <div class="actions compact-actions">
         <button id="reloadConfigButton">Repository-Konfiguration neu laden</button>
         <label class="file-button">JSON importieren<input id="configInput" type="file" accept=".json,application/json"></label>
-        <button id="exportConfigButton" class="good">label-profiles.json exportieren</button>
+        <button id="exportConfigButton" class="good">Alle Profile als JSON exportieren</button>
       </div>
       <div class="actions compact-actions">
         <button id="newProfileButton">Neues Profil</button>
@@ -58,6 +59,7 @@
             <label class="file-button primary">Masterbild laden<input id="masterInput" type="file" accept="image/*"></label>
             <button id="runOcrButton" disabled>PaddleOCR auf Masterbild</button>
             <label class="file-button">OCR-JSON importieren<input id="ocrJsonInput" type="file" accept=".json,application/json"></label>
+            <button id="exportOcrJsonButton" disabled>OCR-Ergebnis des aktuellen Profils exportieren</button>
             <button id="cancelOcrButton" class="danger" disabled>Analyse abbrechen</button>
             <button id="initializeEditorButton">Modell neu laden</button>
             <button id="clearOcrButton">OCR-Boxen ausblenden</button>
@@ -130,6 +132,6 @@
     </div>
   </section>
 </main>
-<script type="module" src="/src/editor.js"></script>
+<script type="module" src="./src/editor.js"></script>
 </body>
 </html>

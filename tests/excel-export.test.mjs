@@ -14,3 +14,18 @@ test("Excel-Dateiname enthält Datum und Uhrzeit bis zur Sekunde", () => {
   assert.match(source, /Labelcheck_\$\{date\.getFullYear\(\)\}/);
   assert.match(source, /getSeconds\(\)/);
 });
+
+test("Excel-Export erzeugt einen teilbaren XLSX-File für Android/iOS", () => {
+  assert.match(source, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(source, /new File\(\[data\]/);
+  assert.match(source, /XLSX\.write\(wb/);
+  assert.match(source, /type:\s*"array"/);
+});
+
+test("Excel-Export nutzt Web Share mit Datei und Download-Fallback", () => {
+  assert.match(source, /navigatorLike\.canShare\(\{ files: \[file\] \}\)/);
+  assert.match(source, /navigatorLike\.share\(\{ files: \[file\] \}\)/);
+  assert.match(source, /error\?\.name === "AbortError"/);
+  assert.match(source, /URL|urlLike\.createObjectURL/);
+  assert.match(source, /anchor\.download = file\.name/);
+});

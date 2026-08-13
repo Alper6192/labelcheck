@@ -68,7 +68,11 @@ function setupOptions() {
 }
 
 function setupSlot(key) {
-  el(`${key}Input`).addEventListener("change", async (event) => {
+  const input = el(`${key}Input`);
+  // Mobile browsers use capture="environment" to open the rear-facing camera.
+  // Re-apply it at runtime so camera capture consistently prefers the back camera.
+  input.setAttribute("capture", "environment");
+  input.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (file) await loadFile(key, file);
@@ -517,7 +521,24 @@ function renderLog() {
   body.replaceChildren();
   records.slice(0, 30).forEach((record) => {
     const row = document.createElement("tr");
-    row.innerHTML = `<td>${new Date(record.timestamp).toLocaleString()}</td><td>${record.product.batch || "–"}</td><td>${record.product.drum_number || "–"}</td><td>${record.vda.batch || "–"}</td><td>${record.result}</td>`;
+    const drumNumber = record.product?.drum_number || record.vda?.drum_number || "–";
+    const cells = [
+      new Date(record.timestamp).toLocaleString(),
+      record.product?.idh || "–",
+      record.vda?.idh || "–",
+      record.product?.batch || "–",
+      record.vda?.batch || "–",
+      record.vda?.delivery_note || "–",
+      drumNumber,
+      record.product?.weight || "–",
+      record.vda?.weight || "–",
+      record.result || "–"
+    ];
+    cells.forEach((value) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.append(cell);
+    });
     body.append(row);
   });
 }
@@ -555,8 +576,17 @@ function download(content, name, type) {
 }
 
 function setEngineStatus(text, className) {
-  el("engineBadge").textContent = text;
+  const ready = className === "ok";
+  const loading = className === "wait" || className === "warn";
+  el("engineBadge").textContent = ready ? "Bereit" : loading ? "Lädt …" : "Nicht bereit";
   el("engineBadge").className = `engine-badge ${className}`;
+  const symbol = document.querySelector(".version-status-row .status-symbol");
+  if (symbol) {
+    symbol.textContent = ready ? "✓" : loading ? "…" : "×";
+    symbol.classList.toggle("ok", ready);
+    symbol.classList.toggle("wait", loading);
+    symbol.classList.toggle("bad", !ready && !loading);
+  }
 }
 
 function nextPaint() {

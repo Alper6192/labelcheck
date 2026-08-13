@@ -76,10 +76,10 @@ test("Tesla-Profil verwendet den QR-Parser und benötigt keine IDH", () => {
   assert.equal(profile?.fields?.find((field) => field.key === "delivery_note")?.required, true);
 });
 
-test("Intern2 nutzt Prüflos als einzigen Anker und schließt Alte Materialnummer aus", () => {
+test("Intern2 nutzt Prüflos und Inspection Lot als Anker und schließt Alte Materialnummer aus", () => {
   const raw = readConfig();
   const profile = raw.profiles.find((entry) => entry.id === "INTERN2");
-  assert.deepEqual(profile?.anchor?.aliases, ["Prüflos"]);
+  assert.deepEqual(profile?.anchor?.aliases, ["Prüflos", "Inspection Lot"]);
   assert.equal(profile?.anchor?.localizeAlias, true);
   assert.deepEqual(profile?.anchor?.fallbacks, []);
   assert.ok(profile?.detection?.excludeAliases?.includes("Alte Materialnummer"));

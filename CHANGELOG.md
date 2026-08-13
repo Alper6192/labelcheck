@@ -1,3 +1,19 @@
+## 0.16.8 – Android Excel teilen / OneDrive (2026-08-13)
+
+- Excel-Export erzeugt die XLSX-Datei jetzt als echten Browser-`File` mit korrektem XLSX-MIME-Type.
+- Bei unterstützter Web-Share-Dateifreigabe öffnet „Excel teilen / speichern“ direkt das native Teilen-Menü (Android/iOS), sodass z. B. OneDrive als Ziel gewählt werden kann.
+- Datei-Sharing wird mit `navigator.canShare({ files })` geprüft; bei fehlender Unterstützung oder technischem Share-Fehler bleibt der normale XLSX-Download als Fallback erhalten.
+- Ein vom Benutzer abgebrochenes Teilen löst keinen zusätzlichen Download aus.
+- Download-Fallback verwendet einen Blob-URL und verzögertes Freigeben für bessere Android-Kompatibilität.
+- Projektversion auf 0.16.8 erhöht.
+
+## 0.16.7 – Versionsupdate und Projektprüfung (2026-08-12)
+
+- Projektversion auf 0.16.7 erhöht.
+- App-Version in Runtime-Konfiguration und Profilkonfiguration auf 0.16.7 synchronisiert.
+- Versionstest auf 0.16.7 angepasst.
+- Projektprüfung: 96 Tests erfolgreich.
+
 ## 0.6.16 – Produktgewicht von Fassnummer getrennt (2026-08-09)
 
 - Henkel-Produktgewicht akzeptiert keine einheitenlosen Zahlen mehr.

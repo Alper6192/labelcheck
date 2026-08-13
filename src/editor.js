@@ -63,6 +63,7 @@ function setupEvents() {
 
   el("masterInput").addEventListener("change", loadMasterImage);
   el("ocrJsonInput").addEventListener("change", importOcrJson);
+  el("exportOcrJsonButton").onclick = exportOcrJson;
   el("runOcrButton").onclick = runOcr;
   el("cancelOcrButton").onclick = () => cancelOcrAnalysis(false);
   el("initializeEditorButton").onclick = async () => {
@@ -383,6 +384,15 @@ async function importOcrJson(event) {
   }
 }
 
+function exportOcrJson() {
+  const profile = selectedProfile();
+  const session = currentSession(false);
+  if (!profile || !session?.ocrResult) return;
+  const filename = `ocr-${safeProfileId(profile.id || profile.role || "label").toLowerCase()}.json`;
+  download(JSON.stringify(session.ocrResult, null, 2), filename, "application/json");
+  setEditorEngine(`OCR-JSON exportiert · ${session.ocrResult.items?.length || 0} Textzeilen`, "ok");
+}
+
 async function runOcr() {
   const session = currentSession(false);
   if (!session?.prepared || state.ocrRun || !(await initializeEngine())) return;
@@ -571,6 +581,7 @@ function refreshMasterControls() {
   const running = Boolean(state.ocrRun);
   const initializing = Boolean(state.engineInitPromise);
   el("runOcrButton").disabled = running || initializing || !session?.prepared;
+  el("exportOcrJsonButton").disabled = running || !session?.ocrResult;
   el("cancelOcrButton").disabled = !running;
   el("initializeEditorButton").disabled = running || initializing || engine.busy;
   el("clearMasterButton").disabled = running || !session?.prepared;
