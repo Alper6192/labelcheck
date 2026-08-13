@@ -1,29 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createNativeRearCameraInput } from "../src/camera.js";
+import fs from "node:fs";
 
-function fakeDocument() {
-  return {
-    createElement(tag) {
-      const attrs = new Map();
-      return {
-        tagName: tag.toUpperCase(),
-        type: "",
-        accept: "",
-        className: "",
-        setAttribute(name, value) { attrs.set(name, String(value)); },
-        getAttribute(name) { return attrs.get(name) ?? null; }
-      };
-    }
-  };
-}
+const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const main = fs.readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 
-test("Native Kamera fordert bei jedem neuen Input die Rückkamera an", () => {
-  const first = createNativeRearCameraInput(fakeDocument());
-  const second = createNativeRearCameraInput(fakeDocument());
-  assert.notEqual(first, second);
-  assert.equal(first.type, "file");
-  assert.equal(first.accept, "image/*");
-  assert.equal(first.getAttribute("capture"), "environment");
-  assert.equal(second.getAttribute("capture"), "environment");
+test("Produkt und VDA besitzen dauerhafte native Rückkamera-Inputs", () => {
+  assert.match(html, /id="productCameraInput"[^>]*capture="environment"/);
+  assert.match(html, /id="vdaCameraInput"[^>]*capture="environment"/);
+  assert.match(html, /for="productCameraInput"/);
+  assert.match(html, /for="vdaCameraInput"/);
+});
+
+test("Kamera-Input wird nicht bei jedem Klick neu erzeugt", () => {
+  assert.match(main, /const cameraInput = el\(`\$\{key\}CameraInput`\)/);
+  assert.match(main, /cameraInput\?\.setAttribute\("capture", "environment"\)/);
+  assert.doesNotMatch(main, /createNativeRearCameraInput/);
+  assert.doesNotMatch(main, /openNativeRearCamera/);
 });

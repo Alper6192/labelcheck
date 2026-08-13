@@ -1,3 +1,15 @@
+## 0.16.14 – Produktvalidierung, reduzierte Export-UI und Kamera-Input (2026-08-13)
+
+- Produktfoto wird nur noch akzeptiert, wenn das Henkel-Produktprofil über den Anker sicher erkannt wird und eine gültige Batchnummer vorhanden ist; beliebige Fotos werden mit klarer Fehlermeldung abgewiesen.
+- Automatische Produktprofil-Auswahl fällt nicht mehr auf das einzige vorhandene Produktprofil zurück, wenn kein Anker erkannt wurde.
+- Feldhinweise zeigen „Erkennungsquote: … %“ statt „OCR … %“.
+- „Analyse starten“ entfernt; die Analyse läuft weiterhin automatisch nach der Bildaufnahme.
+- Analysebereich erhält den Text „Hier erscheint das Ergebnis des Labelchecks.“
+- Export-UI auf einen einzigen Exportbutton plus „Protokoll leeren“ reduziert. Nach dem Teilen fragt die App per Bestätigungsdialog, ob die CSV wirklich in OneDrive gespeichert wurde; nur dann wird der eingefrorene Exportstapel archiviert.
+- Produkt- und VDA-Kamera verwenden dauerhaft vorhandene native Datei-Inputs mit `capture="environment"` statt bei jedem Klick neu erzeugter Inputs.
+- CSV-Share übergibt den Soll-Dateinamen zusätzlich als `title` und `text`.
+- Profil-JSON bleibt byte-identisch zum freigegebenen 0.16.7-Master.
+
 ## 0.16.13 – Bestätigter Exportstapel ohne Microsoft-Anbindung (2026-08-13)
 
 - CSV-Export friert die aktuell vorhandenen Protokolleinträge als ausstehenden Exportstapel ein.

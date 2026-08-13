@@ -26,7 +26,7 @@ export async function exportRecords(records, navigatorLike = globalThis.navigato
     try {
       // title wird zusätzlich gesetzt, damit Android-Share-Sheets und Ziel-Apps
       // den gewünschten Dateinamen auch als sichtbaren Titel erhalten.
-      await navigatorLike.share({ files: [file], title: file.name });
+      await navigatorLike.share({ files: [file], title: file.name, text: file.name });
       return { method: "share-csv", filename: file.name };
     } catch (error) {
       if (error?.name === "AbortError") {

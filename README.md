@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.16.13
+# LabelCheck PaddleOCR 0.16.14
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 
@@ -32,6 +32,8 @@ Jede übernommene Kontrolle entspricht einer Zeile. Enthalten sind Zeit, Ergebni
 
 Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.csv`.
 
+Ein Exportstapel wird beim ersten Senden eingefroren. Nach der Rückkehr aus dem Teilen-Menü fragt die App, ob die CSV wirklich in OneDrive gespeichert wurde. Erst nach Bestätigung werden genau diese Datensätze archiviert; bei Abbruch bleibt derselbe Stapel für einen erneuten Versand erhalten.
+
 ## Profileditor
 
 Masterbilder und OCR-Ergebnisse werden profilbezogen in IndexedDB auf dem jeweiligen Browser gespeichert. Sie werden nicht in die JSON eingebettet und nicht auf GitHub hochgeladen.
@@ -45,3 +47,12 @@ npm run build
 ```
 
 GitHub Pages veröffentlicht den erzeugten `dist`-Ordner über GitHub Actions.
+
+
+## Produktlabel-Prüfung
+
+Ein Produktfoto wird nur als Henkel-Produktlabel akzeptiert, wenn der Henkel-Anker sicher erkannt wird und eine gültige Batchnummer vorhanden ist. Andere Fotos werden mit einer klaren Fehlermeldung abgewiesen.
+
+## Kamera
+
+Die native Kamera-App wird über dauerhaft vorhandene Datei-Inputs mit `capture="environment"` geöffnet. Die Web-App erzeugt den Kamera-Input nicht mehr bei jedem Klick neu.

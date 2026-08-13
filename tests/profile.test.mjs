@@ -77,8 +77,7 @@ test("Materialnummer allein reicht nicht als Anker Alte Materialnummer", () => {
   const result = autoSelectProfile([
     item("Materialnummer", .99, [[100,50],[260,50],[260,90],[100,90]])
   ], [profile], "product");
-  assert.equal(result?.manual, true);
-  assert.equal(result?.anchorMatch, null);
+  assert.equal(result, null);
 });
 
 test("IDH kann als Teil einer gemeinsamen OCR-Zeile gewählt werden", () => {

@@ -1,5 +1,5 @@
 /**
- * Erzeugt für jeden Kamera-Aufruf einen frischen nativen Datei-Input.
+ * Hilfsfunktion für native Datei-/Kamera-Inputs. Die App verwendet ab 0.16.14 dauerhaft vorhandene Kamera-Inputs im DOM.
  * capture="environment" bittet den Browser/die Kamera-App ausdrücklich um
  * die nach außen gerichtete Kamera, ohne eine Browser-Kameravorschau zu öffnen.
  */

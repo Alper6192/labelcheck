@@ -48,3 +48,11 @@ test("Speichern wird nach einer erfolgreichen Übernahme gesperrt", () => {
   assert.match(source, /saveButton\.disabled\s*=\s*!comparison \|\| currentSaved \|\| saveInProgress/);
   assert.match(source, /Datensatz übernommen/);
 });
+
+
+test("Produktfoto wird nur mit Henkel-Anker und gültiger Batch akzeptiert", () => {
+  assert.match(source, /isVerifiedProductLabel/);
+  assert.match(source, /anchorScore >= 0\.55/);
+  assert.match(source, /batch\?\.value && batch\?\.valid/);
+  assert.match(source, /Kein gültiges Produktlabel erkannt/);
+});

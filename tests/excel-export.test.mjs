@@ -20,6 +20,7 @@ test("CSV-Dateiname ist exakt Labelcheck_YYYY-MM-DD_HH-MM-SS.csv", () => {
   assert.match(source, /getSeconds\(\)/);
   assert.match(source, /\.csv`/);
   assert.match(source, /title:\s*file\.name/);
+  assert.match(source, /text:\s*file\.name/);
 });
 
 test("Export verwendet nur CSV und keine XLSX-Datei", () => {

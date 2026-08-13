@@ -16,8 +16,7 @@ import { detectQrProfile } from "./qr-engine.js";
 import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
 import { clearPendingExport, clearRecords, loadPendingExport, loadRecords, markRecordsExported, savePendingExport, saveRecord } from "./storage.js";
-import { downloadCsvRecords, exportRecords } from "./excel-export.js";
-import { openNativeRearCamera } from "./camera.js";
+import { exportRecords } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
 const crashRecovery = recoverCompatibilityMode();
@@ -36,7 +35,6 @@ setupOptions();
 setupSlot("product");
 setupSlot("vda");
 setupActions();
-setupCameraCapture();
 setupCompatibilityMode();
 renderAll();
 loadStoredRecords();
@@ -71,27 +69,30 @@ function setupOptions() {
 }
 
 function setupSlot(key) {
-  const input = el(`${key}Input`);
-  // Der Datei-Input ist nur für "Auswählen"/Galerie zuständig.
-  // Für "Foto aufnehmen" wird jedes Mal ein frischer nativer Kamera-Input
-  // mit capture="environment" erzeugt.
-  input.removeAttribute("capture");
-  input.addEventListener("change", async (event) => {
+  const galleryInput = el(`${key}Input`);
+  const cameraInput = el(`${key}CameraInput`);
+
+  // Galerie und native Kamera bleiben getrennte, dauerhaft vorhandene Inputs.
+  // Der Kamera-Input wird NICHT bei jedem Klick neu erzeugt. So kann der
+  // Browser/Kamera-Intent seinen eigenen Zustand behalten, sofern das Gerät
+  // dies unterstützt. capture="environment" fordert weiterhin die Rückkamera an.
+  galleryInput.removeAttribute("capture");
+  cameraInput?.setAttribute("capture", "environment");
+
+  const handleFile = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (file) await loadFile(key, file);
-  });
+  };
+  galleryInput.addEventListener("change", handleFile);
+  cameraInput?.addEventListener("change", handleFile);
   el(`${key}Profile`).addEventListener("change", async () => selectProfile(key, el(`${key}Profile`).value));
 }
 
 function setupActions() {
   el("initializeButton").onclick = () => initializeEngine(true);
-  el("analyzeAllButton").onclick = analyzeAll;
   el("saveButton").onclick = storeCurrent;
   el("excelButton").onclick = shareProtocolExport;
-  el("excelDownloadButton").onclick = downloadProtocolExport;
-  el("confirmExportButton").onclick = confirmProtocolExport;
-  el("resetExportButton").onclick = resetProtocolExport;
   el("clearButton").onclick = async () => {
     if (confirm("Lokales Protokoll wirklich leeren? Auch ein eventuell ausstehender Export wird verworfen.")) {
       records = await clearRecords();
@@ -102,18 +103,6 @@ function setupActions() {
   el("debugButton").onclick = exportDebug;
 }
 
-
-function setupCameraCapture() {
-  document.querySelectorAll("[data-camera-slot]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const key = button.dataset.cameraSlot;
-      openNativeRearCamera({
-        key,
-        onFile: (file) => loadFile(key, file)
-      });
-    });
-  });
-}
 
 
 function setupCompatibilityMode() {
@@ -356,11 +345,35 @@ function resolveProfile(key) {
 
   slot.profile = profile;
   slot.extraction = profile ? extractProfileFields(slot.result.items, profile, slot.result.image) : null;
+
+  // Ein Produktfoto wird nur akzeptiert, wenn der Henkel-Produktanker UND eine
+  // gültige Batchnummer erkannt wurden. Dadurch kann irgendein anderes Foto
+  // nicht mehr stillschweigend als einzig vorhandenes Produktprofil durchgehen.
+  if (key === "product" && !isVerifiedProductLabel(slot)) {
+    slot.profile = null;
+    slot.extraction = null;
+    slot.error = "Kein gültiges Produktlabel erkannt. Bitte das Henkel-Produktlabel vollständig und gut lesbar fotografieren.";
+    slot.state = "error";
+  } else if (key === "product") {
+    slot.error = "";
+    slot.state = "done";
+  }
+
   // Wichtig: automatisch erkanntes Profil NICHT in den Select schreiben.
   el(`${key}Profile`).value = slot.selectedProfileId || "";
   comparison = slots.product.extraction && slots.vda.extraction
     ? compareExtractions(slots.product.extraction, slots.vda.extraction)
     : null;
+}
+
+function isVerifiedProductLabel(slot) {
+  const extraction = slot?.extraction;
+  const anchorScore = Number(extraction?.anchorMatch?.matchScore || 0);
+  const batch = extraction?.fields?.batch;
+  return String(slot?.profile?.id || "").toUpperCase() === "HENKEL"
+    && !String(extraction?.warning || "").trim()
+    && anchorScore >= 0.55
+    && Boolean(batch?.value && batch?.valid);
 }
 
 async function selectProfile(key, id) {
@@ -419,6 +432,15 @@ async function selectProfile(key, id) {
   if (slot.result) {
     if (slot.selectedProfileId) {
       slot.extraction = slot.profile ? extractProfileFields(slot.result.items, slot.profile, slot.result.image) : null;
+      if (key === "product" && !isVerifiedProductLabel(slot)) {
+        slot.profile = null;
+        slot.extraction = null;
+        slot.error = "Kein gültiges Produktlabel erkannt. Bitte das Henkel-Produktlabel vollständig und gut lesbar fotografieren.";
+        slot.state = "error";
+      } else {
+        slot.error = "";
+        slot.state = "done";
+      }
       refreshComparison();
     } else {
       resolveProfile(key);
@@ -448,10 +470,8 @@ function renderAll() {
     : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
   const exportable = getPendingExportRecords();
   el("excelButton").disabled = !exportable.length;
-  el("excelDownloadButton").disabled = !exportable.length;
-  el("excelButton").textContent = pendingExport ? `CSV erneut senden (${exportable.length})` : "CSV teilen / Senden an";
-  el("excelDownloadButton").textContent = pendingExport ? `Ausstehende CSV herunterladen (${exportable.length})` : "CSV herunterladen";
-  renderPendingExport();
+  el("excelButton").textContent = pendingExport ? `CSV erneut senden (${exportable.length})` : "CSV senden / speichern";
+  renderPendingExportStatus();
 }
 
 function renderSlot(key) {
@@ -607,16 +627,16 @@ async function shareProtocolExport() {
   if (!batch || !exportRecordsForBatch.length) return;
   const result = await exportRecords(exportRecordsForBatch, navigator, { date: new Date(batch.createdAt) });
   renderExportStatus(result);
-  renderAll();
-}
 
-function downloadProtocolExport() {
-  const batch = ensurePendingExport();
-  const exportRecordsForBatch = getPendingExportRecords();
-  if (!batch || !exportRecordsForBatch.length) return;
-  const result = downloadCsvRecords(exportRecordsForBatch, new Date(batch.createdAt));
-  renderExportStatus(result);
-  renderAll();
+  // Keine zusätzlichen dauerhaften Export-Buttons: Nach einer erfolgreichen
+  // Übergabe fragt die App einmal nach, ob wirklich in OneDrive gespeichert wurde.
+  // Bei Abbruch/"Nein" bleibt derselbe eingefrorene Stapel bestehen und kann
+  // über denselben Hauptbutton erneut gesendet werden.
+  if (result?.method === "share-csv" || result?.method === "download-csv") {
+    await confirmProtocolExport();
+  } else {
+    renderAll();
+  }
 }
 
 async function confirmProtocolExport() {
@@ -627,8 +647,11 @@ async function confirmProtocolExport() {
     renderAll();
     return;
   }
-  const confirmed = confirm(`Wurde die CSV mit ${exportRecordsForBatch.length} Datensätzen erfolgreich in OneDrive bzw. am vorgesehenen Speicherort gespeichert?\n\nNur bei „OK“ werden genau diese Datensätze aus dem aktiven Protokoll entfernt.`);
-  if (!confirmed) return;
+  const confirmed = confirm(`Wurde die CSV mit ${exportRecordsForBatch.length} Datensätzen wirklich in OneDrive gespeichert?\n\nNur „OK“ wählen, wenn der Speichervorgang dort abgeschlossen ist. Bei „Abbrechen“ bleibt derselbe Exportstapel erhalten.`);
+  if (!confirmed) {
+    renderAll();
+    return;
+  }
   const exportedAt = new Date().toISOString();
   try {
     records = await markRecordsExported(pendingExport.recordIds, exportedAt);
@@ -642,27 +665,16 @@ async function confirmProtocolExport() {
   }
 }
 
-function resetProtocolExport() {
-  if (!pendingExport) return;
-  if (!confirm("Ausstehenden Export zurücksetzen? Die Datensätze bleiben vollständig im lokalen Protokoll und werden beim nächsten Export wieder berücksichtigt.")) return;
-  pendingExport = clearPendingExport();
-  renderAll();
+function renderPendingExportStatus() {
   const status = el("excelExportStatus");
-  if (status) status.textContent = "Export zurückgesetzt. Alle lokalen Datensätze bleiben erhalten.";
-}
-
-function renderPendingExport() {
-  const panel = el("pendingExportPanel");
-  if (!panel) return;
+  if (!status || !pendingExport) return;
   const exportRecordsForBatch = getPendingExportRecords();
-  const visible = Boolean(pendingExport && exportRecordsForBatch.length);
-  panel.hidden = !visible;
-  if (!visible) return;
+  if (!exportRecordsForBatch.length) return;
   const created = new Date(pendingExport.createdAt);
   const filename = Number.isNaN(created.getTime()) ? "CSV" : `Labelcheck_${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}-${String(created.getDate()).padStart(2, "0")}_${String(created.getHours()).padStart(2, "0")}-${String(created.getMinutes()).padStart(2, "0")}-${String(created.getSeconds()).padStart(2, "0")}.csv`;
-  el("pendingExportTitle").textContent = `${exportRecordsForBatch.length} Datensätze warten auf Export-Bestätigung`;
-  el("pendingExportText").textContent = `${filename} enthält nur diesen fest eingefrorenen Stapel. Neue Scans werden nicht nachträglich hineingemischt. Erst nach erfolgreichem Speichern in OneDrive auf „In OneDrive gespeichert“ tippen.`;
+  status.textContent = `Ausstehender Export: ${exportRecordsForBatch.length} Datensätze · ${filename}. Beim erneuten Senden wird exakt derselbe Stapel verwendet.`;
 }
+
 
 function renderExportStatus(result) {
   const status = el("excelExportStatus");

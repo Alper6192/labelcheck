@@ -25,9 +25,9 @@ export function autoSelectProfile(items, profiles, role) {
     if (score < minScore) continue;
     if (!best || score > best.score) best = { profile, anchorMatch, score, detection };
   }
-  if (role === "product" && eligible.length === 1 && !best) {
-    return { profile: eligible[0], anchorMatch: null, score: 0, manual: true };
-  }
+  // Produktprofile dürfen nicht allein deshalb gewählt werden, weil nur ein
+  // Produktprofil existiert. Ein echtes Produktlabel muss seinen Profilanker
+  // sicher liefern; andernfalls wird das Foto ausdrücklich abgewiesen.
   return best;
 }
 

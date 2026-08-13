@@ -53,12 +53,12 @@ export function renderFieldEditor(container, extraction, onChange) {
   container.replaceChildren();
   const keys=["batch","idh","weight","delivery_note","drum_number"];
   const labels={batch:"Batch",idh:"IDH",weight:"Gewicht",delivery_note:"Lieferscheinnummer",drum_number:"Fassnummer"};
-  for(const key of keys){const field=extraction?.fields?.[key];if(!field)continue;const card=document.createElement("label");card.className=`field-card ${field.valid?"valid":"invalid"}`;card.innerHTML=`<span>${labels[key]}</span><input type="text"><small></small>`;const input=card.querySelector("input");input.value=field.value||"";card.querySelector("small").textContent=field.source==="manual"?"manuell korrigiert":String(field.source||"").startsWith("ocr")?`OCR ${(field.confidence*100).toFixed(1)} %`:field.source==="batch-suffix"?`aus Batch · OCR ${(field.confidence*100).toFixed(1)} %`:field.source==="qr"?"QR-Code":"nicht erkannt";input.addEventListener("change",()=>onChange(key,input.value));container.append(card);}
+  for(const key of keys){const field=extraction?.fields?.[key];if(!field)continue;const card=document.createElement("label");card.className=`field-card ${field.valid?"valid":"invalid"}`;card.innerHTML=`<span>${labels[key]}</span><input type="text"><small></small>`;const input=card.querySelector("input");input.value=field.value||"";card.querySelector("small").textContent=field.source==="manual"?"manuell korrigiert":String(field.source||"").startsWith("ocr")?`Erkennungsquote: ${(field.confidence*100).toFixed(1)} %`:field.source==="batch-suffix"?`aus Batch · Erkennungsquote: ${(field.confidence*100).toFixed(1)} %`:field.source==="qr"?"QR-Code":"nicht erkannt";input.addEventListener("change",()=>onChange(key,input.value));container.append(card);}
   if(!container.children.length){const p=document.createElement("p");p.className="muted";p.textContent="Noch keine Felder zugeordnet.";container.append(p);}
 }
 
 export function renderComparison(container, comparison) {
-  container.replaceChildren(); if(!comparison){container.innerHTML='<p class="muted">Beide Etiketten analysieren.</p>';return;}
+  container.replaceChildren(); if(!comparison){container.innerHTML='';return;}
   const banner=document.createElement("div");banner.className=`result-banner ${comparison.status}`;banner.textContent=comparison.message;container.append(banner);
   const table=document.createElement("table");table.className="compare-table";table.innerHTML='<thead><tr><th>Feld</th><th>Produkt</th><th>VDA</th><th>Ergebnis</th></tr></thead><tbody></tbody>';
   const tbody=table.querySelector("tbody");for(const row of comparison.rows){const tr=document.createElement("tr");tr.innerHTML=`<td>${row.label}</td><td></td><td></td><td class="status-${row.status}">${statusText(row.status)}</td>`;tr.children[1].textContent=row.product||"–";tr.children[2].textContent=row.vda||"–";tbody.append(tr);}container.append(table);

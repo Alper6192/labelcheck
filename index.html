@@ -54,15 +54,16 @@
         <article class="scan-card">
           <div class="scan-card-head">
             <h2>Produktlabel (quer)</h2>
-            <button type="button" class="mini-photo-action camera-action" data-camera-slot="product">▣&nbsp; Foto aufnehmen</button>
+            <label for="productCameraInput" class="mini-photo-action">▣&nbsp; Foto aufnehmen</label>
           </div>
           <div class="scan-card-body">
             <input id="productInput" class="native-file-input" type="file" accept="image/*">
+            <input id="productCameraInput" class="native-file-input" type="file" accept="image/*" capture="environment">
             <div id="productPreview" class="preview"></div>
             <div id="productStatus" class="slot-status">Noch kein Bild</div>
             <div class="scan-actions">
               <label for="productInput" class="outline-action">▧&nbsp; Auswählen</label>
-              <button type="button" class="solid-action camera-action" data-camera-slot="product">▣&nbsp; Foto aufnehmen</button>
+              <label for="productCameraInput" class="solid-action">▣&nbsp; Foto aufnehmen</label>
             </div>
             <label class="profile-label technical-field">Layoutprofil<select id="productProfile"></select></label>
             <div id="productFields" class="field-grid"></div>
@@ -72,15 +73,16 @@
         <article class="scan-card">
           <div class="scan-card-head">
             <h2>VDA-Label / TA-Label (quer)</h2>
-            <button type="button" class="mini-photo-action camera-action" data-camera-slot="vda">▣&nbsp; Foto aufnehmen</button>
+            <label for="vdaCameraInput" class="mini-photo-action">▣&nbsp; Foto aufnehmen</label>
           </div>
           <div class="scan-card-body">
             <input id="vdaInput" class="native-file-input" type="file" accept="image/*">
+            <input id="vdaCameraInput" class="native-file-input" type="file" accept="image/*" capture="environment">
             <div id="vdaPreview" class="preview"></div>
             <div id="vdaStatus" class="slot-status">Noch kein Bild</div>
             <div class="scan-actions">
               <label for="vdaInput" class="outline-action">▧&nbsp; Auswählen</label>
-              <button type="button" class="solid-action camera-action" data-camera-slot="vda">▣&nbsp; Foto aufnehmen</button>
+              <label for="vdaCameraInput" class="solid-action">▣&nbsp; Foto aufnehmen</label>
             </div>
             <label class="profile-label technical-field">Layoutprofil<select id="vdaProfile"></select></label>
             <div id="vdaFields" class="field-grid"></div>
@@ -92,9 +94,8 @@
         <div class="result-head">
           <div>
             <h2>Analyseergebnis</h2>
-            <p>Hier erscheinen die erkannten Daten und Ergebnisse.</p>
+            <p>Hier erscheint das Ergebnis des Labelchecks.</p>
           </div>
-          <button id="analyzeAllButton" class="outline-action analyze-action">↻&nbsp; Analyse starten</button>
         </div>
         <div id="comparison" class="comparison-area"></div>
         <div class="result-actions"><button id="saveButton" class="solid-action" disabled>Datensatz übernehmen</button></div>
@@ -102,11 +103,7 @@
 
       <section class="log-card">
         <div class="log-head"><h2>Lokales Scanprotokoll</h2><span id="logCount">0 Datensätze</span></div>
-        <div class="log-actions"><button id="excelButton" class="solid-action" disabled>CSV teilen / Senden an</button><button id="excelDownloadButton" class="outline-action" disabled>CSV herunterladen</button><button id="clearButton" class="outline-action">Protokoll leeren</button></div><div id="excelExportStatus" class="export-status" aria-live="polite"></div>
-        <div id="pendingExportPanel" class="pending-export-panel" hidden>
-          <div><strong id="pendingExportTitle">Export wartet auf Bestätigung</strong><p id="pendingExportText"></p></div>
-          <div class="pending-export-actions"><button id="confirmExportButton" class="solid-action">In OneDrive gespeichert</button><button id="resetExportButton" class="outline-action">Export zurücksetzen</button></div>
-        </div>
+        <div class="log-actions"><button id="excelButton" class="solid-action" disabled>CSV senden / speichern</button><button id="clearButton" class="outline-action">Protokoll leeren</button></div><div id="excelExportStatus" class="export-status" aria-live="polite"></div>
         <div class="table-wrap"><table><thead><tr><th>Zeit</th><th>IDH Produkt</th><th>IDH VDA/TA</th><th>Batch Produkt</th><th>Batch VDA/TA</th><th>Lieferscheinnummer</th><th>Fassnummer</th><th>Gewicht Produkt</th><th>Gewicht VDA/TA</th><th>Ergebnis</th></tr></thead><tbody id="logBody"></tbody></table></div>
       </section>
     </main>
