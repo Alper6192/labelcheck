@@ -1,4 +1,14 @@
-## 0.16.12 – Native Kamera-App und Android-Share-Hinweise (2026-08-13)
+## 0.16.13 – Bestätigter Exportstapel ohne Microsoft-Anbindung (2026-08-13)
+
+- CSV-Export friert die aktuell vorhandenen Protokolleinträge als ausstehenden Exportstapel ein.
+- Neue Scans werden nicht in einen bereits erzeugten Stapel hineingemischt.
+- Nach erfolgreichem Speichern in OneDrive bestätigt der Werker den Export ausdrücklich.
+- Erst dann werden genau die enthaltenen Datensätze als exportiert markiert und aus dem aktiven Protokoll entfernt.
+- Ausstehende Exporte bleiben über einen Browser-Neustart erhalten und können erneut geteilt/heruntergeladen werden.
+- „Export zurücksetzen“ verwirft nur den Exportstatus; die Scandaten bleiben erhalten.
+- Keine Microsoft-/Graph-Anbindung und kein Timer.
+
+## 0.16.13 – Native Kamera-App und Android-Share-Hinweise (2026-08-13)
 
 - Kamera-Popup im Browser entfernt; „Foto aufnehmen“ öffnet wieder die native Kamera-App.
 - Für jeden Kamera-Aufruf wird ein frischer Datei-Input mit `capture="environment"` erzeugt, damit die Rückkamera erneut ausdrücklich angefordert wird.

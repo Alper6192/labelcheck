@@ -15,7 +15,7 @@ import { renderComparison, renderFieldEditor, renderPreview } from "./render.js"
 import { detectQrProfile } from "./qr-engine.js";
 import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
-import { clearRecords, loadRecords, saveRecord } from "./storage.js";
+import { clearPendingExport, clearRecords, loadPendingExport, loadRecords, markRecordsExported, savePendingExport, saveRecord } from "./storage.js";
 import { downloadCsvRecords, exportRecords } from "./excel-export.js";
 import { openNativeRearCamera } from "./camera.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
@@ -24,6 +24,7 @@ const crashRecovery = recoverCompatibilityMode();
 const engine = new PaddleOcrEngine();
 let profiles = [];
 let records = [];
+let pendingExport = null;
 let comparison = null;
 let currentSaved = false;
 let saveInProgress = false;
@@ -87,17 +88,14 @@ function setupActions() {
   el("initializeButton").onclick = () => initializeEngine(true);
   el("analyzeAllButton").onclick = analyzeAll;
   el("saveButton").onclick = storeCurrent;
-  el("excelButton").onclick = async () => {
-    const result = await exportRecords(records);
-    renderExportStatus(result);
-  };
-  el("excelDownloadButton").onclick = () => {
-    const result = downloadCsvRecords(records);
-    renderExportStatus(result);
-  };
+  el("excelButton").onclick = shareProtocolExport;
+  el("excelDownloadButton").onclick = downloadProtocolExport;
+  el("confirmExportButton").onclick = confirmProtocolExport;
+  el("resetExportButton").onclick = resetProtocolExport;
   el("clearButton").onclick = async () => {
-    if (confirm("Lokales Protokoll wirklich leeren?")) {
+    if (confirm("Lokales Protokoll wirklich leeren? Auch ein eventuell ausstehender Export wird verworfen.")) {
       records = await clearRecords();
+      pendingExport = null;
       renderAll();
     }
   };
@@ -448,8 +446,12 @@ function renderAll() {
   saveButton.textContent = saveInProgress
     ? "Wird gespeichert …"
     : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
-  el("excelButton").disabled = !records.length;
-  el("excelDownloadButton").disabled = !records.length;
+  const exportable = getPendingExportRecords();
+  el("excelButton").disabled = !exportable.length;
+  el("excelDownloadButton").disabled = !exportable.length;
+  el("excelButton").textContent = pendingExport ? `CSV erneut senden (${exportable.length})` : "CSV teilen / Senden an";
+  el("excelDownloadButton").textContent = pendingExport ? `Ausstehende CSV herunterladen (${exportable.length})` : "CSV herunterladen";
+  renderPendingExport();
 }
 
 function renderSlot(key) {
@@ -513,9 +515,12 @@ function values(extraction) {
 async function loadStoredRecords() {
   try {
     records = await loadRecords();
+    pendingExport = loadPendingExport();
+    reconcilePendingExport();
   } catch (error) {
     console.warn("Scanprotokoll konnte nicht geladen werden:", error);
     records = [];
+    pendingExport = null;
   }
   renderAll();
 }
@@ -565,6 +570,98 @@ function renderLog() {
     });
     body.append(row);
   });
+}
+
+function ensurePendingExport() {
+  reconcilePendingExport();
+  if (pendingExport) return pendingExport;
+  const recordIds = records.map((record) => record.id).filter(Boolean);
+  if (!recordIds.length) return null;
+  pendingExport = savePendingExport({ recordIds, createdAt: new Date().toISOString() });
+  renderAll();
+  return pendingExport;
+}
+
+function getPendingExportRecords() {
+  if (!pendingExport) return records;
+  const ids = new Set(pendingExport.recordIds || []);
+  return records.filter((record) => ids.has(record.id));
+}
+
+function reconcilePendingExport() {
+  if (!pendingExport) return;
+  const activeIds = new Set(records.map((record) => record.id));
+  const remaining = (pendingExport.recordIds || []).filter((id) => activeIds.has(id));
+  if (!remaining.length) {
+    pendingExport = clearPendingExport();
+    return;
+  }
+  if (remaining.length !== pendingExport.recordIds.length) {
+    pendingExport = savePendingExport({ ...pendingExport, recordIds: remaining });
+  }
+}
+
+async function shareProtocolExport() {
+  const batch = ensurePendingExport();
+  const exportRecordsForBatch = getPendingExportRecords();
+  if (!batch || !exportRecordsForBatch.length) return;
+  const result = await exportRecords(exportRecordsForBatch, navigator, { date: new Date(batch.createdAt) });
+  renderExportStatus(result);
+  renderAll();
+}
+
+function downloadProtocolExport() {
+  const batch = ensurePendingExport();
+  const exportRecordsForBatch = getPendingExportRecords();
+  if (!batch || !exportRecordsForBatch.length) return;
+  const result = downloadCsvRecords(exportRecordsForBatch, new Date(batch.createdAt));
+  renderExportStatus(result);
+  renderAll();
+}
+
+async function confirmProtocolExport() {
+  if (!pendingExport) return;
+  const exportRecordsForBatch = getPendingExportRecords();
+  if (!exportRecordsForBatch.length) {
+    pendingExport = clearPendingExport();
+    renderAll();
+    return;
+  }
+  const confirmed = confirm(`Wurde die CSV mit ${exportRecordsForBatch.length} Datensätzen erfolgreich in OneDrive bzw. am vorgesehenen Speicherort gespeichert?\n\nNur bei „OK“ werden genau diese Datensätze aus dem aktiven Protokoll entfernt.`);
+  if (!confirmed) return;
+  const exportedAt = new Date().toISOString();
+  try {
+    records = await markRecordsExported(pendingExport.recordIds, exportedAt);
+    const count = exportRecordsForBatch.length;
+    pendingExport = clearPendingExport();
+    renderAll();
+    const status = el("excelExportStatus");
+    if (status) status.textContent = `${count} Datensätze als exportiert bestätigt und aus dem aktiven Protokoll entfernt.`;
+  } catch (error) {
+    alert(`Exportbestätigung konnte nicht gespeichert werden. Die Datensätze bleiben im aktiven Protokoll: ${safeError(error)}`);
+  }
+}
+
+function resetProtocolExport() {
+  if (!pendingExport) return;
+  if (!confirm("Ausstehenden Export zurücksetzen? Die Datensätze bleiben vollständig im lokalen Protokoll und werden beim nächsten Export wieder berücksichtigt.")) return;
+  pendingExport = clearPendingExport();
+  renderAll();
+  const status = el("excelExportStatus");
+  if (status) status.textContent = "Export zurückgesetzt. Alle lokalen Datensätze bleiben erhalten.";
+}
+
+function renderPendingExport() {
+  const panel = el("pendingExportPanel");
+  if (!panel) return;
+  const exportRecordsForBatch = getPendingExportRecords();
+  const visible = Boolean(pendingExport && exportRecordsForBatch.length);
+  panel.hidden = !visible;
+  if (!visible) return;
+  const created = new Date(pendingExport.createdAt);
+  const filename = Number.isNaN(created.getTime()) ? "CSV" : `Labelcheck_${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}-${String(created.getDate()).padStart(2, "0")}_${String(created.getHours()).padStart(2, "0")}-${String(created.getMinutes()).padStart(2, "0")}-${String(created.getSeconds()).padStart(2, "0")}.csv`;
+  el("pendingExportTitle").textContent = `${exportRecordsForBatch.length} Datensätze warten auf Export-Bestätigung`;
+  el("pendingExportText").textContent = `${filename} enthält nur diesen fest eingefrorenen Stapel. Neue Scans werden nicht nachträglich hineingemischt. Erst nach erfolgreichem Speichern in OneDrive auf „In OneDrive gespeichert“ tippen.`;
 }
 
 function renderExportStatus(result) {

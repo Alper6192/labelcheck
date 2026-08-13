@@ -2,18 +2,19 @@ const DB_NAME = "labelcheck-paddle";
 const DB_VERSION = 1;
 const STORE_NAME = "scan-records";
 const LEGACY_KEY = "labelcheck-paddle-records-v1";
+const PENDING_EXPORT_KEY = "labelcheck-paddle-pending-export-v1";
 const MAX_RECORDS = 500;
 
 let databasePromise = null;
 
 export async function loadRecords() {
-  if (!hasIndexedDb()) return loadLegacyRecords();
+  if (!hasIndexedDb()) return loadLegacyRecords(true);
   try {
     const db = await openDatabase();
     await migrateLegacyRecords(db);
-    return await readAllRecords(db);
+    return await readAllRecords(db, true, true);
   } catch {
-    return loadLegacyRecords();
+    return loadLegacyRecords(true);
   }
 }
 
@@ -25,22 +26,79 @@ export async function saveRecord(record) {
     const stored = { ...record, id: record?.id || createRecordId() };
     await requestTransaction(db, "readwrite", (store) => store.put(stored));
 
-    const records = await readAllRecords(db, false);
-    if (records.length > MAX_RECORDS) {
-      const surplus = records.slice(MAX_RECORDS);
+    const allRecords = await readAllRecords(db, false, false);
+    if (allRecords.length > MAX_RECORDS) {
+      const surplus = allRecords.slice(MAX_RECORDS);
       await requestTransaction(db, "readwrite", (store) => {
         for (const entry of surplus) store.delete(entry.id);
       });
-      return records.slice(0, MAX_RECORDS);
     }
-    return records;
+    return await readAllRecords(db, true, true);
   } catch {
     return saveLegacyRecord(record);
   }
 }
 
+export async function markRecordsExported(ids, exportedAt = new Date().toISOString()) {
+  const wanted = new Set((ids || []).filter(Boolean));
+  if (!wanted.size) return loadRecords();
+
+  if (!hasIndexedDb()) {
+    const allRecords = loadLegacyRecords(false).map((record) => wanted.has(record.id)
+      ? { ...record, exportedAt }
+      : record);
+    saveLegacyRecords(allRecords);
+    return allRecords.filter((record) => !record.exportedAt).slice(0, MAX_RECORDS);
+  }
+
+  try {
+    const db = await openDatabase();
+    await migrateLegacyRecords(db);
+    const allRecords = await readAllRecords(db, false, false);
+    const matches = allRecords.filter((record) => wanted.has(record.id));
+    await requestTransaction(db, "readwrite", (store) => {
+      for (const record of matches) store.put({ ...record, exportedAt });
+    });
+    return await readAllRecords(db, true, true);
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Exportstatus konnte nicht gespeichert werden.");
+  }
+}
+
+export function loadPendingExport() {
+  try {
+    const parsed = JSON.parse(globalThis.localStorage?.getItem(PENDING_EXPORT_KEY) || "null");
+    if (!parsed || !Array.isArray(parsed.recordIds) || !parsed.recordIds.length || !parsed.createdAt) return null;
+    return {
+      recordIds: parsed.recordIds.filter(Boolean),
+      createdAt: String(parsed.createdAt)
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function savePendingExport(pending) {
+  const normalized = pending && Array.isArray(pending.recordIds) && pending.recordIds.length
+    ? { recordIds: pending.recordIds.filter(Boolean), createdAt: String(pending.createdAt || new Date().toISOString()) }
+    : null;
+  try {
+    if (normalized) globalThis.localStorage?.setItem(PENDING_EXPORT_KEY, JSON.stringify(normalized));
+    else globalThis.localStorage?.removeItem(PENDING_EXPORT_KEY);
+  } catch { /* best effort */ }
+  return normalized;
+}
+
+export function clearPendingExport() {
+  try { globalThis.localStorage?.removeItem(PENDING_EXPORT_KEY); } catch { /* best effort */ }
+  return null;
+}
+
 export async function clearRecords() {
-  try { globalThis.localStorage?.removeItem(LEGACY_KEY); } catch { /* optional */ }
+  try {
+    globalThis.localStorage?.removeItem(LEGACY_KEY);
+    globalThis.localStorage?.removeItem(PENDING_EXPORT_KEY);
+  } catch { /* optional */ }
   if (!hasIndexedDb()) return [];
   try {
     const db = await openDatabase();
@@ -74,7 +132,7 @@ function openDatabase() {
 }
 
 async function migrateLegacyRecords(db) {
-  const legacy = loadLegacyRecords();
+  const legacy = loadLegacyRecords(false);
   if (!legacy.length) return;
   await requestTransaction(db, "readwrite", (store) => {
     legacy.slice(0, MAX_RECORDS).forEach((record) => {
@@ -84,13 +142,14 @@ async function migrateLegacyRecords(db) {
   try { globalThis.localStorage?.removeItem(LEGACY_KEY); } catch { /* best effort */ }
 }
 
-function readAllRecords(db, limit = true) {
+function readAllRecords(db, limit = true, activeOnly = true) {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, "readonly");
     const request = transaction.objectStore(STORE_NAME).getAll();
     request.onsuccess = () => {
-      const records = Array.isArray(request.result) ? request.result : [];
+      let records = Array.isArray(request.result) ? request.result : [];
       records.sort((left, right) => String(right.timestamp || "").localeCompare(String(left.timestamp || "")));
+      if (activeOnly) records = records.filter((record) => !record.exportedAt);
       resolve(limit ? records.slice(0, MAX_RECORDS) : records);
     };
     request.onerror = () => reject(request.error || new Error("Scanprotokoll konnte nicht gelesen werden."));
@@ -109,21 +168,34 @@ function requestTransaction(db, mode, action) {
   });
 }
 
-function loadLegacyRecords() {
+function loadLegacyRecords(activeOnly = true) {
   try {
     const parsed = JSON.parse(globalThis.localStorage?.getItem(LEGACY_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed.slice(0, MAX_RECORDS) : [];
+    if (!Array.isArray(parsed)) return [];
+    let changed = false;
+    let records = parsed.map((record) => {
+      if (record?.id) return record;
+      changed = true;
+      return { ...record, id: createRecordId() };
+    });
+    if (changed) saveLegacyRecords(records);
+    records.sort((left, right) => String(right.timestamp || "").localeCompare(String(left.timestamp || "")));
+    if (activeOnly) records = records.filter((record) => !record.exportedAt);
+    return records.slice(0, MAX_RECORDS);
   } catch {
     return [];
   }
 }
 
 function saveLegacyRecord(record) {
-  const records = loadLegacyRecords();
-  records.unshift(record);
-  const limited = records.slice(0, MAX_RECORDS);
-  try { globalThis.localStorage?.setItem(LEGACY_KEY, JSON.stringify(limited)); } catch { /* fallback only */ }
-  return limited;
+  const records = loadLegacyRecords(false);
+  records.unshift({ ...record, id: record?.id || createRecordId() });
+  saveLegacyRecords(records.slice(0, MAX_RECORDS));
+  return records.filter((entry) => !entry.exportedAt).slice(0, MAX_RECORDS);
+}
+
+function saveLegacyRecords(records) {
+  try { globalThis.localStorage?.setItem(LEGACY_KEY, JSON.stringify(records.slice(0, MAX_RECORDS))); } catch { /* fallback only */ }
 }
 
 function createRecordId() {

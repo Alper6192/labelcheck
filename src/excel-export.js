@@ -18,8 +18,9 @@ export function createCsvFile(records, date = new Date()) {
   });
 }
 
-export async function exportRecords(records, navigatorLike = globalThis.navigator) {
-  const file = createCsvFile(records, new Date());
+export async function exportRecords(records, navigatorLike = globalThis.navigator, options = {}) {
+  const date = options?.date instanceof Date ? options.date : new Date(options?.date || Date.now());
+  const file = createCsvFile(records, date);
 
   if (navigatorLike && typeof navigatorLike.share === "function") {
     try {

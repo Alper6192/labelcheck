@@ -33,3 +33,8 @@ test("App erzeugt keinen share-Zufallsnamen", () => {
   assert.doesNotMatch(source, /`share\$\{/);
   assert.match(source, /return `Labelcheck_/);
 });
+
+test("Wiederholter Export kann denselben Zeitstempel und damit denselben Dateinamen verwenden", () => {
+  assert.match(source, /options\s*=\s*\{\}/);
+  assert.match(source, /options\?\.date/);
+});

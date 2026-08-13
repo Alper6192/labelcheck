@@ -13,5 +13,13 @@ test("Scanprotokoll verwendet IndexedDB und migriert den bisherigen localStorage
 
 test("Scanprotokoll bleibt auf 500 Datensätze begrenzt", () => {
   assert.match(source, /MAX_RECORDS\s*=\s*500/);
-  assert.match(source, /records\.slice\(MAX_RECORDS\)/);
+  assert.match(source, /allRecords\.slice\(MAX_RECORDS\)/);
+});
+
+test("Ausstehender Export wird persistent gespeichert und exportierte Datensätze werden markiert", () => {
+  assert.match(source, /PENDING_EXPORT_KEY/);
+  assert.match(source, /loadPendingExport/);
+  assert.match(source, /savePendingExport/);
+  assert.match(source, /markRecordsExported/);
+  assert.match(source, /exportedAt/);
 });

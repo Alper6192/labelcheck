@@ -1397,3 +1397,24 @@ main > .card:first-child .engine-badge {
   color: var(--muted, #5f6b75);
   font-size: .9rem;
 }
+
+/* v0.16.13 – sicherer, bestätigter Protokollexport ohne Microsoft-Anbindung */
+.labelcheck-app .pending-export-panel {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid #d6a200;
+  border-radius: 10px;
+  background: #fff9df;
+  color: #3c3520;
+}
+.labelcheck-app .pending-export-panel p {
+  margin: 5px 0 0;
+  font-size: .9rem;
+  line-height: 1.4;
+}
+.labelcheck-app .pending-export-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
