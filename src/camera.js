@@ -1,77 +1,40 @@
-export function rearCameraConstraints() {
-  return {
-    audio: false,
-    video: {
-      facingMode: { exact: "environment" },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 }
-    }
+/**
+ * Erzeugt für jeden Kamera-Aufruf einen frischen nativen Datei-Input.
+ * capture="environment" bittet den Browser/die Kamera-App ausdrücklich um
+ * die nach außen gerichtete Kamera, ohne eine Browser-Kameravorschau zu öffnen.
+ */
+export function createNativeRearCameraInput(documentLike = globalThis.document) {
+  if (!documentLike?.createElement) throw new Error("Kamera-Input konnte nicht erstellt werden.");
+  const input = documentLike.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.setAttribute("capture", "environment");
+  input.className = "native-file-input native-camera-input";
+  input.setAttribute("aria-hidden", "true");
+  return input;
+}
+
+export function openNativeRearCamera({ key, onFile, documentLike = globalThis.document }) {
+  if (!["product", "vda"].includes(key)) return null;
+  const input = createNativeRearCameraInput(documentLike);
+  documentLike.body.appendChild(input);
+
+  const cleanup = () => {
+    try { input.remove(); } catch {}
   };
-}
 
-export async function getRearCameraStream(mediaDevices = globalThis.navigator?.mediaDevices) {
-  if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
-    throw new Error("Kamerazugriff wird von diesem Browser nicht unterstützt.");
-  }
-
-  try {
-    // Harte Vorgabe: nur die vom Nutzer weg gerichtete Kamera.
-    return await mediaDevices.getUserMedia(rearCameraConstraints());
-  } catch (error) {
-    // Einige Browser/Devices akzeptieren 'exact' nicht zuverlässig. Als zweiter
-    // Versuch darf 'ideal' öffnen, wird aber VOR der Anzeige verifiziert. Eine
-    // Frontkamera wird sofort wieder gestoppt und niemals im UI angezeigt.
-    if (!isConstraintCompatibilityError(error)) throw error;
-
-    const stream = await mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      }
-    });
-    const track = stream.getVideoTracks?.()[0];
-    if (!isVerifiedRearTrack(track)) {
-      stopMediaStream(stream);
-      throw new Error("Keine Rückkamera konnte sicher ausgewählt werden.");
+  input.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    try {
+      if (file && typeof onFile === "function") await onFile(file);
+    } finally {
+      cleanup();
     }
-    return stream;
-  }
-}
+  }, { once: true });
 
-export function isVerifiedRearTrack(track) {
-  if (!track) return false;
-  const facingMode = String(track.getSettings?.().facingMode || "").toLowerCase();
-  if (facingMode === "environment") return true;
-  const label = String(track.label || "").toLowerCase();
-  return /(back|rear|environment|rück|rueck|hinten|posteri|traser|arrière|camera 0)/i.test(label);
-}
-
-export function stopMediaStream(stream) {
-  for (const track of stream?.getTracks?.() || []) {
-    try { track.stop(); } catch {}
-  }
-}
-
-export async function captureRearFrame(video, filename, documentLike = globalThis.document) {
-  const width = Number(video?.videoWidth || 0);
-  const height = Number(video?.videoHeight || 0);
-  if (!width || !height) throw new Error("Kamerabild ist noch nicht bereit.");
-
-  const canvas = documentLike.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Kamerabild konnte nicht verarbeitet werden.");
-  context.drawImage(video, 0, 0, width, height);
-
-  const blob = await new Promise((resolve, reject) => {
-    canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Foto konnte nicht erstellt werden.")), "image/jpeg", 0.94);
-  });
-  return new File([blob], filename, { type: "image/jpeg", lastModified: Date.now() });
-}
-
-function isConstraintCompatibilityError(error) {
-  return ["OverconstrainedError", "NotFoundError", "TypeError"].includes(String(error?.name || ""));
+  // Falls der Nutzer den Kamera-Intent abbricht, bleibt ein unsichtbarer Input
+  // harmlos zurück. Beim nächsten Aufruf wird bewusst wieder ein NEUER Input
+  // mit capture="environment" erstellt, damit kein alter Browserzustand benutzt wird.
+  input.click();
+  return input;
 }

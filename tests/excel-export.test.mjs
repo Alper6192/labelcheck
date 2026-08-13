@@ -27,3 +27,9 @@ test("Export verwendet nur CSV und keine XLSX-Datei", () => {
   assert.doesNotMatch(source, /\.xlsx/);
   assert.match(source, /text\/csv/);
 });
+
+
+test("App erzeugt keinen share-Zufallsnamen", () => {
+  assert.doesNotMatch(source, /`share\$\{/);
+  assert.match(source, /return `Labelcheck_/);
+});

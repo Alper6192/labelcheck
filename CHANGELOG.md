@@ -1,3 +1,11 @@
+## 0.16.12 – Native Kamera-App und Android-Share-Hinweise (2026-08-13)
+
+- Kamera-Popup im Browser entfernt; „Foto aufnehmen“ öffnet wieder die native Kamera-App.
+- Für jeden Kamera-Aufruf wird ein frischer Datei-Input mit `capture="environment"` erzeugt, damit die Rückkamera erneut ausdrücklich angefordert wird.
+- Galerie-Auswahl bleibt davon getrennt.
+- CSV-Export bleibt `Labelcheck_YYYY-MM-DD_HH-MM-SS.csv`; die App selbst erzeugt keinen `share…`-Dateinamen.
+- Profil-JSON bleibt byte-identisch zum 0.16.7-Master.
+
 ## 0.16.11 – CSV, feste Rückkamera und Batch-Freigabe (2026-08-13)
 
 - Profilkonfiguration bewusst byte-identisch aus dem vom Nutzer hochgeladenen 0.16.7-Master übernommen.
