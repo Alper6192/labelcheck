@@ -11,10 +11,10 @@ test("Produkt und VDA fordern native Rückkamera an", () => {
   assert.match(main, /cameraInput\?\.setAttribute\("capture", "environment"\)/);
 });
 
-test("Kamera wird im Hochkantmodus vor dem nativen Aufruf blockiert", () => {
-  assert.match(main, /isViewportPortrait\(\)/);
-  assert.match(main, /Bitte das Smartphone quer halten/);
-  assert.match(main, /event\.preventDefault\(\)/);
+test("Native Kamera darf auch bei hochkant gehaltenem Smartphone öffnen", () => {
+  assert.doesNotMatch(main, /isViewportPortrait\(\)/);
+  assert.doesNotMatch(main, /event\.preventDefault\(\)/);
+  assert.match(main, /cameraInput\.value = ""/);
 });
 
 test("Hochkantfotos werden EXIF-aware vor OCR mit Querformat-Hinweis beendet", () => {

@@ -1430,3 +1430,33 @@ main > .card:first-child .engine-badge {
 .labelcheck-app .slot-status.warn {
   border-color: #d6a200;
 }
+
+
+/* v0.16.17 – zwei klare Exportaktionen; gesendeten Verlauf separat aufräumen */
+.labelcheck-app .log-head-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.labelcheck-app .log-clear-action {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  background: #fff;
+  color: #555;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.labelcheck-app .log-clear-action:disabled {
+  opacity: .45;
+  cursor: default;
+}
+@media (max-width: 640px) {
+  .labelcheck-app .log-head { align-items: flex-start; }
+  .labelcheck-app .log-head-meta { max-width: 58%; }
+}

@@ -22,7 +22,8 @@ test("Exportierte Datensätze werden markiert und bleiben im lokalen Verlauf", (
   assert.match(source, /readAllRecords\(db, true, false\)/);
 });
 
-test("Ungesendete Datensätze besitzen keine separate Löschfunktion", () => {
+test("Nur bereits gesendete Datensätze besitzen eine Bereinigungsfunktion", () => {
+  assert.match(source, /clearExportedRecords/);
   assert.doesNotMatch(source, /clearUnsentRecords/);
 });
 

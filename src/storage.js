@@ -68,6 +68,29 @@ export async function markRecordsExported(ids, exportedAt = new Date().toISOStri
   }
 }
 
+export async function clearExportedRecords() {
+  if (!hasIndexedDb()) {
+    const remaining = loadLegacyRecords(false).filter((record) => !record.exportedAt);
+    saveLegacyRecords(remaining);
+    return remaining.slice(0, MAX_RECORDS);
+  }
+
+  try {
+    const db = await openDatabase();
+    await migrateLegacyRecords(db);
+    const allRecords = await readAllRecords(db, false, false);
+    const sent = allRecords.filter((record) => Boolean(record.exportedAt));
+    if (sent.length) {
+      await requestTransaction(db, "readwrite", (store) => {
+        for (const record of sent) store.delete(record.id);
+      });
+    }
+    return await readAllRecords(db, true, false);
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Gesendete Datensätze konnten nicht gelöscht werden.");
+  }
+}
+
 export function loadPendingExport() {
   try {
     const parsed = JSON.parse(globalThis.localStorage?.getItem(PENDING_EXPORT_KEY) || "null");

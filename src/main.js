@@ -15,7 +15,7 @@ import { renderComparison, renderFieldEditor, renderPreview } from "./render.js"
 import { detectQrProfile } from "./qr-engine.js";
 import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
-import { clearPendingExport, loadPendingExport, loadRecords, markRecordsExported, savePendingExport, saveRecord } from "./storage.js";
+import { clearExportedRecords, clearPendingExport, loadPendingExport, loadRecords, markRecordsExported, savePendingExport, saveRecord } from "./storage.js";
 import { exportRecords } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
@@ -72,28 +72,17 @@ function setupSlot(key) {
   const galleryInput = el(`${key}Input`);
   const cameraInput = el(`${key}CameraInput`);
 
-  // Galerie und native Kamera bleiben getrennt. capture="environment" ist
-  // weiterhin der standardisierte Hinweis an die externe Kamera-App, die
-  // Rückkamera zu verwenden. Vor dem Öffnen wird zusätzlich geprüft, ob das
-  // Gerät bereits quer gehalten wird.
+  // Galerie und native Kamera bleiben getrennt. Die Kamera darf unabhängig
+  // von der aktuellen Gerätehaltung immer öffnen. Erst das tatsächlich
+  // aufgenommene Bild wird anschließend auf Hoch-/Querformat geprüft.
   galleryInput.removeAttribute("capture");
   cameraInput?.setAttribute("capture", "environment");
-
-  const cameraLabels = document.querySelectorAll(`label[for="${key}CameraInput"]`);
-  cameraLabels.forEach((label) => label.addEventListener("click", (event) => {
-    event.preventDefault();
-    cameraInput?.setAttribute("capture", "environment");
-    if (isViewportPortrait()) {
-      const status = el(`${key}Status`);
-      status.textContent = "Bitte das Smartphone quer halten und dann erneut „Foto aufnehmen“ tippen.";
-      status.className = "slot-status warn";
-      return;
-    }
-    if (cameraInput) {
-      cameraInput.value = "";
-      cameraInput.click();
-    }
-  }));
+  cameraInput?.addEventListener("click", () => {
+    cameraInput.setAttribute("capture", "environment");
+    // Derselbe Kameradateiname muss bei einer Wiederholungsaufnahme erneut ein
+    // change-Ereignis auslösen können.
+    cameraInput.value = "";
+  });
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
@@ -110,21 +99,11 @@ function setupActions() {
   el("saveButton").onclick = storeCurrent;
   el("newCsvButton").onclick = () => shareProtocolExport("new");
   el("allCsvButton").onclick = () => shareProtocolExport("all");
+  el("clearSentButton").onclick = clearSentProtocolRows;
   el("debugButton").onclick = exportDebug;
 }
 
 
-
-function isViewportPortrait() {
-  const orientationType = String(globalThis.screen?.orientation?.type || "").toLowerCase();
-  if (orientationType.startsWith("portrait")) return true;
-  if (orientationType.startsWith("landscape")) return false;
-  try {
-    if (globalThis.matchMedia?.("(orientation: portrait)")?.matches) return true;
-    if (globalThis.matchMedia?.("(orientation: landscape)")?.matches) return false;
-  } catch { /* Fallback unten. */ }
-  return Number(globalThis.innerHeight || 0) > Number(globalThis.innerWidth || 0);
-}
 
 function isPortraitPhoto(orientationInfo, prepared) {
   if (orientationInfo?.portrait === true) return true;
@@ -508,24 +487,40 @@ function renderAll() {
     ? "Wird gespeichert …"
     : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
   const unsentCount = records.filter((record) => !record.exportedAt).length;
+  const sentCount = records.length - unsentCount;
   const currentStack = getPendingRows();
   const waitingCount = getWaitingNewRows().length;
   const newCsvButton = el("newCsvButton");
   const allCsvButton = el("allCsvButton");
+  const clearSentButton = el("clearSentButton");
   if (newCsvButton) {
-    const nextCount = currentStack.length || unsentCount;
-    newCsvButton.disabled = !nextCount;
-    newCsvButton.textContent = nextCount ? `Neue Teile senden (${nextCount})` : "Keine neuen Teile";
+    if (currentStack.length) {
+      newCsvButton.disabled = false;
+      newCsvButton.textContent = `Offenen Stapel senden (${currentStack.length})`;
+    } else {
+      newCsvButton.disabled = !unsentCount;
+      newCsvButton.textContent = unsentCount ? `Neue Teile senden (${unsentCount})` : "Keine neuen Teile";
+    }
   }
   if (allCsvButton) {
     allCsvButton.disabled = !records.length;
     allCsvButton.textContent = records.length ? `Gesamtes Protokoll senden (${records.length})` : "Gesamtes Protokoll senden";
   }
+  if (clearSentButton) {
+    clearSentButton.disabled = !sentCount;
+    clearSentButton.textContent = sentCount ? `Gesendete leeren (${sentCount})` : "Gesendete leeren";
+  }
   const exportStatus = el("excelExportStatus");
-  if (exportStatus && currentStack.length) {
-    exportStatus.textContent = waitingCount
-      ? `Offener Exportstapel: ${currentStack.length} Teile · ${waitingCount} weitere neue Teile warten auf den nächsten Stapel.`
-      : `Offener Exportstapel: ${currentStack.length} Teile.`;
+  if (exportStatus) {
+    if (currentStack.length) {
+      exportStatus.textContent = waitingCount
+        ? `Offener Stapel: ${currentStack.length} Teile · ${waitingCount} weitere neue Teile warten.`
+        : `Offener Stapel: ${currentStack.length} Teile · nach erfolgreichem Upload bestätigen.`;
+    } else {
+      exportStatus.textContent = unsentCount
+        ? `${unsentCount} neue Teile sind noch nicht als gesendet bestätigt.`
+        : sentCount ? "Alle vorhandenen Teile sind als gesendet bestätigt." : "";
+    }
   }
 }
 
@@ -651,7 +646,8 @@ function warningExtraction(profile, warning) {
 
 function renderLog() {
   const unsentCount = records.filter((record) => !record.exportedAt).length;
-  el("logCount").textContent = `${records.length} Datensätze · ${unsentCount} neu`;
+  const sentCount = records.length - unsentCount;
+  el("logCount").textContent = `${records.length} Datensätze · ${unsentCount} neu · ${sentCount} gesendet`;
   const body = el("logBody");
   body.replaceChildren();
   records.slice(0, 30).forEach((record) => {
@@ -715,20 +711,25 @@ async function shareProtocolExport(mode = "new") {
     const confirmed = confirm(`Wurde die CSV in OneDrive gespeichert?\n\nBei „OK“ werden ${unsentIds.length} neue Teile dieses Exports als gesendet markiert. Die Datensätze bleiben im lokalen Protokoll erhalten.`);
     if (confirmed) {
       try {
-        records = await markRecordsExported(unsentIds, new Date().toISOString());
+        await markRecordsExported(unsentIds, new Date().toISOString());
         if (mode === "new") {
           pendingExport = clearPendingExport();
         } else if (pendingExport?.recordIds?.some((id) => unsentIds.includes(id))) {
           // Ein bestätigter Gesamtexport enthält auch den offenen Stapel.
           pendingExport = clearPendingExport();
         }
+        // Nach der Bestätigung immer aus dem persistenten Speicher neu laden.
+        // So kann kein alter In-Memory-Zähler weiterhin "Neue Teile (1)" zeigen.
+        records = await loadRecords();
         normalizePendingExport();
         renderAll();
         const status = el("excelExportStatus");
-        const waiting = getWaitingNewRows().length;
-        if (status) status.textContent = waiting
-          ? `${unsentIds.length} Teile als gesendet bestätigt · ${waiting} neue Teile warten auf den nächsten Stapel.`
-          : `${unsentIds.length} Teile als gesendet bestätigt.`;
+        const remaining = records.filter((record) => !record.exportedAt).length;
+        if (status) {
+          status.textContent = remaining
+            ? `${unsentIds.length} Teile als gesendet bestätigt · ${remaining} neue Teile bleiben für den nächsten Stapel.`
+            : `${unsentIds.length} Teile als gesendet bestätigt · keine neuen Teile offen.`;
+        }
       } catch (error) {
         alert(`Sendestatus konnte nicht gespeichert werden: ${safeError(error)}`);
       }
@@ -737,6 +738,23 @@ async function shareProtocolExport(mode = "new") {
     }
   } else {
     renderAll();
+  }
+}
+
+
+async function clearSentProtocolRows() {
+  const sentCount = records.filter((record) => record.exportedAt).length;
+  if (!sentCount) return;
+  const confirmed = confirm(`Bereits gesendete Teile aus dem lokalen Protokoll löschen?\n\n${sentCount} bestätigte Datensätze werden entfernt. Neue bzw. noch nicht bestätigte Teile bleiben vollständig erhalten.`);
+  if (!confirmed) return;
+  try {
+    records = await clearExportedRecords();
+    normalizePendingExport();
+    renderAll();
+    const status = el("excelExportStatus");
+    if (status) status.textContent = `${sentCount} bereits gesendete Teile aus dem lokalen Verlauf entfernt.`;
+  } catch (error) {
+    alert(`Gesendete Datensätze konnten nicht gelöscht werden: ${safeError(error)}`);
   }
 }
 

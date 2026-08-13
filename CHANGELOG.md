@@ -1,3 +1,11 @@
+# LabelCheck PaddleOCR 0.16.17
+
+- Kamera darf auch bei hochkant gehaltenem Smartphone immer öffnen; Querformat wird erst nach der tatsächlichen Aufnahme geprüft.
+- Exportlogik verfeinert: offener Stapel wird eindeutig als „Offenen Stapel senden“ dargestellt, neue Teile warten getrennt auf den nächsten Stapel.
+- Nach bestätigtem Upload wird das Protokoll aus dem persistenten Speicher neu geladen, damit der Zähler sofort korrekt aktualisiert wird.
+- „Gesendete leeren“ entfernt ausschließlich bereits als gesendet bestätigte Datensätze; neue/offene Teile sind nicht löschbar.
+- Profil-JSON bleibt byte-identisch zum freigegebenen 0.16.7-Master.
+
 # LabelCheck PaddleOCR 0.16.16
 
 - Status unter dem Foto heißt während der Erkennung nur noch „Bild wird analysiert …“.
