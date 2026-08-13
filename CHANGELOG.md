@@ -1,3 +1,10 @@
+# LabelCheck PaddleOCR 0.16.19
+
+- CSV-Spalte „Manuell korrigiert“ nennt jetzt konkret die manuell geänderten Felder statt nur Ja/Nein.
+- Beispiele: „Gewicht Produkt“, „IDH VDA“ oder mehrere Einträge kommasepariert.
+- Nicht korrigierte Datensätze lassen die Spalte leer; ältere gespeicherte Datensätze ohne Detailhistorie behalten bei Bedarf „Ja“.
+- Profil-JSON bleibt unverändert gegenüber dem freigegebenen 0.16.7-Master.
+
 # LabelCheck PaddleOCR 0.16.18
 
 - Exportstatus wird vor dem Android-Share-Sheet persistent gespeichert.

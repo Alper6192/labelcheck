@@ -570,6 +570,10 @@ async function storeCurrent() {
   if (!comparison || currentSaved || saveInProgress) return;
   saveInProgress = true;
   renderAll();
+  const corrections = [
+    ...manualCorrections(slots.product.extraction, "Produkt"),
+    ...manualCorrections(slots.vda.extraction, "VDA")
+  ];
   const record = {
     timestamp: new Date().toISOString(),
     status: comparison.status,
@@ -578,7 +582,8 @@ async function storeCurrent() {
     vdaProfile: slots.vda.profile?.name || "",
     product: values(slots.product.extraction),
     vda: values(slots.vda.extraction),
-    manual: slots.product.manual || slots.vda.manual
+    manual: corrections.length > 0,
+    manualCorrections: corrections
   };
   try {
     records = await saveRecord(record);
@@ -596,6 +601,19 @@ function values(extraction) {
   const output = {};
   for (const [key, value] of Object.entries(extraction?.fields || {})) output[key] = value.value || "";
   return output;
+}
+
+function manualCorrections(extraction, sideLabel) {
+  const labels = {
+    batch: "Batch",
+    idh: "IDH",
+    weight: "Gewicht",
+    delivery_note: "Lieferscheinnummer",
+    drum_number: "Fassnummer"
+  };
+  return Object.entries(extraction?.fields || {})
+    .filter(([, field]) => field?.source === "manual")
+    .map(([key]) => `${labels[key] || key} ${sideLabel}`);
 }
 
 async function loadStoredRecords() {

@@ -1432,7 +1432,7 @@ main > .card:first-child .engine-badge {
 }
 
 
-/* v0.16.18 – robuster Exportstatus mit klarer OneDrive-Bestätigung */
+/* v0.16.19 – robuster Exportstatus mit klarer OneDrive-Bestätigung */
 .labelcheck-app .log-head-meta {
   display: flex;
   align-items: center;

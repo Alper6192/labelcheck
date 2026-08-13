@@ -39,3 +39,18 @@ test("Wiederholter Export kann denselben Zeitstempel und damit denselben Dateina
   assert.match(source, /options\s*=\s*\{\}/);
   assert.match(source, /options\?\.date/);
 });
+
+
+test("CSV nennt konkret die manuell korrigierten Felder", () => {
+  assert.match(source, /"Manuell korrigiert": manualCorrectionLabel\(record\)/);
+  assert.match(source, /corrections\.join\(", "\)/);
+  assert.match(source, /record\?\.manual \? "Ja" : ""/);
+  assert.doesNotMatch(source, /record\.manual \? "Ja" : "Nein"/);
+});
+
+test("Datensatz speichert manuelle Korrekturen getrennt nach Produkt und VDA", async () => {
+  const mainSource = await readFile(new URL("../src/main.js", import.meta.url), "utf8");
+  assert.match(mainSource, /manualCorrections\(slots\.product\.extraction, "Produkt"\)/);
+  assert.match(mainSource, /manualCorrections\(slots\.vda\.extraction, "VDA"\)/);
+  assert.match(mainSource, /field\?\.source === "manual"/);
+});

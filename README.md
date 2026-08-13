@@ -56,3 +56,8 @@ Ein Produktfoto wird nur als Henkel-Produktlabel akzeptiert, wenn der Henkel-Ank
 ## Kamera
 
 Die native Kamera-App wird über Datei-Inputs mit `capture="environment"` geöffnet. Vor dem Öffnen muss das Smartphone bereits quer gehalten werden. Nach der Aufnahme prüft LabelCheck zusätzlich die tatsächliche Bildausrichtung einschließlich JPEG-EXIF-Rotation; Hochkantfotos werden vor der OCR abgewiesen. Die Wahl der konkreten Front-/Rückkamera innerhalb einer externen Kamera-App bleibt eine Entscheidung des Browsers bzw. Betriebssystems.
+
+
+## Manuelle Korrekturen im CSV-Protokoll
+
+Die Spalte `Manuell korrigiert` enthält ab Version 0.16.19 die konkret bearbeiteten Felder, z. B. `Gewicht Produkt, IDH VDA`. Ohne manuelle Korrektur bleibt die Zelle leer.

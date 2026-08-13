@@ -70,8 +70,17 @@ function createRows(records) {
     Lieferscheinnummer: safe(record.vda?.delivery_note),
     "Fassnummer Produkt": safe(record.product?.drum_number),
     Lieferscheinprofil: safe(record.vdaProfile),
-    "Manuell korrigiert": record.manual ? "Ja" : "Nein"
+    "Manuell korrigiert": manualCorrectionLabel(record)
   }));
+}
+
+export function manualCorrectionLabel(record) {
+  const corrections = Array.isArray(record?.manualCorrections)
+    ? record.manualCorrections.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  if (corrections.length) return corrections.join(", ");
+  // Ältere gespeicherte Datensätze kennen nur das bisherige Ja/Nein-Feld.
+  return record?.manual ? "Ja" : "";
 }
 
 function formatLocalTimestamp(value) {
