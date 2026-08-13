@@ -1419,7 +1419,7 @@ main > .card:first-child .engine-badge {
   margin-top: 10px;
 }
 
-/* v0.16.15 – ruhiger Exportstatus und erkennbare, bereits gesendete Historie */
+/* v0.16.16 – ruhiger Exportstatus und erkennbare, bereits gesendete Historie */
 .labelcheck-app .log-row-sent {
   opacity: .62;
 }

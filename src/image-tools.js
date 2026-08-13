@@ -134,6 +134,79 @@ export function parseEncodedImageDimensions(bytes, mimeType = "") {
   return null;
 }
 
+export async function readImageOrientationInfo(file) {
+  if (!(file instanceof Blob)) return null;
+  const prefix = new Uint8Array(await file.slice(0, Math.min(file.size, 512 * 1024)).arrayBuffer());
+  return parseEncodedImageOrientationInfo(prefix, file.type);
+}
+
+export function parseEncodedImageOrientationInfo(bytes, mimeType = "") {
+  const dimensions = parseEncodedImageDimensions(bytes, mimeType);
+  if (!dimensions) return null;
+  const orientation = parseExifOrientation(bytes, mimeType) || 1;
+  const swapsAxes = [5, 6, 7, 8].includes(orientation);
+  const displayWidth = swapsAxes ? dimensions.height : dimensions.width;
+  const displayHeight = swapsAxes ? dimensions.width : dimensions.height;
+  return {
+    encodedWidth: dimensions.width,
+    encodedHeight: dimensions.height,
+    orientation,
+    displayWidth,
+    displayHeight,
+    portrait: displayHeight > displayWidth
+  };
+}
+
+function parseExifOrientation(bytes, mimeType = "") {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 16) return 1;
+  const mime = String(mimeType || "").toLowerCase();
+  const isJpeg = mime.includes("jpeg") || mime.includes("jpg") || (bytes[0] === 0xff && bytes[1] === 0xd8);
+  if (!isJpeg) return 1;
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 2;
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff) { offset += 1; continue; }
+    while (offset < bytes.length && bytes[offset] === 0xff) offset += 1;
+    const marker = bytes[offset++];
+    if (marker === 0xda || marker === 0xd9) break;
+    if (offset + 2 > bytes.length) break;
+    const length = view.getUint16(offset, false);
+    if (length < 2 || offset + length > bytes.length) break;
+    const payload = offset + 2;
+
+    if (marker === 0xe1 && payload + 14 <= bytes.length &&
+        bytes[payload] === 0x45 && bytes[payload + 1] === 0x78 &&
+        bytes[payload + 2] === 0x69 && bytes[payload + 3] === 0x66 &&
+        bytes[payload + 4] === 0x00 && bytes[payload + 5] === 0x00) {
+      const tiff = payload + 6;
+      if (tiff + 8 > bytes.length) return 1;
+      const little = bytes[tiff] === 0x49 && bytes[tiff + 1] === 0x49;
+      const big = bytes[tiff] === 0x4d && bytes[tiff + 1] === 0x4d;
+      if (!little && !big) return 1;
+      const get16 = (at) => view.getUint16(at, little);
+      const get32 = (at) => view.getUint32(at, little);
+      if (get16(tiff + 2) !== 0x2a) return 1;
+      const ifd0 = tiff + get32(tiff + 4);
+      if (ifd0 + 2 > bytes.length) return 1;
+      const count = get16(ifd0);
+      for (let index = 0; index < count; index += 1) {
+        const entry = ifd0 + 2 + index * 12;
+        if (entry + 12 > bytes.length) break;
+        if (get16(entry) !== 0x0112) continue;
+        const type = get16(entry + 2);
+        const values = get32(entry + 4);
+        if (type === 3 && values >= 1) {
+          const value = get16(entry + 8);
+          return value >= 1 && value <= 8 ? value : 1;
+        }
+      }
+    }
+    offset += length;
+  }
+  return 1;
+}
+
 function measureQuality(sourceCanvas) {
   const maxAnalysisSide = 420;
   const scale = Math.min(1, maxAnalysisSide / Math.max(sourceCanvas.width, sourceCanvas.height));

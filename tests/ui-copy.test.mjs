@@ -15,3 +15,10 @@ test("Felder zeigen Erkennungsquote statt OCR-Prozent", () => {
   assert.match(render, /Erkennungsquote:/);
   assert.doesNotMatch(render, /`OCR \$/);
 });
+
+
+test("Status unter dem Bild nennt keine OCR-Engine", () => {
+  const main = fs.readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+  assert.match(main, /Bild wird analysiert …/);
+  assert.doesNotMatch(main, /status\.textContent = `PaddleOCR analysiert/);
+});

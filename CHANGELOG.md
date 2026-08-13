@@ -1,3 +1,14 @@
+# LabelCheck PaddleOCR 0.16.16
+
+- Status unter dem Foto heißt während der Erkennung nur noch „Bild wird analysiert …“.
+- Hochkantprüfung robust gegen EXIF-Rotation; Hochkantfotos werden vor OCR abgewiesen.
+- Bereits vor dem nativen Kameraaufruf muss das Smartphone quer gehalten werden.
+- Export wieder als echter Stapel: ein gestarteter „Neue Teile“-Stapel bleibt eingefroren, bis er bestätigt wurde.
+- Später gescannte Teile warten auf den nächsten Stapel und werden nicht in einen offenen Export gemischt.
+- Nur zwei Exportaktionen: „Neue Teile senden“ und „Gesamtes Protokoll senden“.
+- Ungesendete Datensätze können in der Oberfläche nicht gelöscht werden.
+- Profilkonfiguration unverändert gegenüber dem freigegebenen 0.16.7-Master.
+
 # Änderungen
 
 ## 0.16.15

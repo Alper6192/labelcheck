@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.16.15
+# LabelCheck PaddleOCR 0.16.16
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 
@@ -32,7 +32,7 @@ Jede übernommene Kontrolle entspricht einer Zeile. Enthalten sind Zeit, Ergebni
 
 Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.csv`.
 
-Ein Exportstapel wird beim ersten Senden eingefroren. Nach der Rückkehr aus dem Teilen-Menü fragt die App, ob die CSV wirklich in OneDrive gespeichert wurde. Erst nach Bestätigung werden genau diese Datensätze archiviert; bei Abbruch bleibt derselbe Stapel für einen erneuten Versand erhalten.
+„Neue Teile senden“ arbeitet als Exportstapel: Beim ersten Senden werden genau die aktuell neuen, noch nicht bestätigten Teile eingefroren. Neue Scans werden nicht in einen offenen Stapel hineingemischt, sondern warten auf den nächsten Stapel. Nach der Rückkehr aus dem Teilen-Menü fragt die App, ob die CSV wirklich in OneDrive gespeichert wurde. Erst nach Bestätigung werden genau die in diesem Export enthaltenen neuen Teile als gesendet markiert. „Gesamtes Protokoll senden“ exportiert unabhängig davon den vollständigen lokalen Verlauf. Ungesendete Teile können in der Oberfläche nicht gelöscht werden.
 
 ## Profileditor
 
@@ -55,4 +55,4 @@ Ein Produktfoto wird nur als Henkel-Produktlabel akzeptiert, wenn der Henkel-Ank
 
 ## Kamera
 
-Die native Kamera-App wird über dauerhaft vorhandene Datei-Inputs mit `capture="environment"` geöffnet. Die Web-App erzeugt den Kamera-Input nicht mehr bei jedem Klick neu.
+Die native Kamera-App wird über Datei-Inputs mit `capture="environment"` geöffnet. Vor dem Öffnen muss das Smartphone bereits quer gehalten werden. Nach der Aufnahme prüft LabelCheck zusätzlich die tatsächliche Bildausrichtung einschließlich JPEG-EXIF-Rotation; Hochkantfotos werden vor der OCR abgewiesen. Die Wahl der konkreten Front-/Rückkamera innerhalb einer externen Kamera-App bleibt eine Entscheidung des Browsers bzw. Betriebssystems.

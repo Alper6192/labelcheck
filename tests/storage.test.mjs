@@ -22,7 +22,12 @@ test("Exportierte Datensätze werden markiert und bleiben im lokalen Verlauf", (
   assert.match(source, /readAllRecords\(db, true, false\)/);
 });
 
-test("Ungesendete Datensätze können separat gelöscht werden", () => {
-  assert.match(source, /clearUnsentRecords/);
-  assert.match(source, /!record\.exportedAt/);
+test("Ungesendete Datensätze besitzen keine separate Löschfunktion", () => {
+  assert.doesNotMatch(source, /clearUnsentRecords/);
+});
+
+test("Offener Exportstapel wird persistent gespeichert", () => {
+  assert.match(source, /loadPendingExport/);
+  assert.match(source, /savePendingExport/);
+  assert.match(source, /clearPendingExport/);
 });

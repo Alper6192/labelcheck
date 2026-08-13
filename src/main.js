@@ -1,7 +1,7 @@
 import "./styles.css";
 import { APP_VERSION, MODEL_OPTIONS, QUALITY_PRESETS } from "./config.js";
 import { PaddleOcrEngine, formatRuntimeDetails } from "./ocr-engine.js";
-import { prepareImage, releasePreparedImage } from "./image-tools.js";
+import { prepareImage, readImageOrientationInfo, releasePreparedImage } from "./image-tools.js";
 import {
   clearOcrInFlight,
   getCompatibilityReason,
@@ -15,7 +15,7 @@ import { renderComparison, renderFieldEditor, renderPreview } from "./render.js"
 import { detectQrProfile } from "./qr-engine.js";
 import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
-import { clearUnsentRecords, loadRecords, markRecordsExported, saveRecord } from "./storage.js";
+import { clearPendingExport, loadPendingExport, loadRecords, markRecordsExported, savePendingExport, saveRecord } from "./storage.js";
 import { exportRecords } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
@@ -23,6 +23,7 @@ const crashRecovery = recoverCompatibilityMode();
 const engine = new PaddleOcrEngine();
 let profiles = [];
 let records = [];
+let pendingExport = null;
 let comparison = null;
 let currentSaved = false;
 let saveInProgress = false;
@@ -71,20 +72,27 @@ function setupSlot(key) {
   const galleryInput = el(`${key}Input`);
   const cameraInput = el(`${key}CameraInput`);
 
-  // Galerie und native Kamera bleiben getrennte, dauerhaft vorhandene Inputs.
-  // Der Kamera-Input wird NICHT bei jedem Klick neu erzeugt. So kann der
-  // Browser/Kamera-Intent seinen eigenen Zustand behalten, sofern das Gerät
-  // dies unterstützt. capture="environment" fordert weiterhin die Rückkamera an.
+  // Galerie und native Kamera bleiben getrennt. capture="environment" ist
+  // weiterhin der standardisierte Hinweis an die externe Kamera-App, die
+  // Rückkamera zu verwenden. Vor dem Öffnen wird zusätzlich geprüft, ob das
+  // Gerät bereits quer gehalten wird.
   galleryInput.removeAttribute("capture");
   cameraInput?.setAttribute("capture", "environment");
 
-  // Vor jedem nativen Kamera-Aufruf wird der standardisierte Rückkamera-Hinweis
-  // erneut gesetzt. Die externe Kamera-App selbst entscheidet letztlich über
-  // das Objektiv; die Webseite kann einen dort manuell gewählten Lens-State
-  // nicht auslesen oder dauerhaft speichern.
   const cameraLabels = document.querySelectorAll(`label[for="${key}CameraInput"]`);
-  cameraLabels.forEach((label) => label.addEventListener("pointerdown", () => {
+  cameraLabels.forEach((label) => label.addEventListener("click", (event) => {
+    event.preventDefault();
     cameraInput?.setAttribute("capture", "environment");
+    if (isViewportPortrait()) {
+      const status = el(`${key}Status`);
+      status.textContent = "Bitte das Smartphone quer halten und dann erneut „Foto aufnehmen“ tippen.";
+      status.className = "slot-status warn";
+      return;
+    }
+    if (cameraInput) {
+      cameraInput.value = "";
+      cameraInput.click();
+    }
   }));
 
   const handleFile = async (event) => {
@@ -102,20 +110,26 @@ function setupActions() {
   el("saveButton").onclick = storeCurrent;
   el("newCsvButton").onclick = () => shareProtocolExport("new");
   el("allCsvButton").onclick = () => shareProtocolExport("all");
-  el("clearButton").onclick = async () => {
-    const unsent = records.filter((record) => !record.exportedAt);
-    if (!unsent.length) return;
-    if (confirm(`${unsent.length} noch nicht als gesendet bestätigte Datensätze wirklich löschen?\n\nBereits als gesendet markierte Einträge bleiben im lokalen Verlauf erhalten.`)) {
-      records = await clearUnsentRecords();
-      renderAll();
-      const status = el("excelExportStatus");
-      if (status) status.textContent = `${unsent.length} ungesendete Datensätze gelöscht.`;
-    }
-  };
   el("debugButton").onclick = exportDebug;
 }
 
 
+
+function isViewportPortrait() {
+  const orientationType = String(globalThis.screen?.orientation?.type || "").toLowerCase();
+  if (orientationType.startsWith("portrait")) return true;
+  if (orientationType.startsWith("landscape")) return false;
+  try {
+    if (globalThis.matchMedia?.("(orientation: portrait)")?.matches) return true;
+    if (globalThis.matchMedia?.("(orientation: landscape)")?.matches) return false;
+  } catch { /* Fallback unten. */ }
+  return Number(globalThis.innerHeight || 0) > Number(globalThis.innerWidth || 0);
+}
+
+function isPortraitPhoto(orientationInfo, prepared) {
+  if (orientationInfo?.portrait === true) return true;
+  return Number(prepared?.height || 0) > Number(prepared?.width || 0);
+}
 
 function setupCompatibilityMode() {
   const toggle = el("compatibilityToggle");
@@ -202,13 +216,16 @@ async function loadFile(key, file) {
   try {
     const preset = currentPreset();
     const policy = getRuntimePolicy();
+    const orientationInfo = await readImageOrientationInfo(file).catch(() => null);
     slot.prepared = await prepareImage(file, preset.maxImageSide, {
       resizeDuringDecode: policy.resizeDuringDecode
     });
 
-    // LabelCheck ist auf quer fotografierte Etiketten ausgelegt. Hochkantbilder
-    // werden nicht analysiert, sondern mit einem klaren Aufnahmehinweis beendet.
-    if (slot.prepared.height > slot.prepared.width) {
+    // Hochkant wird zweifach geprüft: anhand der EXIF-orientierten
+    // Originalabmessungen UND anhand des tatsächlich decodierten Bildes.
+    // Dadurch funktionieren auch Samsung-/iPhone-Fotos, deren JPEG-Rohdaten
+    // quer gespeichert sind und erst über EXIF gedreht werden.
+    if (isPortraitPhoto(orientationInfo, slot.prepared)) {
       slot.error = "Bitte das Label quer fotografieren und erneut aufnehmen.";
       slot.state = "orientation";
       clearOcrInFlight();
@@ -491,18 +508,25 @@ function renderAll() {
     ? "Wird gespeichert …"
     : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
   const unsentCount = records.filter((record) => !record.exportedAt).length;
+  const currentStack = getPendingRows();
+  const waitingCount = getWaitingNewRows().length;
   const newCsvButton = el("newCsvButton");
   const allCsvButton = el("allCsvButton");
-  const clearButton = el("clearButton");
   if (newCsvButton) {
-    newCsvButton.disabled = !unsentCount;
-    newCsvButton.textContent = unsentCount ? `Neue Einträge senden (${unsentCount})` : "Keine neuen Einträge";
+    const nextCount = currentStack.length || unsentCount;
+    newCsvButton.disabled = !nextCount;
+    newCsvButton.textContent = nextCount ? `Neue Teile senden (${nextCount})` : "Keine neuen Teile";
   }
   if (allCsvButton) {
     allCsvButton.disabled = !records.length;
     allCsvButton.textContent = records.length ? `Gesamtes Protokoll senden (${records.length})` : "Gesamtes Protokoll senden";
   }
-  if (clearButton) clearButton.disabled = !unsentCount;
+  const exportStatus = el("excelExportStatus");
+  if (exportStatus && currentStack.length) {
+    exportStatus.textContent = waitingCount
+      ? `Offener Exportstapel: ${currentStack.length} Teile · ${waitingCount} weitere neue Teile warten auf den nächsten Stapel.`
+      : `Offener Exportstapel: ${currentStack.length} Teile.`;
+  }
 }
 
 function renderSlot(key) {
@@ -511,7 +535,7 @@ function renderSlot(key) {
   renderPreview(el(`${key}Preview`), slot.prepared, slot.extraction?.overlays || [], policy.previewMaxSide);
   const status = el(`${key}Status`);
   if (slot.state === "analyzing") {
-    status.textContent = `PaddleOCR analysiert …${policy.compatibilityMode ? " · Kompatibilitätsmodus" : ""}`;
+    status.textContent = "Bild wird analysiert …";
     status.className = "slot-status wait";
   } else if (slot.state === "orientation") {
     status.textContent = `Hinweis: ${slot.error}`;
@@ -569,11 +593,41 @@ function values(extraction) {
 async function loadStoredRecords() {
   try {
     records = await loadRecords();
+    pendingExport = loadPendingExport();
+    normalizePendingExport();
   } catch (error) {
     console.warn("Scanprotokoll konnte nicht geladen werden:", error);
     records = [];
+    pendingExport = null;
   }
   renderAll();
+}
+
+function getPendingRows() {
+  const ids = new Set(pendingExport?.recordIds || []);
+  if (!ids.size) return [];
+  return records.filter((record) => !record.exportedAt && ids.has(record.id));
+}
+
+function getWaitingNewRows() {
+  const pendingIds = new Set(getPendingRows().map((record) => record.id));
+  return records.filter((record) => !record.exportedAt && !pendingIds.has(record.id));
+}
+
+function normalizePendingExport() {
+  if (!pendingExport?.recordIds?.length) {
+    pendingExport = null;
+    return;
+  }
+  const rows = getPendingRows();
+  if (!rows.length) {
+    pendingExport = clearPendingExport();
+    return;
+  }
+  const recordIds = rows.map((record) => record.id).filter(Boolean);
+  if (recordIds.join("|") !== pendingExport.recordIds.join("|")) {
+    pendingExport = savePendingExport({ ...pendingExport, recordIds });
+  }
 }
 
 function refreshComparison() {
@@ -627,28 +681,59 @@ function renderLog() {
 }
 
 async function shareProtocolExport(mode = "new") {
-  // Der Exportstapel wird beim Klick als ID-Liste eingefroren. Neue Scans, die
-  // während des Share-Sheets entstehen, können deshalb nicht versehentlich als
-  // bereits gesendet markiert werden.
-  const exportRows = mode === "all"
-    ? [...records]
-    : records.filter((record) => !record.exportedAt);
+  let exportRows;
+  let exportDate = new Date();
+
+  if (mode === "all") {
+    // Gesamtexport ist immer ein Schnappschuss des aktuell sichtbaren
+    // Protokolls. Neue Scans nach dem Öffnen des Share-Sheets werden dadurch
+    // nicht nachträglich als gesendet markiert.
+    exportRows = [...records];
+  } else {
+    // "Neue Teile" arbeitet als echter Stapel. Solange ein gestarteter Stapel
+    // noch nicht als gespeichert bestätigt wurde, bleibt genau diese ID-Liste
+    // eingefroren. Später gescannte Teile warten auf den nächsten Stapel.
+    let stackRows = getPendingRows();
+    if (!stackRows.length) {
+      stackRows = records.filter((record) => !record.exportedAt);
+      if (!stackRows.length) return;
+      pendingExport = savePendingExport({
+        recordIds: stackRows.map((record) => record.id).filter(Boolean),
+        createdAt: new Date().toISOString()
+      });
+    }
+    exportRows = getPendingRows();
+    exportDate = new Date(pendingExport?.createdAt || Date.now());
+  }
+
   if (!exportRows.length) return;
   const unsentIds = exportRows.filter((record) => !record.exportedAt).map((record) => record.id).filter(Boolean);
-  const result = await exportRecords(exportRows, navigator);
+  const result = await exportRecords(exportRows, navigator, { date: exportDate });
   renderExportStatus(result);
 
   if ((result?.method === "share-csv" || result?.method === "download-csv") && unsentIds.length) {
-    const confirmed = confirm(`Wurde die CSV in OneDrive gespeichert?\n\nBei „OK“ werden ${unsentIds.length} enthaltene neue Datensätze als gesendet markiert. Sie bleiben im lokalen Verlauf erhalten und erscheinen künftig nicht mehr unter „Neue Einträge senden“.`);
+    const confirmed = confirm(`Wurde die CSV in OneDrive gespeichert?\n\nBei „OK“ werden ${unsentIds.length} neue Teile dieses Exports als gesendet markiert. Die Datensätze bleiben im lokalen Protokoll erhalten.`);
     if (confirmed) {
       try {
         records = await markRecordsExported(unsentIds, new Date().toISOString());
+        if (mode === "new") {
+          pendingExport = clearPendingExport();
+        } else if (pendingExport?.recordIds?.some((id) => unsentIds.includes(id))) {
+          // Ein bestätigter Gesamtexport enthält auch den offenen Stapel.
+          pendingExport = clearPendingExport();
+        }
+        normalizePendingExport();
         renderAll();
         const status = el("excelExportStatus");
-        if (status) status.textContent = `${unsentIds.length} Datensätze als gesendet markiert.`;
+        const waiting = getWaitingNewRows().length;
+        if (status) status.textContent = waiting
+          ? `${unsentIds.length} Teile als gesendet bestätigt · ${waiting} neue Teile warten auf den nächsten Stapel.`
+          : `${unsentIds.length} Teile als gesendet bestätigt.`;
       } catch (error) {
         alert(`Sendestatus konnte nicht gespeichert werden: ${safeError(error)}`);
       }
+    } else {
+      renderAll();
     }
   } else {
     renderAll();

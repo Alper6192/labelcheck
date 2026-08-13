@@ -97,26 +97,6 @@ export function clearPendingExport() {
   return null;
 }
 
-export async function clearUnsentRecords() {
-  if (!hasIndexedDb()) {
-    const sent = loadLegacyRecords(false).filter((record) => Boolean(record.exportedAt));
-    saveLegacyRecords(sent);
-    return sent.slice(0, MAX_RECORDS);
-  }
-  try {
-    const db = await openDatabase();
-    await migrateLegacyRecords(db);
-    const allRecords = await readAllRecords(db, false, false);
-    const unsent = allRecords.filter((record) => !record.exportedAt);
-    await requestTransaction(db, "readwrite", (store) => {
-      for (const record of unsent) store.delete(record.id);
-    });
-    return await readAllRecords(db, true, false);
-  } catch (error) {
-    throw error instanceof Error ? error : new Error("Ungesendete Datensätze konnten nicht gelöscht werden.");
-  }
-}
-
 export async function clearRecords() {
   try {
     globalThis.localStorage?.removeItem(LEGACY_KEY);
