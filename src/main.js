@@ -16,7 +16,7 @@ import { detectQrProfile } from "./qr-engine.js";
 import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
 import { clearRecords, loadRecords, saveRecord } from "./storage.js";
-import { exportRecords } from "./excel-export.js";
+import { downloadCsvRecords, exportRecords } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
 const crashRecovery = recoverCompatibilityMode();
@@ -84,7 +84,14 @@ function setupActions() {
   el("initializeButton").onclick = () => initializeEngine(true);
   el("analyzeAllButton").onclick = analyzeAll;
   el("saveButton").onclick = storeCurrent;
-  el("excelButton").onclick = () => exportRecords(records);
+  el("excelButton").onclick = async () => {
+    const result = await exportRecords(records);
+    renderExportStatus(result);
+  };
+  el("excelDownloadButton").onclick = () => {
+    const result = downloadCsvRecords(records);
+    renderExportStatus(result);
+  };
   el("clearButton").onclick = async () => {
     if (confirm("Lokales Protokoll wirklich leeren?")) {
       records = await clearRecords();
@@ -426,6 +433,7 @@ function renderAll() {
     ? "Wird gespeichert …"
     : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
   el("excelButton").disabled = !records.length;
+  el("excelDownloadButton").disabled = !records.length;
 }
 
 function renderSlot(key) {
@@ -541,6 +549,18 @@ function renderLog() {
     });
     body.append(row);
   });
+}
+
+function renderExportStatus(result) {
+  const status = el("excelExportStatus");
+  if (!status || !result) return;
+  if (result.method === "share-csv") {
+    status.textContent = "CSV-Datei an das Teilen-Menü übergeben.";
+  } else if (result.method === "download-csv") {
+    status.textContent = "CSV-Datei heruntergeladen.";
+  } else if (result.method === "cancelled") {
+    status.textContent = "Teilen abgebrochen.";
+  }
 }
 
 function exportDebug() {

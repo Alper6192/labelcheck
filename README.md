@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.16.8
+# LabelCheck PaddleOCR 0.16.10
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 
@@ -24,13 +24,13 @@ Tesla-Versandlabel werden ohne PaddleOCR aus dem kleinen QR-Code links unten gel
 
 Tesla besitzt in dieser Prüfung keine IDH; der IDH-Vergleich wird für dieses Profil übersprungen.
 
-## Scanprotokoll und Excel
+## Scanprotokoll und CSV
 
 Kontrollen werden lokal in IndexedDB gespeichert; vorhandene Datensätze aus dem bisherigen localStorage werden beim ersten Start übernommen. Nach einer erfolgreichen Übernahme bleibt der Speicher-Button gesperrt, bis ein Scan, Profil oder Feld geändert beziehungsweise erneut analysiert wurde.
 
 Jede übernommene Kontrolle entspricht einer Zeile. Enthalten sind Zeit, Ergebnis, Produkt-/Lieferschein-Batch, Produkt-/Lieferschein-IDH, Produkt-/Lieferschein-Gewicht, Lieferscheinnummer und ergänzende Protokollinformationen.
 
-Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.xlsx`.
+Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.csv`.
 
 ## Profileditor
 

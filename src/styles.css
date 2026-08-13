@@ -1390,3 +1390,5 @@ main > .card:first-child .engine-badge {
 .labelcheck-app .log-card td {
   white-space: nowrap;
 }
+
+.export-status{margin-top:10px;min-height:1.2em;color:var(--muted,#a9bfd1);font-size:.9rem;}

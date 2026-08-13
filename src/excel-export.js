@@ -1,43 +1,53 @@
 import * as XLSX from "xlsx";
 
-export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+// Absichtlich ohne charset-Parameter: einige mobile Web-Share-Implementierungen
+// prüfen den MIME-Typ sehr streng. Die UTF-8-BOM übernimmt die Zeichencodierung.
+export const CSV_MIME = "text/csv";
 
-export function createExcelFile(records, date = new Date()) {
-  const wb = createWorkbook(records);
-  const data = XLSX.write(wb, {
-    bookType: "xlsx",
-    type: "array",
-    compression: true
-  });
-  return new File([data], excelFilename(date), {
-    type: XLSX_MIME,
+export function createCsvFile(records, date = new Date()) {
+  const rows = createRows(records);
+  const ws = XLSX.utils.json_to_sheet(rows);
+  // Semikolon ist für deutschsprachige Excel-Installationen robust.
+  // BOM sorgt dafür, dass Umlaute in OneDrive/Excel korrekt erkannt werden.
+  const csv = XLSX.utils.sheet_to_csv(ws, { FS: ";", RS: "\r\n" });
+  return new File(["\uFEFF", csv], csvFilename(date), {
+    type: CSV_MIME,
     lastModified: date.getTime()
   });
 }
 
 export async function exportRecords(records, navigatorLike = globalThis.navigator) {
-  const file = createExcelFile(records, new Date());
+  const file = createCsvFile(records, new Date());
 
-  // Web Share Level 2: Auf unterstützten Mobilbrowsern wird die XLSX-Datei
-  // direkt an das native Teilen-Menü übergeben (z. B. OneDrive auf Android).
-  // Wichtig: Bis navigator.share() gibt es hier bewusst kein await, damit die
-  // für Web Share nötige direkte Benutzeraktivierung erhalten bleibt.
-  if (canShareFile(file, navigatorLike)) {
+  // Auf iOS und Android direkt das native System-Teilen-Menü anfordern.
+  // canShare() wird bewusst nicht als harte Vorbedingung verwendet, weil manche
+  // mobile Browser dort konservativer sind als beim tatsächlichen share()-Aufruf.
+  if (navigatorLike && typeof navigatorLike.share === "function") {
     try {
       await navigatorLike.share({ files: [file] });
-      return { method: "share", filename: file.name };
+      return { method: "share-csv", filename: file.name };
     } catch (error) {
-      // Abbruch durch den Benutzer soll keinen unerwarteten Download auslösen.
+      // Abbruch durch den Benutzer darf keinen unerwarteten Download auslösen.
       if (error?.name === "AbortError") {
         return { method: "cancelled", filename: file.name };
       }
-      // Manche Browser melden Datei-Sharing erst beim share()-Aufruf als
-      // nicht unterstützt. In diesem Fall fällt LabelCheck auf Download zurück.
+      // Wenn Datei-Sharing im konkreten Browser nicht möglich ist, bleibt nur
+      // der normale CSV-Download als verlässlicher Fallback.
     }
   }
 
   downloadFile(file);
-  return { method: "download", filename: file.name };
+  return {
+    method: "download-csv",
+    filename: file.name,
+    reason: "file-share-unavailable"
+  };
+}
+
+export function downloadCsvRecords(records, date = new Date()) {
+  const file = createCsvFile(records, date);
+  downloadFile(file);
+  return { method: "download-csv", filename: file.name };
 }
 
 export function canShareFile(file, navigatorLike = globalThis.navigator) {
@@ -59,18 +69,20 @@ export function downloadFile(file, documentLike = globalThis.document, urlLike =
   documentLike.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  // Nicht sofort widerrufen: einige Android-Browser benötigen den Blob-URL
-  // noch kurz, nachdem der Klick ausgelöst wurde.
   setTimeout(() => urlLike.revokeObjectURL(href), 1500);
 }
 
-export function excelFilename(date = new Date()) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return `Labelcheck_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}.xlsx`;
+export function csvFilename(date = new Date()) {
+  return `Labelcheck_${timestampPart(date)}.csv`;
 }
 
-function createWorkbook(records) {
-  const rows = (records || []).map((record, index) => ({
+function timestampPart(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+}
+
+function createRows(records) {
+  return (records || []).map((record, index) => ({
     Nr: index + 1,
     Zeit: formatLocalTimestamp(record.timestamp),
     Ergebnis: resultLabel(record),
@@ -86,19 +98,6 @@ function createWorkbook(records) {
     Lieferscheinprofil: safe(record.vdaProfile),
     "Manuell korrigiert": record.manual ? "Ja" : "Nein"
   }));
-
-  const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = [
-    { wch: 6 }, { wch: 20 }, { wch: 24 },
-    { wch: 20 }, { wch: 22 }, { wch: 18 }, { wch: 20 },
-    { wch: 20 }, { wch: 22 }, { wch: 22 }, { wch: 20 },
-    { wch: 22 }, { wch: 24 }, { wch: 20 }
-  ];
-  if (rows.length) ws["!autofilter"] = { ref: `A1:N${rows.length + 1}` };
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Kontrollen");
-  return wb;
 }
 
 function formatLocalTimestamp(value) {

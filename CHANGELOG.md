@@ -1,3 +1,22 @@
+## 0.16.10 – Einheitlicher CSV-Export (2026-08-13)
+
+- Export auf allen Plattformen vollständig auf CSV vereinheitlicht; es wird keine XLSX-Datei mehr erzeugt.
+- iOS und Android erhalten beim Teilen immer `Labelcheck_YYYY-MM-DD_HH-MM-SS.csv`.
+- Der Teilen-Button ruft direkt das native System-Menü über `navigator.share({ files: [csvFile] })` auf.
+- `navigator.canShare()` ist keine harte Vorbedingung mehr, damit konservative Browser-Prüfungen das Teilen-Menü nicht unnötig verhindern.
+- CSV-MIME-Type auf `text/csv` vereinheitlicht; UTF-8-BOM und Semikolon bleiben für Excel/OneDrive-Kompatibilität erhalten.
+- Separater Download lädt ebenfalls ausschließlich CSV.
+- Projektversion auf 0.16.10 erhöht.
+
+## 0.16.9 – Android Teilen-Menü für OneDrive/WhatsApp (2026-08-13)
+
+- Android/Chromium: XLSX kann wegen der Browser-Dateityp-Allowlist nicht direkt über Web Share geteilt werden.
+- „Teilen / Senden an“ teilt deshalb auf Android eine Excel-kompatible CSV über das native System-Menü.
+- OneDrive, WhatsApp und andere Android-Share-Ziele können dadurch direkt ausgewählt werden.
+- Separater Button „Excel (.xlsx) herunterladen“ erhält das originale Excel-Format.
+- Auf Plattformen, die XLSX direkt teilen können (z. B. iOS), wird weiterhin XLSX geteilt.
+- Projektversion auf 0.16.9 erhöht.
+
 ## 0.16.8 – Android Excel teilen / OneDrive (2026-08-13)
 
 - Excel-Export erzeugt die XLSX-Datei jetzt als echten Browser-`File` mit korrektem XLSX-MIME-Type.
