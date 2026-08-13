@@ -95,9 +95,16 @@ export function loadPendingExport() {
   try {
     const parsed = JSON.parse(globalThis.localStorage?.getItem(PENDING_EXPORT_KEY) || "null");
     if (!parsed || !Array.isArray(parsed.recordIds) || !parsed.recordIds.length || !parsed.createdAt) return null;
+    const recordIds = parsed.recordIds.filter(Boolean);
+    const confirmRecordIds = Array.isArray(parsed.confirmRecordIds) && parsed.confirmRecordIds.length
+      ? parsed.confirmRecordIds.filter(Boolean)
+      : [...recordIds];
     return {
-      recordIds: parsed.recordIds.filter(Boolean),
-      createdAt: String(parsed.createdAt)
+      recordIds,
+      confirmRecordIds,
+      createdAt: String(parsed.createdAt),
+      mode: parsed.mode === "all" ? "all" : "new",
+      awaitingConfirmation: parsed.awaitingConfirmation !== false
     };
   } catch {
     return null;
@@ -106,7 +113,15 @@ export function loadPendingExport() {
 
 export function savePendingExport(pending) {
   const normalized = pending && Array.isArray(pending.recordIds) && pending.recordIds.length
-    ? { recordIds: pending.recordIds.filter(Boolean), createdAt: String(pending.createdAt || new Date().toISOString()) }
+    ? {
+        recordIds: pending.recordIds.filter(Boolean),
+        confirmRecordIds: Array.isArray(pending.confirmRecordIds) && pending.confirmRecordIds.length
+          ? pending.confirmRecordIds.filter(Boolean)
+          : pending.recordIds.filter(Boolean),
+        createdAt: String(pending.createdAt || new Date().toISOString()),
+        mode: pending.mode === "all" ? "all" : "new",
+        awaitingConfirmation: pending.awaitingConfirmation !== false
+      }
     : null;
   try {
     if (normalized) globalThis.localStorage?.setItem(PENDING_EXPORT_KEY, JSON.stringify(normalized));

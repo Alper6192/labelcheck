@@ -5,7 +5,7 @@ import fs from "node:fs";
 const main = fs.readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
-test("Exportoberfläche hat zwei Exportaktionen und separate Bereinigung gesendeter Teile", () => {
+test("Exportoberfläche bleibt kompakt mit zwei wechselnden Exportaktionen und separater Bereinigung", () => {
   assert.match(html, /id="newCsvButton"/);
   assert.match(html, /id="allCsvButton"/);
   assert.match(html, /id="clearSentButton"/);
@@ -13,39 +13,43 @@ test("Exportoberfläche hat zwei Exportaktionen und separate Bereinigung gesende
   assert.match(html, /Gesamtes Protokoll senden/);
   assert.match(html, /Gesendete leeren/);
   assert.doesNotMatch(html, /Ungesendete löschen/);
-  assert.doesNotMatch(html, /CSV erneut senden/);
 });
 
-test("Neue Teile werden als eingefrorener Exportstapel gespeichert", () => {
-  assert.match(main, /loadPendingExport\(\)/);
-  assert.match(main, /savePendingExport\(/);
-  assert.match(main, /recordIds:\s*stackRows\.map/);
-  assert.match(main, /getPendingRows\(\)/);
-  assert.match(main, /Später gescannte Teile warten auf den nächsten Stapel/);
-  assert.match(main, /Offenen Stapel senden/);
+test("Offener Export wird benutzerfreundlich ohne Stapel-Begriff dargestellt", () => {
+  assert.doesNotMatch(main, /Offenen Stapel senden/);
+  assert.doesNotMatch(main, /Offener Stapel:/);
+  assert.match(main, /In OneDrive gespeichert/);
+  assert.match(main, /CSV erneut senden/);
+  assert.match(main, /warten auf Bestätigung/);
 });
 
-test("Gesamtes Protokoll bleibt als eigener Export möglich", () => {
+test("Exportzustand wird vor dem Android-Share-Sheet persistent gespeichert", () => {
+  const saveIndex = main.indexOf("pendingExport = savePendingExport({");
+  const shareIndex = main.indexOf("const result = await exportRecords(exportRows, navigator");
+  assert.ok(saveIndex >= 0);
+  assert.ok(shareIndex > saveIndex);
+  assert.match(main, /VOR dem Öffnen des nativen Share-Sheets/);
+});
+
+test("Neue Teile und Gesamtexport speichern die konkreten Datensatz-IDs", () => {
+  assert.match(main, /recordIds: exportRows\.map/);
+  assert.match(main, /confirmRecordIds/);
   assert.match(main, /mode === "all"/);
-  assert.match(main, /exportRows = \[\.\.\.records\]/);
+  assert.match(main, /exportRows = mode === "all"/);
 });
 
-test("Bestätigte Einträge bleiben lokal und werden als gesendet dargestellt", () => {
-  assert.match(main, /record\.exportedAt \? "✓ gesendet" : "neu"/);
-  assert.match(main, /log-row-sent/);
-});
-
-test("OneDrive-Bestätigung markiert nur im Export enthaltene neue Datensätze", () => {
-  assert.match(main, /Wurde die CSV in OneDrive gespeichert/);
-  assert.match(main, /unsentIds/);
-  assert.match(main, /markRecordsExported\(unsentIds/);
-});
-
-
-test("Nach Upload-Bestätigung wird der persistente Stand neu geladen", () => {
-  assert.match(main, /await markRecordsExported\(unsentIds/);
+test("Bestätigung ist ein separater synchroner Button-Schritt", () => {
+  assert.match(main, /async function confirmPendingExport\(\)/);
+  assert.match(main, /Wurde die CSV erfolgreich in OneDrive gespeichert/);
+  assert.match(main, /await markRecordsExported\(ids/);
+  assert.match(main, /pendingExport = clearPendingExport\(\)/);
   assert.match(main, /records = await loadRecords\(\)/);
-  assert.match(main, /keine neuen Teile offen/);
+});
+
+test("Nicht bestätigte Exporte können mit identischem Snapshot erneut gesendet werden", () => {
+  assert.match(main, /async function resendPendingExport\(\)/);
+  assert.match(main, /const exportRows = getPendingRows\(\)/);
+  assert.match(main, /new Date\(pendingExport\.createdAt/);
 });
 
 test("Gesendete Teile können separat geleert werden, ungesendete nicht", () => {

@@ -1,3 +1,14 @@
+# LabelCheck PaddleOCR 0.16.18
+
+- Exportstatus wird vor dem Android-Share-Sheet persistent gespeichert.
+- Kein Begriff „Stapel“ mehr in der Benutzeroberfläche.
+- Nach dem Senden werden dieselben zwei Exportbuttons kontextbezogen zu „In OneDrive gespeichert“ und „CSV erneut senden“.
+- Die OneDrive-Bestätigung erfolgt erst durch einen separaten, direkten Button-Klick und funktioniert dadurch auch nach Rückkehr aus dem mobilen Share-Sheet zuverlässig.
+- Neue Scans nach einem Export warten getrennt auf den nächsten Export und werden nicht versehentlich mitbestätigt.
+- Bestehende offene Exporte aus 0.16.17 werden automatisch als bestätigungsbereit übernommen.
+- Gesendete Datensätze können weiterhin separat geleert werden.
+- Profil-JSON bleibt unverändert gegenüber dem freigegebenen 0.16.7-Master.
+
 # LabelCheck PaddleOCR 0.16.17
 
 - Kamera darf auch bei hochkant gehaltenem Smartphone immer öffnen; Querformat wird erst nach der tatsächlichen Aufnahme geprüft.

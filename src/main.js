@@ -97,8 +97,8 @@ function setupSlot(key) {
 function setupActions() {
   el("initializeButton").onclick = () => initializeEngine(true);
   el("saveButton").onclick = storeCurrent;
-  el("newCsvButton").onclick = () => shareProtocolExport("new");
-  el("allCsvButton").onclick = () => shareProtocolExport("all");
+  el("newCsvButton").onclick = () => pendingExport ? confirmPendingExport() : shareProtocolExport("new");
+  el("allCsvButton").onclick = () => pendingExport ? resendPendingExport() : shareProtocolExport("all");
   el("clearSentButton").onclick = clearSentProtocolRows;
   el("debugButton").onclick = exportDebug;
 }
@@ -488,37 +488,50 @@ function renderAll() {
     : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
   const unsentCount = records.filter((record) => !record.exportedAt).length;
   const sentCount = records.length - unsentCount;
-  const currentStack = getPendingRows();
+  const pendingRows = getPendingRows();
+  const pendingConfirmRows = getPendingConfirmationRows();
   const waitingCount = getWaitingNewRows().length;
   const newCsvButton = el("newCsvButton");
   const allCsvButton = el("allCsvButton");
   const clearSentButton = el("clearSentButton");
-  if (newCsvButton) {
-    if (currentStack.length) {
+
+  // Während eine CSV noch auf die Bestätigung wartet, werden dieselben zwei
+  // Exportbuttons kontextbezogen weiterverwendet. So entstehen keine
+  // zusätzlichen Exportaktionen und Begriffe wie "Stapel" sind nicht nötig.
+  if (pendingConfirmRows.length) {
+    if (newCsvButton) {
       newCsvButton.disabled = false;
-      newCsvButton.textContent = `Offenen Stapel senden (${currentStack.length})`;
-    } else {
+      newCsvButton.textContent = `In OneDrive gespeichert (${pendingConfirmRows.length})`;
+    }
+    if (allCsvButton) {
+      allCsvButton.disabled = !pendingRows.length;
+      allCsvButton.textContent = `CSV erneut senden (${pendingRows.length})`;
+    }
+  } else {
+    if (newCsvButton) {
       newCsvButton.disabled = !unsentCount;
       newCsvButton.textContent = unsentCount ? `Neue Teile senden (${unsentCount})` : "Keine neuen Teile";
     }
+    if (allCsvButton) {
+      allCsvButton.disabled = !records.length;
+      allCsvButton.textContent = records.length ? `Gesamtes Protokoll senden (${records.length})` : "Gesamtes Protokoll senden";
+    }
   }
-  if (allCsvButton) {
-    allCsvButton.disabled = !records.length;
-    allCsvButton.textContent = records.length ? `Gesamtes Protokoll senden (${records.length})` : "Gesamtes Protokoll senden";
-  }
+
   if (clearSentButton) {
     clearSentButton.disabled = !sentCount;
     clearSentButton.textContent = sentCount ? `Gesendete leeren (${sentCount})` : "Gesendete leeren";
   }
+
   const exportStatus = el("excelExportStatus");
   if (exportStatus) {
-    if (currentStack.length) {
+    if (pendingConfirmRows.length) {
       exportStatus.textContent = waitingCount
-        ? `Offener Stapel: ${currentStack.length} Teile · ${waitingCount} weitere neue Teile warten.`
-        : `Offener Stapel: ${currentStack.length} Teile · nach erfolgreichem Upload bestätigen.`;
+        ? `${pendingConfirmRows.length} Teile warten auf Bestätigung · ${waitingCount} neue Teile warten auf den nächsten Export.`
+        : `${pendingConfirmRows.length} Teile warten auf Bestätigung. Nach dem Speichern in OneDrive bitte bestätigen.`;
     } else {
       exportStatus.textContent = unsentCount
-        ? `${unsentCount} neue Teile sind noch nicht als gesendet bestätigt.`
+        ? `${unsentCount} neue Teile sind noch nicht gesendet.`
         : sentCount ? "Alle vorhandenen Teile sind als gesendet bestätigt." : "";
     }
   }
@@ -601,11 +614,17 @@ async function loadStoredRecords() {
 function getPendingRows() {
   const ids = new Set(pendingExport?.recordIds || []);
   if (!ids.size) return [];
+  return records.filter((record) => ids.has(record.id));
+}
+
+function getPendingConfirmationRows() {
+  const ids = new Set(pendingExport?.confirmRecordIds || pendingExport?.recordIds || []);
+  if (!ids.size) return [];
   return records.filter((record) => !record.exportedAt && ids.has(record.id));
 }
 
 function getWaitingNewRows() {
-  const pendingIds = new Set(getPendingRows().map((record) => record.id));
+  const pendingIds = new Set(getPendingConfirmationRows().map((record) => record.id));
   return records.filter((record) => !record.exportedAt && !pendingIds.has(record.id));
 }
 
@@ -614,14 +633,27 @@ function normalizePendingExport() {
     pendingExport = null;
     return;
   }
-  const rows = getPendingRows();
-  if (!rows.length) {
+
+  const availableIds = new Set(records.map((record) => record.id).filter(Boolean));
+  const recordIds = pendingExport.recordIds.filter((id) => availableIds.has(id));
+  const confirmRecordIds = (pendingExport.confirmRecordIds || pendingExport.recordIds)
+    .filter((id) => availableIds.has(id));
+
+  // Ist nichts mehr zu bestätigen, ist der Export erledigt. Das gilt auch
+  // nach einem Browser-Neustart oder einem bereits erfolgreich gespeicherten
+  // alten 0.16.17-Export.
+  const stillUnsent = new Set(records.filter((record) => !record.exportedAt).map((record) => record.id));
+  const openConfirmIds = confirmRecordIds.filter((id) => stillUnsent.has(id));
+  if (!recordIds.length || !openConfirmIds.length) {
     pendingExport = clearPendingExport();
     return;
   }
-  const recordIds = rows.map((record) => record.id).filter(Boolean);
-  if (recordIds.join("|") !== pendingExport.recordIds.join("|")) {
-    pendingExport = savePendingExport({ ...pendingExport, recordIds });
+
+  if (
+    recordIds.join("|") !== pendingExport.recordIds.join("|")
+    || openConfirmIds.join("|") !== (pendingExport.confirmRecordIds || pendingExport.recordIds).join("|")
+  ) {
+    pendingExport = savePendingExport({ ...pendingExport, recordIds, confirmRecordIds: openConfirmIds });
   }
 }
 
@@ -677,67 +709,99 @@ function renderLog() {
 }
 
 async function shareProtocolExport(mode = "new") {
-  let exportRows;
-  let exportDate = new Date();
-
-  if (mode === "all") {
-    // Gesamtexport ist immer ein Schnappschuss des aktuell sichtbaren
-    // Protokolls. Neue Scans nach dem Öffnen des Share-Sheets werden dadurch
-    // nicht nachträglich als gesendet markiert.
-    exportRows = [...records];
-  } else {
-    // "Neue Teile" arbeitet als echter Stapel. Solange ein gestarteter Stapel
-    // noch nicht als gespeichert bestätigt wurde, bleibt genau diese ID-Liste
-    // eingefroren. Später gescannte Teile warten auf den nächsten Stapel.
-    let stackRows = getPendingRows();
-    if (!stackRows.length) {
-      stackRows = records.filter((record) => !record.exportedAt);
-      if (!stackRows.length) return;
-      pendingExport = savePendingExport({
-        recordIds: stackRows.map((record) => record.id).filter(Boolean),
-        createdAt: new Date().toISOString()
-      });
-    }
-    exportRows = getPendingRows();
-    exportDate = new Date(pendingExport?.createdAt || Date.now());
-  }
+  const exportDate = new Date();
+  const exportRows = mode === "all"
+    ? [...records]
+    : records.filter((record) => !record.exportedAt);
 
   if (!exportRows.length) return;
-  const unsentIds = exportRows.filter((record) => !record.exportedAt).map((record) => record.id).filter(Boolean);
+
+  const confirmRecordIds = exportRows
+    .filter((record) => !record.exportedAt)
+    .map((record) => record.id)
+    .filter(Boolean);
+
+  // Der aktuelle Export wird VOR dem Öffnen des nativen Share-Sheets
+  // dauerhaft gespeichert. Android kann die Webseite während "Senden an"
+  // pausieren; dadurch bleibt der Bestätigungszustand beim Zurückkehren
+  // trotzdem zuverlässig erhalten.
+  if (confirmRecordIds.length) {
+    pendingExport = savePendingExport({
+      recordIds: exportRows.map((record) => record.id).filter(Boolean),
+      confirmRecordIds,
+      createdAt: exportDate.toISOString(),
+      mode,
+      awaitingConfirmation: true
+    });
+    renderAll();
+  }
+
+  const result = await exportRecords(exportRows, navigator, { date: exportDate });
+
+  // Nur ein ausdrücklich abgebrochener Share-Vorgang wird verworfen. Wenn
+  // Android die Seite beim Teilen pausiert und der Promise nicht sauber
+  // weiterläuft, bleibt der zuvor gespeicherte Zustand absichtlich bestehen.
+  if (result?.method === "cancelled" && pendingExport) {
+    pendingExport = clearPendingExport();
+  }
+
+  renderExportStatus(result);
+  renderAll();
+}
+
+async function resendPendingExport() {
+  const exportRows = getPendingRows();
+  if (!pendingExport || !exportRows.length) {
+    pendingExport = clearPendingExport();
+    renderAll();
+    return;
+  }
+
+  const exportDate = new Date(pendingExport.createdAt || Date.now());
   const result = await exportRecords(exportRows, navigator, { date: exportDate });
   renderExportStatus(result);
 
-  if ((result?.method === "share-csv" || result?.method === "download-csv") && unsentIds.length) {
-    const confirmed = confirm(`Wurde die CSV in OneDrive gespeichert?\n\nBei „OK“ werden ${unsentIds.length} neue Teile dieses Exports als gesendet markiert. Die Datensätze bleiben im lokalen Protokoll erhalten.`);
-    if (confirmed) {
-      try {
-        await markRecordsExported(unsentIds, new Date().toISOString());
-        if (mode === "new") {
-          pendingExport = clearPendingExport();
-        } else if (pendingExport?.recordIds?.some((id) => unsentIds.includes(id))) {
-          // Ein bestätigter Gesamtexport enthält auch den offenen Stapel.
-          pendingExport = clearPendingExport();
-        }
-        // Nach der Bestätigung immer aus dem persistenten Speicher neu laden.
-        // So kann kein alter In-Memory-Zähler weiterhin "Neue Teile (1)" zeigen.
-        records = await loadRecords();
-        normalizePendingExport();
-        renderAll();
-        const status = el("excelExportStatus");
-        const remaining = records.filter((record) => !record.exportedAt).length;
-        if (status) {
-          status.textContent = remaining
-            ? `${unsentIds.length} Teile als gesendet bestätigt · ${remaining} neue Teile bleiben für den nächsten Stapel.`
-            : `${unsentIds.length} Teile als gesendet bestätigt · keine neuen Teile offen.`;
-        }
-      } catch (error) {
-        alert(`Sendestatus konnte nicht gespeichert werden: ${safeError(error)}`);
-      }
-    } else {
-      renderAll();
-    }
-  } else {
+  if (result?.method === "cancelled") {
+    const status = el("excelExportStatus");
+    if (status) status.textContent = "Senden abgebrochen. Die noch nicht bestätigten Teile bleiben unverändert.";
+  }
+  renderAll();
+}
+
+async function confirmPendingExport() {
+  const confirmRows = getPendingConfirmationRows();
+  if (!pendingExport || !confirmRows.length) {
+    pendingExport = clearPendingExport();
     renderAll();
+    return;
+  }
+
+  // Diese Bestätigung wird direkt durch den Button-Klick ausgelöst und ist
+  // damit auch in mobilen Browsern zuverlässig. Sie hängt nicht mehr hinter
+  // einem asynchronen navigator.share()-Aufruf.
+  const confirmed = confirm(
+    `Wurde die CSV erfolgreich in OneDrive gespeichert?\n\n`
+    + `Bei „OK“ werden ${confirmRows.length} Teile als gesendet markiert.`
+  );
+  if (!confirmed) return;
+
+  const ids = confirmRows.map((record) => record.id).filter(Boolean);
+  try {
+    await markRecordsExported(ids, new Date().toISOString());
+    pendingExport = clearPendingExport();
+    records = await loadRecords();
+    normalizePendingExport();
+    renderAll();
+
+    const status = el("excelExportStatus");
+    const remaining = records.filter((record) => !record.exportedAt).length;
+    if (status) {
+      status.textContent = remaining
+        ? `${ids.length} Teile als gesendet bestätigt · ${remaining} neue Teile warten auf den nächsten Export.`
+        : `${ids.length} Teile als gesendet bestätigt · keine neuen Teile offen.`;
+    }
+  } catch (error) {
+    alert(`Sendestatus konnte nicht gespeichert werden: ${safeError(error)}`);
   }
 }
 

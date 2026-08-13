@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.16.17
+# LabelCheck PaddleOCR 0.16.18
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 
@@ -32,7 +32,7 @@ Jede übernommene Kontrolle entspricht einer Zeile. Enthalten sind Zeit, Ergebni
 
 Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.csv`.
 
-„Neue Teile senden“ arbeitet als Exportstapel: Beim ersten Senden werden genau die aktuell neuen, noch nicht bestätigten Teile eingefroren. Neue Scans werden nicht in einen offenen Stapel hineingemischt, sondern warten auf den nächsten Stapel. Nach der Rückkehr aus dem Teilen-Menü fragt die App, ob die CSV wirklich in OneDrive gespeichert wurde. Erst nach Bestätigung werden genau die in diesem Export enthaltenen neuen Teile als gesendet markiert. „Gesamtes Protokoll senden“ exportiert unabhängig davon den vollständigen lokalen Verlauf. Ungesendete Teile können in der Oberfläche nicht gelöscht werden.
+„Neue Teile senden“ exportiert genau die aktuell neuen, noch nicht bestätigten Teile. Direkt vor dem Öffnen des Teilen-Menüs merkt sich LabelCheck dauerhaft, welche Datensätze zu diesem Export gehören. Nach der Rückkehr werden dieselben zwei Exportbuttons automatisch zu „In OneDrive gespeichert“ und „CSV erneut senden“. Erst nach der ausdrücklichen Bestätigung werden genau diese Teile als gesendet markiert. Neue Scans, die währenddessen hinzukommen, warten getrennt auf den nächsten Export. „Gesamtes Protokoll senden“ exportiert den vollständigen lokalen Verlauf. Bereits bestätigte Einträge können über „Gesendete leeren“ entfernt werden; ungesendete Teile können nicht gelöscht werden.
 
 ## Profileditor
 
