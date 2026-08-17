@@ -1,4 +1,4 @@
-# LabelCheck PaddleOCR 0.16.18
+# LabelCheck PaddleOCR 0.16.20
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 
@@ -34,6 +34,15 @@ Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.csv`.
 
 „Neue Teile senden“ exportiert genau die aktuell neuen, noch nicht bestätigten Teile. Direkt vor dem Öffnen des Teilen-Menüs merkt sich LabelCheck dauerhaft, welche Datensätze zu diesem Export gehören. Nach der Rückkehr werden dieselben zwei Exportbuttons automatisch zu „In OneDrive gespeichert“ und „CSV erneut senden“. Erst nach der ausdrücklichen Bestätigung werden genau diese Teile als gesendet markiert. Neue Scans, die währenddessen hinzukommen, warten getrennt auf den nächsten Export. „Gesamtes Protokoll senden“ exportiert den vollständigen lokalen Verlauf. Bereits bestätigte Einträge können über „Gesendete leeren“ entfernt werden; ungesendete Teile können nicht gelöscht werden.
 
+
+## Bedienerprüfung und Feldsperren
+
+Wenn die Analyse den Status **„ÜBERPRÜFEN“** liefert, muss der Bediener die erkannten Werte kontrollieren und anschließend den Button **„Überprüft“** drücken. Erst danach kann der Datensatz übernommen werden. Eine Bedienerprüfung wird zusätzlich ausgelöst, sobald ein erkannter Feldwert eine Erkennungsquote unter 60 % besitzt.
+
+Innerhalb eines einzelnen Labels darf derselbe Feldinhalt nur einmal verwendet werden. Erkennt die Zuordnung denselben Wert für zwei Felder, bleibt nur die plausiblere Zuordnung bestehen; die zweite Belegung wird gesperrt und als Prüfgrund markiert. Auch bei manueller Eingabe wird eine identische Doppelbelegung verhindert.
+
+Für Gewichte gilt profilübergreifend eine zusätzliche Plausibilitätsgrenze: Vor dem Dezimaltrennzeichen sind maximal fünf Ziffern zulässig. Nachkommastellen bleiben erlaubt, z. B. `99999,75 KG`. Längere Ganzzahlanteile werden nicht als Gewicht übernommen.
+
 ## Profileditor
 
 Masterbilder und OCR-Ergebnisse werden profilbezogen in IndexedDB auf dem jeweiligen Browser gespeichert. Sie werden nicht in die JSON eingebettet und nicht auf GitHub hochgeladen.
@@ -55,7 +64,7 @@ Ein Produktfoto wird nur als Henkel-Produktlabel akzeptiert, wenn der Henkel-Ank
 
 ## Kamera
 
-Die native Kamera-App wird über Datei-Inputs mit `capture="environment"` geöffnet. Vor dem Öffnen muss das Smartphone bereits quer gehalten werden. Nach der Aufnahme prüft LabelCheck zusätzlich die tatsächliche Bildausrichtung einschließlich JPEG-EXIF-Rotation; Hochkantfotos werden vor der OCR abgewiesen. Die Wahl der konkreten Front-/Rückkamera innerhalb einer externen Kamera-App bleibt eine Entscheidung des Browsers bzw. Betriebssystems.
+Die native Kamera-App wird über Datei-Inputs mit `capture="environment"` geöffnet. Die Kamera darf unabhängig von der aktuellen Gerätehaltung öffnen. Erst nach der Aufnahme prüft LabelCheck die tatsächliche Bildausrichtung einschließlich JPEG-EXIF-Rotation; Hochkantfotos werden vor der OCR abgewiesen. Die Wahl der konkreten Front-/Rückkamera innerhalb einer externen Kamera-App bleibt eine Entscheidung des Browsers bzw. Betriebssystems.
 
 
 ## Manuelle Korrekturen im CSV-Protokoll

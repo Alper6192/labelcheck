@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { autoSelectProfile, extractProfileFields, normalizeFieldValue, normalizedWeight } from "../src/profile-engine.js";
+import { applyManualValue, autoSelectProfile, extractProfileFields, isWeightWithinGlobalLimit, normalizeFieldValue, normalizedWeight } from "../src/profile-engine.js";
 import { compareExtractions } from "../src/comparison.js";
 
 const config = JSON.parse(fs.readFileSync(new URL("./fixtures/extraction-profiles.json", import.meta.url), "utf8"));
@@ -767,4 +767,92 @@ test("Fehlende IDH und fehlendes Gewicht blockieren die Batch-Freigabe nicht", (
   const right = { fields: { batch: { value: "D562808695", valid: true, required: true, compare: true } }};
   const comparison = compareExtractions(left, right);
   assert.equal(comparison.status, "released");
+});
+
+
+test("Erkennungsquote unter 60 Prozent erzwingt Bedienerprüfung", () => {
+  const left = { fields: {
+    batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" },
+    weight: { value: "25 KG", valid: true, confidence: 0.59, source: "ocr" }
+  }};
+  const right = { fields: {
+    batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" }
+  }};
+  const comparison = compareExtractions(left, right);
+  assert.equal(comparison.status, "review");
+  assert.match(comparison.message, /ÜBERPRÜFEN/);
+  assert.match(comparison.message, /Gewicht Produkt/);
+  assert.match(comparison.message, /59 %/);
+});
+
+test("60 Prozent Erkennungsquote löst noch keine zusätzliche Prüfung aus", () => {
+  const left = { fields: {
+    batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" },
+    weight: { value: "25 KG", valid: true, confidence: 0.60, source: "ocr" }
+  }};
+  const right = { fields: {
+    batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" }
+  }};
+  const comparison = compareExtractions(left, right);
+  assert.equal(comparison.status, "released");
+});
+
+test("identischer Inhalt kann innerhalb eines Labels nur einem Feld zugeordnet werden", () => {
+  const profile = {
+    id: "DUP", name: "Duplicate", role: "vda", active: true,
+    anchor: { aliases: ["ANKER"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.2],[0.1,0.2]] },
+    fields: [
+      { key: "weight", label: "Gewicht", regex: "^\\d{5}$", sourceRegex: "^\\d{5}$", normalizer: "digits", poly: [[0.2,0.35],[0.35,0.35],[0.35,0.45],[0.2,0.45]] },
+      { key: "idh", label: "IDH", regex: "^\\d{5}$", sourceRegex: "^\\d{5}$", normalizer: "digits", poly: [[0.2,0.35],[0.35,0.35],[0.35,0.45],[0.2,0.45]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("ANKER", .99, [[100,50],[300,50],[300,100],[100,100]]),
+    item("41584", .99, [[200,175],[350,175],[350,225],[200,225]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.idh.value, "41584");
+  assert.equal(result.fields.weight.value, "");
+  assert.equal(result.fields.weight.source, "duplicate-blocked");
+  assert.equal(result.validationIssues.some((issue) => issue.type === "duplicate"), true);
+});
+
+test("manuelle Doppelbelegung innerhalb eines Labels wird verhindert", () => {
+  const extraction = {
+    profile: { fields: [
+      { key: "idh", regex: "^\\d{5}$", normalizer: "digits" },
+      { key: "weight", regex: "^\\d{5}$", normalizer: "digits" }
+    ] },
+    fields: {
+      idh: { key: "idh", label: "IDH", value: "41584", valid: true, source: "ocr" },
+      weight: { key: "weight", label: "Gewicht", value: "", valid: false, source: "missing" }
+    }
+  };
+  const result = applyManualValue(extraction, "weight", "41584");
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "duplicate");
+  assert.equal(extraction.fields.weight.value, "");
+});
+
+test("Gewicht erlaubt maximal fünf Ziffern vor dem Dezimaltrennzeichen", () => {
+  assert.equal(isWeightWithinGlobalLimit("99999 KG"), true);
+  assert.equal(isWeightWithinGlobalLimit("99999,75 KG"), true);
+  assert.equal(isWeightWithinGlobalLimit("99999.75 KG"), true);
+  assert.equal(isWeightWithinGlobalLimit("100000 KG"), false);
+});
+
+test("sechsstellige Zahl wird nie als Gewicht übernommen", () => {
+  const profile = {
+    id: "WEIGHTLIMIT", name: "Weight limit", role: "vda", active: true,
+    anchor: { aliases: ["ANKER"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.2],[0.1,0.2]] },
+    fields: [
+      { key: "weight", label: "Gewicht", regex: "^\\d+$", sourceRegex: "^\\d+$", normalizer: "digits", poly: [[0.2,0.35],[0.35,0.35],[0.35,0.45],[0.2,0.45]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("ANKER", .99, [[100,50],[300,50],[300,100],[100,100]]),
+    item("123456", .99, [[200,175],[350,175],[350,225],[200,225]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.weight.value, "");
+  assert.equal(result.fields.weight.source, "weight-blocked");
+  assert.equal(result.validationIssues.some((issue) => issue.type === "weight-limit"), true);
 });

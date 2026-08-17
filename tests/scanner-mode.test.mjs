@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const source = fs.readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
 test("neues Foto setzt das Layoutprofil auf Automatisch", () => {
   assert.match(source, /selectedProfileId:\s*""/);
@@ -45,7 +46,7 @@ test("Bildqualität wird nur als Hinweis dargestellt", () => {
 
 test("Speichern wird nach einer erfolgreichen Übernahme gesperrt", () => {
   assert.match(source, /currentSaved\s*=\s*true/);
-  assert.match(source, /saveButton\.disabled\s*=\s*!comparison \|\| currentSaved \|\| saveInProgress/);
+  assert.match(source, /saveButton\.disabled\s*=\s*!comparison \|\| \(reviewRequired && !reviewConfirmed\) \|\| currentSaved \|\| saveInProgress/);
   assert.match(source, /Datensatz übernommen/);
 });
 
@@ -55,4 +56,13 @@ test("Produktfoto wird nur mit Henkel-Anker und gültiger Batch akzeptiert", () 
   assert.match(source, /anchorScore >= 0\.55/);
   assert.match(source, /batch\?\.value && batch\?\.valid/);
   assert.match(source, /Kein gültiges Produktlabel erkannt/);
+});
+
+
+test("Prüffälle müssen vom Bediener bestätigt werden, bevor gespeichert werden kann", () => {
+  assert.match(html, /id="reviewButton"[^>]*>Überprüft<\/button>/);
+  assert.match(source, /comparison\?\.status === "review"/);
+  assert.match(source, /confirmOperatorReview/);
+  assert.match(source, /reviewConfirmed = true/);
+  assert.match(source, /reviewRequired && !reviewConfirmed/);
 });

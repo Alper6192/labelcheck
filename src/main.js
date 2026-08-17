@@ -27,6 +27,8 @@ let pendingExport = null;
 let comparison = null;
 let currentSaved = false;
 let saveInProgress = false;
+let reviewConfirmed = false;
+let reviewConfirmedAt = "";
 const slots = { product: createSlot("product"), vda: createSlot("vda") };
 const el = (id) => document.getElementById(id);
 
@@ -97,6 +99,7 @@ function setupSlot(key) {
 function setupActions() {
   el("initializeButton").onclick = () => initializeEngine(true);
   el("saveButton").onclick = storeCurrent;
+  el("reviewButton").onclick = confirmOperatorReview;
   el("newCsvButton").onclick = () => pendingExport ? confirmPendingExport() : shareProtocolExport("new");
   el("allCsvButton").onclick = () => pendingExport ? resendPendingExport() : shareProtocolExport("all");
   el("clearSentButton").onclick = clearSentProtocolRows;
@@ -190,6 +193,7 @@ async function loadFile(key, file) {
   el(`${key}Profile`).value = "";
   comparison = null;
   currentSaved = false;
+  resetOperatorReview();
   renderAll();
 
   try {
@@ -261,6 +265,7 @@ async function analyzeSlot(key) {
   const slot = slots[key];
   if (!slot.prepared) return;
   currentSaved = false;
+  resetOperatorReview();
 
   // Auch bei "Erneut analysieren" bleibt der QR-Pfad erhalten. Bei manueller
   // Tesla-Auswahl wird nur dieses QR-Profil geprüft; im Automatikmodus alle
@@ -399,6 +404,7 @@ async function selectProfile(key, id) {
   slot.selectedProfileId = id || "";
   slot.profile = id ? profiles.find((profile) => profile.id === id) || null : null;
   currentSaved = false;
+  resetOperatorReview();
 
   if (!slot.prepared) {
     renderAll();
@@ -469,20 +475,58 @@ async function selectProfile(key, id) {
 
 function editField(key, field, value) {
   const slot = slots[key];
-  applyManualValue(slot.extraction, field, value);
+  const applied = applyManualValue(slot.extraction, field, value);
+  if (applied?.ok === false) {
+    if (applied.reason === "weight-too-long") {
+      alert("Gewicht nicht übernommen: Vor dem Komma dürfen höchstens 5 Ziffern stehen.");
+    } else if (applied.reason === "duplicate") {
+      alert(`Wert nicht übernommen: Derselbe Inhalt ist bereits im Feld „${applied.duplicateLabel}“ dieses Labels eingetragen.`);
+    }
+    renderAll();
+    return;
+  }
   slot.manual = true;
   currentSaved = false;
+  resetOperatorReview();
   refreshComparison();
   renderAll();
+}
+
+function resetOperatorReview() {
+  reviewConfirmed = false;
+  reviewConfirmedAt = "";
+}
+
+function confirmOperatorReview() {
+  if (comparison?.status !== "review") return;
+  reviewConfirmed = true;
+  reviewConfirmedAt = new Date().toISOString();
+  currentSaved = false;
+  renderAll();
+}
+
+function displayedComparison() {
+  if (comparison?.status !== "review" || !reviewConfirmed) return comparison;
+  return {
+    ...comparison,
+    message: `ÜBERPRÜFT – Bedienerprüfung bestätigt. ${comparison.message.replace(/^ÜBERPRÜFEN\s*[–-]\s*/i, "")}`
+  };
 }
 
 function renderAll() {
   renderSlot("product");
   renderSlot("vda");
-  renderComparison(el("comparison"), comparison);
+  renderComparison(el("comparison"), displayedComparison());
   renderLog();
   const saveButton = el("saveButton");
-  saveButton.disabled = !comparison || currentSaved || saveInProgress;
+  const reviewButton = el("reviewButton");
+  const reviewRequired = comparison?.status === "review";
+  if (reviewButton) {
+    reviewButton.hidden = !reviewRequired;
+    reviewButton.disabled = !reviewRequired || reviewConfirmed;
+    reviewButton.textContent = reviewConfirmed ? "✓ Überprüft" : "Überprüft";
+  }
+  saveButton.disabled = !comparison || (reviewRequired && !reviewConfirmed) || currentSaved || saveInProgress;
   saveButton.textContent = saveInProgress
     ? "Wird gespeichert …"
     : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
@@ -567,7 +611,7 @@ function renderSlot(key) {
 }
 
 async function storeCurrent() {
-  if (!comparison || currentSaved || saveInProgress) return;
+  if (!comparison || (comparison.status === "review" && !reviewConfirmed) || currentSaved || saveInProgress) return;
   saveInProgress = true;
   renderAll();
   const corrections = [
@@ -577,7 +621,9 @@ async function storeCurrent() {
   const record = {
     timestamp: new Date().toISOString(),
     status: comparison.status,
-    result: comparison.message,
+    result: displayedComparison()?.message || comparison.message,
+    reviewRequired: comparison.status === "review",
+    reviewedAt: comparison.status === "review" ? reviewConfirmedAt : "",
     productProfile: slots.product.profile?.name || "",
     vdaProfile: slots.vda.profile?.name || "",
     product: values(slots.product.extraction),
@@ -679,6 +725,7 @@ function refreshComparison() {
   comparison = slots.product.extraction && slots.vda.extraction
     ? compareExtractions(slots.product.extraction, slots.vda.extraction)
     : null;
+  if (comparison?.status !== "review") resetOperatorReview();
 }
 
 function qrResult(slot, qrMatch) {

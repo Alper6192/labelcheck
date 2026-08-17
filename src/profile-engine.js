@@ -72,7 +72,16 @@ export function extractProfileFields(items, profile, imageSize) {
     }
 
     const raw = candidate?.text || "";
-    const value = normalizeFieldValue(field.key, raw, field);
+    let value = normalizeFieldValue(field.key, raw, field);
+    let rejectedReason = "";
+    if (field.key === "weight" && value && !isWeightWithinGlobalLimit(value)) {
+      // Globale Plausibilitätsgrenze für alle Profile: Vor dem Dezimaltrennzeichen
+      // sind höchstens fünf Ziffern zulässig. So kann z. B. eine lange
+      // Lieferscheinnummer nie als Gewicht im Feld stehen.
+      value = "";
+      source = "weight-blocked";
+      rejectedReason = "Gewicht mit mehr als 5 Ziffern verworfen";
+    }
     const valid = Boolean(value && validateField(value, field.regex));
     fields[field.key] = {
       key: field.key,
@@ -80,16 +89,19 @@ export function extractProfileFields(items, profile, imageSize) {
       value,
       raw,
       confidence: Number(candidate?.score || 0),
+      selectionScore: Number(candidate?.selectionScore ?? candidate?.score ?? 0),
       valid,
       required: Boolean(field.required),
       compare: Boolean(field.compare),
       source,
+      rejectedReason,
       poly: candidate?.poly || expected
     };
     overlays.push({ key: field.key, label: field.label || field.key, poly: candidate?.poly || expected, item: candidate || null });
   }
 
-  return { profile, anchorMatch, transform, fields, overlays, warning: "" };
+  const duplicateIssues = enforceUniqueFieldValues(fields);
+  return { profile, anchorMatch, transform, fields, overlays, warning: "", validationIssues: duplicateIssues };
 }
 
 export function extractQrProfileFields(profile, qrMatch) {
@@ -97,17 +109,26 @@ export function extractQrProfileFields(profile, qrMatch) {
   const fields = {};
   for (const field of profile.fields || []) {
     const raw = String(qrMatch.parsed.fields?.[field.key] || "");
-    const value = normalizeFieldValue(field.key, raw, field);
+    let value = normalizeFieldValue(field.key, raw, field);
+    let source = raw ? "qr" : "missing";
+    let rejectedReason = "";
+    if (field.key === "weight" && value && !isWeightWithinGlobalLimit(value)) {
+      value = "";
+      source = "weight-blocked";
+      rejectedReason = "Gewicht mit mehr als 5 Ziffern verworfen";
+    }
     fields[field.key] = {
       key: field.key,
       label: field.label || field.key,
       value,
       raw,
       confidence: raw ? 1 : 0,
+      selectionScore: raw ? 1 : 0,
       valid: Boolean(value && validateField(value, field.regex)),
       required: Boolean(field.required),
       compare: Boolean(field.compare),
-      source: raw ? "qr" : "missing",
+      source,
+      rejectedReason,
       poly: qrMatch.poly || []
     };
   }
@@ -120,18 +141,34 @@ export function extractQrProfileFields(profile, qrMatch) {
       ? [{ key: "anchor", label: "QR", poly: qrMatch.poly, item: null }]
       : [],
     warning: "",
+    validationIssues: enforceUniqueFieldValues(fields),
     qr: { parser: qrMatch.parsed.parser, raw: qrMatch.raw }
   };
 }
 
 export function applyManualValue(extraction, key, value) {
   const field = extraction?.fields?.[key];
-  if (!field) return;
+  if (!field) return { ok: false, reason: "missing-field" };
   const configField = extraction.profile?.fields?.find((entry) => entry.key === key) || {};
-  field.value = normalizeFieldValue(key, value, configField);
+  const normalized = normalizeFieldValue(key, value, configField);
+
+  if (key === "weight" && normalized && !isWeightWithinGlobalLimit(normalized)) {
+    return { ok: false, reason: "weight-too-long" };
+  }
+
+  const duplicate = findDuplicateField(extraction?.fields, key, normalized);
+  if (duplicate) {
+    return { ok: false, reason: "duplicate", duplicateKey: duplicate.key, duplicateLabel: duplicate.label || duplicate.key };
+  }
+
+  field.value = normalized;
   field.raw = value;
   field.source = "manual";
+  field.rejectedReason = "";
+  field.blockedDuplicateOf = "";
   field.valid = Boolean(field.value && validateField(field.value, configField.regex));
+  extraction.validationIssues = collectValidationIssues(extraction.fields);
+  return { ok: true };
 }
 
 export function normalizeFieldValue(key, value, field = {}) {
@@ -182,6 +219,71 @@ export function normalizeFieldValue(key, value, field = {}) {
   return text;
 }
 
+export function isWeightWithinGlobalLimit(value) {
+  const prepared = String(value || "").trim().replace(/,/g, ".");
+  const match = prepared.match(/(\d+)(?:\.\d+)?/);
+  if (!match) return false;
+  // Nachkommastellen sind erlaubt; begrenzt wird nur die Zahl vor dem Komma/Punkt.
+  return match[1].length <= 5;
+}
+
+function canonicalFieldValue(value) {
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function findDuplicateField(fields, currentKey, value) {
+  const wanted = canonicalFieldValue(value);
+  if (!wanted) return null;
+  return Object.entries(fields || {})
+    .filter(([key]) => key !== currentKey)
+    .map(([, field]) => field)
+    .find((field) => canonicalFieldValue(field?.value) === wanted) || null;
+}
+
+function fieldAssignmentRank(field) {
+  const keyPriority = { batch: 5, delivery_note: 4, idh: 3, drum_number: 2, weight: 1 };
+  const validity = field?.valid ? 100 : 0;
+  const selection = Number(field?.selectionScore ?? field?.confidence ?? 0) * 10;
+  return validity + selection + Number(keyPriority[field?.key] || 0) / 100;
+}
+
+function enforceUniqueFieldValues(fields) {
+  const groups = new Map();
+  for (const field of Object.values(fields || {})) {
+    const value = canonicalFieldValue(field?.value);
+    if (!value) continue;
+    if (!groups.has(value)) groups.set(value, []);
+    groups.get(value).push(field);
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const winner = [...group].sort((left, right) => fieldAssignmentRank(right) - fieldAssignmentRank(left))[0];
+    for (const field of group) {
+      if (field === winner) continue;
+      field.value = "";
+      field.valid = false;
+      field.source = "duplicate-blocked";
+      field.blockedDuplicateOf = winner.key;
+      field.rejectedReason = `Doppelbelegung mit ${winner.label || winner.key} verhindert`;
+    }
+  }
+
+  return collectValidationIssues(fields);
+}
+
+function collectValidationIssues(fields) {
+  const issues = [];
+  for (const field of Object.values(fields || {})) {
+    if (field?.source === "duplicate-blocked") {
+      issues.push({ type: "duplicate", field: field.key, otherField: field.blockedDuplicateOf || "", message: field.rejectedReason || "Doppelbelegung verhindert" });
+    } else if (field?.source === "weight-blocked") {
+      issues.push({ type: "weight-limit", field: field.key, message: field.rejectedReason || "Unplausibles Gewicht verworfen" });
+    }
+  }
+  return issues;
+}
+
 export function normalizedWeight(value) {
   const prepared = String(value || "")
     .toUpperCase()
@@ -205,7 +307,7 @@ export function validateField(value, regex) {
 }
 
 function emptyExtraction() {
-  return { profile: null, anchorMatch: null, transform: null, fields: {}, overlays: [], warning: "" };
+  return { profile: null, anchorMatch: null, transform: null, fields: {}, overlays: [], warning: "", validationIssues: [] };
 }
 
 function findProfileAnchor(items, profile) {

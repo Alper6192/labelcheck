@@ -1,3 +1,13 @@
+# LabelCheck PaddleOCR 0.16.20
+
+- Neuer Bedienerschritt „Überprüft“: Bei Status „ÜBERPRÜFEN“ ist die Datensatzübernahme gesperrt, bis der Bediener die Prüfung bestätigt.
+- Erkennungsquote unter 60 % löst automatisch „ÜBERPRÜFEN“ aus und nennt die betroffenen Felder.
+- Doppelte Feldinhalte innerhalb desselben Labels werden verhindert; derselbe Wert kann nicht gleichzeitig z. B. Lieferscheinnummer und Gewicht sein.
+- Manuelle Eingaben werden ebenfalls gegen identische Doppelbelegungen geprüft.
+- Gewicht profilübergreifend auf maximal fünf Ziffern vor dem Dezimaltrennzeichen begrenzt; Nachkommastellen bleiben zulässig.
+- Unplausible Gewichte und verhinderte Doppelbelegungen werden als Prüfgrund gekennzeichnet.
+- Profil-JSON bleibt byte-identisch zum freigegebenen 0.16.7-Master.
+
 # LabelCheck PaddleOCR 0.16.19
 
 - CSV-Spalte „Manuell korrigiert“ nennt jetzt konkret die manuell geänderten Felder statt nur Ja/Nein.
