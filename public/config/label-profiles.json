@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "0.17.1",
-  "exportedAt": "2026-08-17T11:15:28.221364Z",
+  "exportedAt": "2026-08-17T12:11:17.920Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1073,7 +1073,7 @@
           "compare": true,
           "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
           "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "normalizer": "weight",
+          "normalizer": "text",
           "poly": [
             [
               0.6337272727272728,
@@ -1092,7 +1092,20 @@
               0.3648888888888889
             ]
           ],
-          "digits": 4
+          "digits": 4,
+          "locator": {
+            "aliases": [
+              "Quantity"
+            ],
+            "direction": "right",
+            "maxDistance": 7,
+            "minAliasScore": 0.72,
+            "strict": false,
+            "preferRightmost": false,
+            "preferLeftmost": false,
+            "preferUnit": false,
+            "preferBatch": false
+          }
         },
         {
           "key": "delivery_note",
