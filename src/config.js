@@ -1,4 +1,4 @@
-export const APP_VERSION = "0.16.21";
+export const APP_VERSION = "0.16.22";
 
 export const MODEL_OPTIONS = {
   standard: {

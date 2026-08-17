@@ -21,7 +21,14 @@ export function compareExtractions(product, vda) {
     ...collectValidationIssues(product, "Produkt"),
     ...collectValidationIssues(vda, "VDA")
   ];
-  const needsReview = extractionIssue || batchIssue || rowIssue || lowConfidenceFields.length > 0 || validationIssues.length > 0;
+  const manualFields = [
+    ...collectManualFields(product, "Produkt"),
+    ...collectManualFields(vda, "VDA")
+  ];
+  // Jede manuelle Eingabe verlangt eine ausdrückliche Bedienerbestätigung.
+  // Dadurch wird eine eventuell daraus entstehende Batch-Abweichung erst nach
+  // Klick auf „Überprüft“ als endgültiges Ergebnis angezeigt.
+  const needsReview = extractionIssue || batchIssue || rowIssue || lowConfidenceFields.length > 0 || validationIssues.length > 0 || manualFields.length > 0;
 
   return {
     released: !needsReview && !mismatch,
@@ -30,9 +37,10 @@ export function compareExtractions(product, vda) {
     rows,
     lowConfidenceFields,
     validationIssues,
+    manualFields,
     reviewRequired: needsReview,
     message: needsReview
-      ? reviewMessage({ extractionIssue, batchIssue: batchIssue || rowIssue, lowConfidenceFields, validationIssues })
+      ? reviewMessage({ extractionIssue, batchIssue: batchIssue || rowIssue, lowConfidenceFields, validationIssues, manualFields })
       : mismatch
         ? "NICHT FREIGEGEBEN – Batchnummern weichen ab."
         : "FREIGEGEBEN – Batchnummer stimmt überein."
@@ -83,7 +91,24 @@ function collectValidationIssues(extraction, sideLabel) {
   return (extraction?.validationIssues || []).map((issue) => ({ ...issue, side: sideLabel }));
 }
 
-function reviewMessage({ extractionIssue, batchIssue, lowConfidenceFields, validationIssues }) {
+function collectManualFields(extraction, sideLabel) {
+  const labels = {
+    batch: "Batch",
+    idh: "IDH",
+    weight: "Gewicht",
+    delivery_note: "Lieferscheinnummer",
+    drum_number: "Fassnummer"
+  };
+  return Object.entries(extraction?.fields || {})
+    .filter(([, field]) => field?.source === "manual")
+    .map(([key, field]) => ({
+      key,
+      side: sideLabel,
+      label: `${labels[key] || field.label || key} ${sideLabel}`
+    }));
+}
+
+function reviewMessage({ extractionIssue, batchIssue, lowConfidenceFields, validationIssues, manualFields }) {
   const reasons = [];
   if (batchIssue) reasons.push("Batchnummer fehlt bzw. ist unsicher");
   else if (extractionIssue) reasons.push("Erkennung ist unvollständig oder unsicher");
@@ -100,6 +125,10 @@ function reviewMessage({ extractionIssue, batchIssue, lowConfidenceFields, valid
     const weightCount = validationIssues.filter((issue) => issue.type === "weight-limit").length;
     if (duplicateCount) reasons.push("doppelte Feldbelegung wurde verhindert");
     if (weightCount) reasons.push("unplausibles Gewicht wurde verworfen");
+  }
+
+  if (manualFields.length) {
+    reasons.push(`manuell eingegeben: ${manualFields.map((field) => field.label).join(", ")}`);
   }
 
   return `ÜBERPRÜFEN – ${reasons.join(" · ") || "erkannte Werte kontrollieren"}.`;

@@ -73,3 +73,10 @@ test("Bedienerprüfung lässt Batch-Abweichung rot und nicht freigegeben", () =>
   assert.match(source, /NICHT FREIGEGEBEN – Batchnummern weichen ab\. · ✓ Vom Bediener überprüft\./);
   assert.match(source, /status:\s*finalComparison\?\.status \|\| comparison\.status/);
 });
+
+
+test("nach Bedienerprüfung wird bei gleicher Batch endgültig freigegeben", () => {
+  assert.match(source, /batchRow\?\.status === "match"/);
+  assert.match(source, /status:\s*"released"/);
+  assert.match(source, /FREIGEGEBEN – Batchnummer stimmt überein\. · ✓ Vom Bediener überprüft\./);
+});

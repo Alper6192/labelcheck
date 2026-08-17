@@ -810,6 +810,35 @@ test("60 Prozent Erkennungsquote löst noch keine zusätzliche Prüfung aus", ()
   assert.equal(comparison.status, "released");
 });
 
+
+test("manuelle Eingabe erzwingt vor der endgültigen Batchentscheidung eine Bedienerprüfung", () => {
+  const left = { fields: {
+    batch: { value: "D562808695", valid: true, confidence: 1, source: "manual" }
+  }};
+  const right = { fields: {
+    batch: { value: "D562808696", valid: true, confidence: 0.99, source: "ocr" }
+  }};
+  const comparison = compareExtractions(left, right);
+  assert.equal(comparison.status, "review");
+  assert.equal(comparison.batchMismatch, true);
+  assert.equal(comparison.manualFields.length, 1);
+  assert.match(comparison.message, /ÜBERPRÜFEN/);
+  assert.match(comparison.message, /manuell eingegeben: Batch Produkt/);
+  assert.doesNotMatch(comparison.message, /NICHT FREIGEGEBEN/);
+});
+
+test("auch manuelle Eingabe bei gleicher Batch verlangt Bedienerprüfung", () => {
+  const left = { fields: {
+    batch: { value: "D562808695", valid: true, confidence: 1, source: "manual" }
+  }};
+  const right = { fields: {
+    batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" }
+  }};
+  const comparison = compareExtractions(left, right);
+  assert.equal(comparison.status, "review");
+  assert.equal(comparison.batchMismatch, false);
+});
+
 test("identischer Inhalt kann innerhalb eines Labels nur einem Feld zugeordnet werden", () => {
   const profile = {
     id: "DUP", name: "Duplicate", role: "vda", active: true,

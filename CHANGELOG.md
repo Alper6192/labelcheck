@@ -1,6 +1,6 @@
-# LabelCheck PaddleOCR 0.16.21
+# LabelCheck PaddleOCR 0.16.22
 
-## 0.16.21
+## 0.16.22
 
 - Bedienerprüfung ändert eine echte Batch-Abweichung nicht mehr in einen neutralen Prüfstatus.
 - Nach Klick auf „Überprüft“ bleibt eine abweichende Batch **rot** und wird als `NICHT FREIGEGEBEN` angezeigt.

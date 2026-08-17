@@ -508,10 +508,12 @@ function confirmOperatorReview() {
 function displayedComparison() {
   if (comparison?.status !== "review" || !reviewConfirmed) return comparison;
 
-  // Eine Bedienerprüfung bestätigt nur, dass der Fall kontrolliert wurde.
-  // Sie darf eine echte Batch-Abweichung niemals in einen neutralen Prüfstatus
-  // oder eine Freigabe verwandeln. Eine abweichende Batch bleibt rot.
-  if (comparison.batchMismatch || comparison.rows?.some((row) => row.key === "batch" && row.status === "mismatch")) {
+  const batchRow = comparison.rows?.find((row) => row.key === "batch");
+
+  // Erst die ausdrückliche Bedienerbestätigung macht aus einem Prüffall ein
+  // endgültiges Ergebnis. Das gilt insbesondere nach manuellen Eingaben:
+  // vorher bleibt der Banner gelb „ÜBERPRÜFEN“, danach entscheidet die Batch.
+  if (comparison.batchMismatch || batchRow?.status === "mismatch") {
     return {
       ...comparison,
       released: false,
@@ -520,8 +522,18 @@ function displayedComparison() {
     };
   }
 
+  if (batchRow?.status === "match") {
+    return {
+      ...comparison,
+      released: true,
+      status: "released",
+      message: "FREIGEGEBEN – Batchnummer stimmt überein. · ✓ Vom Bediener überprüft."
+    };
+  }
+
   return {
     ...comparison,
+    released: false,
     message: `ÜBERPRÜFT – Bedienerprüfung bestätigt. ${comparison.message.replace(/^ÜBERPRÜFEN\s*[–-]\s*/i, "")}`
   };
 }
