@@ -1,3 +1,18 @@
+# LabelCheck PaddleOCR 0.17.0
+
+## 0.17.0 – vollständig konfigurationsgesteuerte Labelprofile
+
+- Großer Architekturumbau für den standortunabhängigen Einsatz: Die Scanner-Runtime enthält keine Sonderverzweigungen mehr auf konkrete Profil-IDs.
+- `label-profiles.json` auf Schema 3 erweitert und zur zentralen Quelle aller labelabhängigen Erkennungsregeln gemacht.
+- Bestehende profilabhängige Sonderlogiken in allgemeine JSON-Strategien überführt, ohne die bisherige Erkennungsleistung aufzugeben.
+- Erweiterter Profileditor kann Profilerkennung, Ankerlokalisierung/-skalierung, Validierung, Feldstrategien, Suchparameter und Locator-Regeln konfigurieren.
+- OCR-Strategien: Standard, Gewicht mit Einheit, Netto aus Zahlenpaar, Zahlen-Kombizeile und Quantity-Gewicht.
+- QR-Verarbeitung vollständig generisch: Suchbereiche, Feld-RegEx, Capture-Gruppen, Sekundärwerte, Templates, Ersetzungen und QR-Pflichtfelder kommen aus der JSON.
+- Neue QR-Formate benötigen keinen kundenspezifischen JavaScript-Parser mehr und können im Editor am Masterbild getestet werden.
+- Labelvalidierung ist auch für QR-Profile im Editor konfigurierbar.
+- Profilauswahl berücksichtigt die im Editor konfigurierte Mindest-Ankerquote direkt; 0,55 bleibt lediglich der Standardwert.
+- Alle Bediener-, Freigabe-, Kamera-, Protokoll- und CSV-Funktionen aus 0.16.22 bleiben erhalten.
+
 # LabelCheck PaddleOCR 0.16.22
 
 ## 0.16.22

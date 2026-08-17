@@ -2,9 +2,8 @@ import jsQR from "jsqr";
 import { parseQrPayload } from "./qr-parser.js";
 
 /**
- * Prüft ausschließlich Profile, die source.type === "qr" verwenden.
- * Für Tesla wird zuerst gezielt der linke untere Bereich untersucht, damit der
- * deutlich größere QR-Code rechts nicht versehentlich gewählt wird.
+ * Prüft ausschließlich Profile mit source.type === "qr". Suchbereiche und
+ * Parserregeln stammen vollständig aus der Profilkonfiguration.
  */
 export function detectQrProfile(canvas, profiles, role = "vda") {
   if (!canvas?.width || !canvas?.height) return null;
@@ -13,8 +12,7 @@ export function detectQrProfile(canvas, profiles, role = "vda") {
   );
 
   for (const profile of eligible) {
-    const regions = regionsForProfile(profile);
-    for (const region of regions) {
+    for (const region of regionsForProfile(profile)) {
       const decoded = decodeRegion(canvas, region);
       if (!decoded?.data) continue;
       const parsed = parseQrPayload(profile.source?.parser, decoded.data);
@@ -56,14 +54,8 @@ export function decodeRegion(canvas, region) {
 }
 
 function regionsForProfile(profile) {
-  const region = String(profile.source?.region || "").toLowerCase();
-  if (region === "lower-left") {
-    return [
-      { x: 0, y: 0.48, width: 0.42, height: 0.48 },
-      { x: 0, y: 0.34, width: 0.58, height: 0.66 }
-    ];
-  }
-  return [{ x: 0, y: 0, width: 1, height: 1 }];
+  const regions = Array.isArray(profile.source?.regions) ? profile.source.regions : [];
+  return regions.length ? regions : [{ x: 0, y: 0, width: 1, height: 1 }];
 }
 
 function normalizedRegion(region, width, height) {

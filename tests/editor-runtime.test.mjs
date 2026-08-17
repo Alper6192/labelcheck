@@ -57,3 +57,37 @@ test("Profileditor bewahrt Netto- und VW-Kombizeilen-Normalizer", () => {
   assert.match(editorHtml, /option value="net_weight"/);
   assert.match(editorHtml, /option value="leading_delivery_digits"/);
 });
+
+test("Erweiterter Editor kann alle profilabhängigen Erkennungsparameter konfigurieren", () => {
+  for (const id of [
+    "profileSourceType", "anchorLocalizeAlias", "anchorScaleFrom", "anchorAlignFrom",
+    "detectionEvidenceAliases", "detectionMinEvidenceMatches", "detectionExcludeAliases", "detectionMinScore",
+    "validationMinAnchorScore", "fieldStrategy", "fieldSearchRadius", "fieldMinOverlap",
+    "fieldStrategyUnits", "fieldFallbackStrategy", "fieldPairLeftMinDigits", "fieldPairLeftMaxDigits",
+    "fieldTailDigits", "fieldCombinedMinDigits", "fieldLocatorAliases", "fieldLocatorDirection",
+    "fieldLocatorMaxDistance", "fieldLocatorMinAliasScore"
+  ]) {
+    assert.match(editorHtml, new RegExp(`id=["']${id}["']`), `${id} fehlt im Editor`);
+  }
+  assert.match(editorHtml, /unit_required_weight/);
+  assert.match(editorHtml, /net_pair_weight/);
+  assert.match(editorHtml, /numeric_pair/);
+  assert.match(editorHtml, /quantity_weight/);
+});
+
+test("QR-Profile werden vollständig im Editor konfiguriert und am Masterbild getestet", () => {
+  assert.match(editorHtml, /id="qrProfileSettings"/);
+  assert.match(editorHtml, /id="qrRegionInputs"/);
+  assert.match(editorHtml, /id="qrRules"/);
+  assert.match(editorHtml, /id="testQrButton"/);
+  assert.match(editorSource, /function updateQrRulesFromDom/);
+  assert.match(editorSource, /function updateQrRegionsFromDom/);
+  assert.match(editorSource, /detectQrProfile\(session\.prepared\.canvas, \[profile\], profile\.role\)/);
+  assert.match(editorSource, /schemaVersion:\s*PROFILE_SCHEMA_VERSION/);
+});
+
+test("Labelvalidierung bleibt auch bei QR-Profilen im gemeinsamen Editorbereich sichtbar", () => {
+  assert.match(editorHtml, /id="profileValidationSettings"/);
+  assert.match(editorHtml, /data-required-valid-field="batch"/);
+  assert.match(editorHtml, /id="validationErrorMessage"/);
+});

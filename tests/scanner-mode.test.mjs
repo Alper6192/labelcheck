@@ -51,11 +51,12 @@ test("Speichern wird nach einer erfolgreichen Übernahme gesperrt", () => {
 });
 
 
-test("Produktfoto wird nur mit Henkel-Anker und gültiger Batch akzeptiert", () => {
-  assert.match(source, /isVerifiedProductLabel/);
-  assert.match(source, /anchorScore >= 0\.55/);
-  assert.match(source, /batch\?\.value && batch\?\.valid/);
-  assert.match(source, /Kein gültiges Produktlabel erkannt/);
+test("Produktfoto wird ausschließlich über die Profilvalidierung aus JSON geprüft", () => {
+  assert.match(source, /isVerifiedConfiguredLabel/);
+  assert.match(source, /profile\.validation/);
+  assert.match(source, /validation\.requiredValidFields/);
+  assert.match(source, /validation\.minAnchorScore/);
+  assert.doesNotMatch(source, /HENKEL|isVerifiedProductLabel/);
 });
 
 

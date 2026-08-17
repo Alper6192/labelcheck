@@ -21,7 +21,7 @@ export function autoSelectProfile(items, profiles, role) {
 
     const anchorMatch = findProfileAnchor(items, profile);
     const score = anchorMatch ? anchorMatch.matchScore : 0;
-    const minScore = Math.max(0.55, Number(profile.detection?.minScore || 0));
+    const minScore = Math.max(0, Math.min(1, Number(profile.detection?.minScore ?? 0.55)));
     if (score < minScore) continue;
     if (!best || score > best.score) best = { profile, anchorMatch, score, detection };
   }
@@ -40,7 +40,7 @@ export function extractProfileFields(items, profile, imageSize) {
   }
 
   const anchorMatch = findProfileAnchor(items, profile);
-  const minAnchorScore = 0.55;
+  const minAnchorScore = Math.max(0, Math.min(1, Number(profile.validation?.minAnchorScore ?? 0.55)));
   if (!anchorMatch || anchorMatch.matchScore < minAnchorScore) {
     return { ...emptyExtraction(), profile, warning: "Profilanker wurde nicht sicher erkannt." };
   }
@@ -203,7 +203,7 @@ export function normalizeFieldValue(key, value, field = {}) {
       .replace(/\s+/g, " ");
   }
   if (normalizer === "net_weight") {
-    // Scania kann die Einheit gelegentlich nur als "K" statt "KG" erkennen.
+    // Diese Strategie toleriert die Einheit gelegentlich auch als "K" statt "KG".
     // Für die weitere Verarbeitung behandeln wir K und KGM eindeutig als KG.
     const normalized = text
       .replace(/,/g, ".")
@@ -394,7 +394,7 @@ function anchorSimilarity(text, target) {
   if (text === target) return 1;
 
   // Ein vollständiger Alias innerhalb einer längeren OCR-Zeile ist ein starker
-  // Treffer: Alias BMW darf z. B. "BMW (UK) Manufacturing Ltd" erkennen.
+  // Ein kurzer Alias darf auch innerhalb einer längeren OCR-Zeile erkannt werden.
   if (target.length >= 3 && text.includes(target)) return 0.95;
 
   // Umgekehrt darf ein verkürzter OCR-Text nicht den längeren Alias ersetzen.
@@ -434,46 +434,23 @@ function transformPoly(normalized, transform, imageSize) {
 }
 
 function chooseCandidate(items, expectedPoly, field, profile = null) {
-  // Henkel-Produktlabel: Eine reine Zahl darf nie als Gewicht gelten.
-  // Besonders die 4-stellige Fassnummer (z. B. 0007) liegt nahe am Batch
-  // und konnte bisher wegen der optionalen Einheit als Gewicht gewinnen.
-  // Für Produktgewicht ist deshalb eine echte Einheit zwingend; getrennte
-  // OCR-Boxen wie "25" + "KG" werden gezielt zusammengesetzt.
-  if (String(profile?.id || "").toUpperCase() === "HENKEL" && field?.key === "weight") {
-    return chooseHenkelProductWeightCandidate(items, expectedPoly, field);
+  // Profilabhängige Spezialbehandlung wird ausschließlich über die JSON-Strategie
+  // ausgewählt. Neue Layouts benötigen dadurch keine Profil-ID im JavaScript.
+  if (field?.strategy === "unit_required_weight") {
+    return chooseUnitRequiredWeightCandidate(items, expectedPoly, field);
   }
 
-  // Scania ist ein fester Profil-Sonderfall. Er darf NICHT von einem optionalen
-  // Config-Schlüssel abhängen, weil eine im Editor neu exportierte Konfiguration
-  // solche Engine-Hinweise verändern oder entfernen kann. Sobald Profil + Feld
-  // eindeutig SCANIA/weight sind, wird die robuste Netto-Auswahl verwendet.
-  if (String(profile?.id || "").toUpperCase() === "SCANIA" && field?.key === "weight") {
-    const net = chooseScaniaNetWeightCandidate(items, expectedPoly, field);
+  if (field?.strategy === "net_pair_weight") {
+    const net = chooseNetPairWeightCandidate(items, expectedPoly, field);
     if (net) return net;
     return null;
   }
 
-  // Scania: Gross und Net werden von PaddleOCR je nach Foto als eine gemeinsame
-  // Box oder in mehrere Boxen zerlegt (z. B. "1550", "1300", "KG").
-  // Deshalb wird das Nettogewicht hier gezielt aus der rechten Zahl mit K/KG
-  // zusammengesetzt. Eine einheitenlose Bruttozahl kann nie gewinnen.
-  if (field?.strategy === "scania_net_weight") {
-    const net = chooseScaniaNetWeightCandidate(items, expectedPoly, field);
-    if (net) return net;
-  }
-
-  // VW: Die große unterste Zeile besteht aus Lieferscheinnummer + IDH. Diese
-  // Zahlenzeile ist deutlich zuverlässiger als die sehr kleine Beschriftung
-  // "Delivery number / IDH". Deshalb wird sie direkt erkannt und für beide
-  // Felder verwendet; die jeweilige Normalisierung trennt links/rechts.
-  if (field?.strategy === "vw_delivery_pair") {
-    const pair = chooseVwDeliveryPairCandidate(items);
+  if (field?.strategy === "numeric_pair") {
+    const pair = chooseNumericPairCandidate(items, field);
     if (pair) return pair;
   }
 
-  // VW: Das gewünschte Gewicht ist die obere Quantity-Angabe. Auf diesen
-  // Labels trägt sie KGM oder LTR, während Gross/Net unten typischerweise KG
-  // verwendet. Die Einheit ist damit ein sehr stabiler inhaltlicher Filter.
   if (field?.strategy === "quantity_weight") {
     const quantity = chooseQuantityWeightCandidate(items, expectedPoly, field);
     if (quantity) return quantity;
@@ -481,8 +458,7 @@ function chooseCandidate(items, expectedPoly, field, profile = null) {
 
   // Für Layouts mit stabilen gedruckten Feldbezeichnungen ist die Beziehung
   // "Wert unter/rechts von Beschriftung" robuster als eine große globale
-  // Suchzone. Das verhindert insbesondere Verwechslungen zwischen ähnlich
-  // formatierten Nummern (Supplier ID, Referenzbeleg, Lieferschein usw.).
+  // Suchzone. Alle Parameter hierfür stammen aus dem Profil.
   if (field?.locator?.aliases?.length) {
     const located = chooseCandidateByLocator(items, field);
     if (located) return located;
@@ -514,9 +490,6 @@ function chooseCandidate(items, expectedPoly, field, profile = null) {
       const proximity = Math.max(0, 1 - distance / radius);
       let score = overlap * 0.55 + proximity * 0.25 + Number(fragment.score || 0) * 0.2;
 
-      // Bei Gross/Net-Zeilen steht der Nettowert rechts. OCR kann die Zeile als
-      // einen Text oder als zwei getrennte Texte liefern. Profile können deshalb
-      // gezielt den rechten Kandidaten und einen Kandidaten mit Einheit bevorzugen.
       if (field.preferRightmost) {
         const rightness = Math.max(0, Math.min(1, 0.5 + dx / Math.max(1, radius * 2)));
         score += rightness * 0.22;
@@ -633,23 +606,30 @@ function chooseCandidateByLocator(items, field) {
 }
 
 
-function chooseVwDeliveryPairCandidate(items) {
+function chooseNumericPairCandidate(items, field = {}) {
   let best = null;
+  const rightDigits = Math.max(1, Number(field.tailDigits || field.digits || 7));
+  const leftMinDigits = Math.max(1, Number(field.pairLeftMinDigits || 7));
+  const leftMaxDigits = Math.max(leftMinDigits, Number(field.pairLeftMaxDigits || 10));
+  const combinedMinDigits = Math.max(leftMinDigits + rightDigits, Number(field.combinedMinDigits || (leftMinDigits + rightDigits)));
+  const combinedMaxDigits = leftMaxDigits + rightDigits;
+  const leftPattern = new RegExp(`^\\d{${leftMinDigits},${leftMaxDigits}}$`);
+  const rightPattern = new RegExp(`^\\d{${rightDigits}}$`);
+  const combinedPattern = new RegExp(`^\\d{${combinedMinDigits},${combinedMaxDigits}}$`);
 
   const consider = (left, right, poly, score, sourceText = "") => {
     const delivery = String(left || "").replace(/\D/g, "");
     const idh = String(right || "").replace(/\D/g, "");
-    if (!/^\d{7,10}$/.test(delivery) || !/^\d{7}$/.test(idh)) return;
+    if (!leftPattern.test(delivery) || !rightPattern.test(idh)) return;
     const bounds = boundsFromPoly(poly);
-    // Die untere VW-Zeile ist groß gedruckt. Die Texthöhe hilft, sie von
-    // kleineren Nummernzeilen im oberen Labelbereich zu unterscheiden.
+    // Große Kombizeilen werden gegenüber kleinen Nummernzeilen bevorzugt.
     const sizeBonus = Math.min(0.8, Math.max(0, bounds.height) / 45);
     const candidate = {
       text: `${delivery} ${idh}`,
       poly: normalizePoly(poly),
       score: Number(score || 0),
       selectionScore: Number(score || 0) + sizeBonus,
-      source: "ocr-vw-pair",
+      source: "ocr-numeric-pair",
       sourceText: String(sourceText || `${delivery} ${idh}`)
     };
     if (!best || candidate.selectionScore > best.selectionScore) best = candidate;
@@ -671,9 +651,9 @@ function chooseVwDeliveryPairCandidate(items) {
       consider(groups[0], groups[1], item.poly, item.score, original);
       continue;
     }
-    if (groups.length === 1 && /^\d{14,17}$/.test(groups[0])) {
+    if (groups.length === 1 && combinedPattern.test(groups[0])) {
       const digits = groups[0];
-      consider(digits.slice(0, -7), digits.slice(-7), item.poly, item.score, original);
+      consider(digits.slice(0, -rightDigits), digits.slice(-rightDigits), item.poly, item.score, original);
     }
   }
 
@@ -682,14 +662,14 @@ function chooseVwDeliveryPairCandidate(items) {
   for (const item of items || []) {
     const raw = String(item?.text || "").trim();
     const compact = raw.replace(/\s+/g, "");
-    if (!/^\d{7,10}$/.test(compact)) continue;
+    if (!leftPattern.test(compact) && !rightPattern.test(compact)) continue;
     const b = boundsFromPoly(item.poly);
     numeric.push({ item, digits: compact, bounds: b, cx: b.x + b.width / 2, cy: b.y + b.height / 2 });
   }
 
   for (const left of numeric) {
     for (const right of numeric) {
-      if (left === right || !/^\d{7}$/.test(right.digits)) continue;
+      if (left === right || !rightPattern.test(right.digits) || !leftPattern.test(left.digits)) continue;
       if (right.cx <= left.cx) continue;
       const h = Math.max(8, left.bounds.height, right.bounds.height);
       if (Math.abs(left.cy - right.cy) > h * 0.8 + 5) continue;
@@ -715,7 +695,7 @@ function chooseVwDeliveryPairCandidate(items) {
   return best;
 }
 
-function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
+function chooseNetPairWeightCandidate(items, expectedPoly, field) {
   const expected = boundsFromPoly(expectedPoly);
   const cx = expected.x + expected.width / 2;
   const cy = expected.y + expected.height / 2;
@@ -724,7 +704,7 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
 
   const normalizeUnit = (unit) => {
     const value = String(unit || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-    // Typische PaddleOCR-Verwechslungen bei kleinem "KG" auf Scania-Labels.
+    // Typische PaddleOCR-Verwechslungen bei klein gedrucktem "KG".
     if (["K", "KG", "K6", "KC", "KO", "K0", "KQ", "K9"].includes(value)) return "KG";
     return "";
   };
@@ -762,13 +742,13 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
       poly,
       score: Number(score || 0),
       selectionScore,
-      source: inferred ? "ocr-scania-pair" : "ocr-scania-net",
+      source: inferred ? "ocr-net-pair" : "ocr-net-weight",
       sourceText: String(sourceText || `${numeric} KG`)
     };
     if (!best || candidate.selectionScore > best.selectionScore) best = candidate;
   };
 
-  // 1) Gross/Net bereits in EINER OCR-Box. Für Scania reicht die Struktur
+  // 1) Gross/Net bereits in EINER OCR-Box. Für diese Strategie reicht die Struktur
   // "Zahl / Zahl" (oder auch nur zwei Zahlen in derselben kurzen Zeile) aus;
   // die Einheit darf von OCR fehlerhaft oder gar nicht erkannt worden sein.
   // Beispiel: "1550 / 1300 KG", "1550 / 1300 K6", "1550 1300" -> 1300 KG.
@@ -788,7 +768,7 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
     const unitLike = tail.match(/\b(KG|K6|KC|KO|K0|KQ|K9|K)\b/i);
 
     // Ohne Separator/Einheit nur akzeptieren, wenn es eine kurze OCR-Zeile ist
-    // und sie räumlich in der Scania-Gewichtsregion liegt.
+    // und sie räumlich in der erwarteten Gewichtsregion liegt.
     if (!hasSeparator && !unitLike && raw.length > 24) continue;
     if (!nearExpectedRow(item.poly, 7.5)) continue;
 
@@ -813,7 +793,7 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
 
   // 3) PaddleOCR zerlegt die Gross/Net-Zeile in mehrere Boxen. Zuerst werden
   // reine 3–5-stellige Zahlen gesammelt. Wenn zwei davon horizontal auf einer
-  // Zeile stehen, ist bei Scania die rechte Zahl der Nettowert. Die Einheit ist
+  // Zeile stehen, ist bei dieser Strategie die rechte Zahl der Nettowert. Die Einheit ist
   // für diese Paarentscheidung NICHT erforderlich.
   const numbers = [];
   const units = [];
@@ -882,7 +862,7 @@ function chooseScaniaNetWeightCandidate(items, expectedPoly, field) {
   return best;
 }
 
-function chooseHenkelProductWeightCandidate(items, expectedPoly, field) {
+function chooseUnitRequiredWeightCandidate(items, expectedPoly, field) {
   const expected = boundsFromPoly(expectedPoly);
   const cx = expected.x + expected.width / 2;
   const cy = expected.y + expected.height / 2;
@@ -901,7 +881,7 @@ function chooseHenkelProductWeightCandidate(items, expectedPoly, field) {
     const unit = String(candidate.text || "").match(/\b(KGM|KG|G|LTR|L)\b/i)?.[1]?.toUpperCase() || "";
     const unitBonus = unit ? 0.5 : 0;
     const score = proximity * 0.55 + Number(candidate.score || 0) * 0.30 + unitBonus;
-    const enriched = { ...candidate, selectionScore: score, source: candidate.source || "ocr-product-weight" };
+    const enriched = { ...candidate, selectionScore: score, source: candidate.source || "ocr-unit-weight" };
     if (!best || enriched.selectionScore > best.selectionScore) best = enriched;
   };
 
@@ -918,7 +898,7 @@ function chooseHenkelProductWeightCandidate(items, expectedPoly, field) {
         text: String(match[0] || "").trim(),
         poly: approximateTextFragmentPoly(item.poly, raw.length, start, end),
         sourceText: raw,
-        source: "ocr-product-weight"
+        source: "ocr-unit-weight"
       });
     }
   }
@@ -948,7 +928,7 @@ function chooseHenkelProductWeightCandidate(items, expectedPoly, field) {
         poly: [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
         score: (Number(number.item.score || 0) + Number(unit.item.score || 0)) / 2,
         sourceText: `${number.item.text} ${unit.item.text}`,
-        source: "ocr-product-weight"
+        source: "ocr-unit-weight"
       });
     }
   }
@@ -963,6 +943,12 @@ function chooseQuantityWeightCandidate(items, expectedPoly, field) {
   const radius = Math.max(expected.width, expected.height) * Number(field.searchRadius || 2.2) + 40;
   const sourceRegex = field.sourceRegex || field.regex;
   let best = null;
+  const preferredUnits = Array.isArray(field.strategyUnits) && field.strategyUnits.length
+    ? field.strategyUnits.map((value) => String(value).toUpperCase())
+    : ["KGM", "LTR"];
+  const unitAlternation = preferredUnits.map(escapeRegex).join("|");
+  const preferredUnitRegex = new RegExp(`\\b(?:${unitAlternation})\\b`, "i");
+  const exactUnitRegex = new RegExp(`^(?:${unitAlternation})$`, "i");
 
   const consider = (candidate) => {
     if (!candidate?.text || !validateField(candidate.text, sourceRegex)) return;
@@ -972,7 +958,7 @@ function chooseQuantityWeightCandidate(items, expectedPoly, field) {
     const distance = Math.hypot(dx, dy);
     if (distance > radius) return;
     const proximity = Math.max(0, 1 - distance / radius);
-    const unitBonus = /\b(?:KGM|LTR)\b/i.test(String(candidate.text || "")) ? 0.45 : 0;
+    const unitBonus = preferredUnitRegex.test(String(candidate.text || "")) ? 0.45 : 0;
     const score = proximity * 0.55 + Number(candidate.score || 0) * 0.30 + unitBonus;
     const enriched = { ...candidate, selectionScore: score, source: candidate.source || "ocr-quantity" };
     if (!best || enriched.selectionScore > best.selectionScore) best = enriched;
@@ -990,7 +976,7 @@ function chooseQuantityWeightCandidate(items, expectedPoly, field) {
     const text = String(item?.text || "").trim().toUpperCase();
     const b = boundsFromPoly(item.poly);
     if (/^\d+(?:[.,]\d+)?$/.test(text)) numbers.push({ item, text, bounds: b, cy: b.y + b.height / 2 });
-    if (/^(?:KGM|LTR)$/.test(text)) units.push({ item, text, bounds: b, cy: b.y + b.height / 2 });
+    if (exactUnitRegex.test(text)) units.push({ item, text, bounds: b, cy: b.y + b.height / 2 });
   }
   for (const number of numbers) {
     for (const unit of units) {
@@ -1084,7 +1070,7 @@ function matchingFieldFragments(item, sourceRegex) {
 
   // Keine beliebigen gleitenden Ziffernfenster mehr. Diese erzeugten aus einer
   // fremden 9-stelligen Nummer künstlich gültige 6- bis 8-stellige IDH-Werte.
-  // Sonderfälle wie VW werden stattdessen explizit im Profil beschrieben.
+  // Kombinierte Zahlenzeilen werden stattdessen explizit über die Profilstrategie beschrieben.
   return fragments;
 }
 
@@ -1174,6 +1160,10 @@ function deriveDrumCandidate(items, batchCandidate, field, expectedPoly) {
     if (!best || score > best.selectionScore) best = { ...item, selectionScore: score, source: "ocr-neighbor" };
   }
   return best;
+}
+
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function defaultNormalizer(key) {

@@ -216,9 +216,8 @@ async function loadFile(key, file) {
       return;
     }
 
-    // QR-Profile werden vor PaddleOCR geprüft. Tesla kann dadurch vollständig
-    // aus dem kleinen QR-Code links unten gelesen werden und benötigt weder OCR
-    // noch einen geometrischen Textanker.
+    // QR-Profile werden vor PaddleOCR geprüft. Suchbereich und Parserregeln kommen
+    // vollständig aus der Profilkonfiguration; kundenspezifischer Code ist nicht nötig.
     try { await profilesReady; } catch { /* OCR-Fallback bleibt möglich. */ }
     const qrStartedAt = performance.now();
     const qrMatch = detectQrProfile(slot.prepared.canvas, profiles, key);
@@ -268,8 +267,7 @@ async function analyzeSlot(key) {
   resetOperatorReview();
 
   // Auch bei "Erneut analysieren" bleibt der QR-Pfad erhalten. Bei manueller
-  // Tesla-Auswahl wird nur dieses QR-Profil geprüft; im Automatikmodus alle
-  // passenden QR-Profile.
+  // Profilauswahl wird nur dieses QR-Profil geprüft; im Automatikmodus alle passenden QR-Profile.
   const selected = slot.selectedProfileId
     ? profiles.find((profile) => profile.id === slot.selectedProfileId) || null
     : null;
@@ -369,13 +367,14 @@ function resolveProfile(key) {
   slot.profile = profile;
   slot.extraction = profile ? extractProfileFields(slot.result.items, profile, slot.result.image) : null;
 
-  // Ein Produktfoto wird nur akzeptiert, wenn der Henkel-Produktanker UND eine
-  // gültige Batchnummer erkannt wurden. Dadurch kann irgendein anderes Foto
-  // nicht mehr stillschweigend als einzig vorhandenes Produktprofil durchgehen.
-  if (key === "product" && !isVerifiedProductLabel(slot)) {
+  // Die Gültigkeitsprüfung eines Produktprofils ist konfigurationsgetrieben.
+  // Welche Felder/Anker zwingend sein müssen, legt profile.validation fest.
+  if (key === "product" && !isVerifiedConfiguredLabel(slot)) {
+    const message = slot.profile?.validation?.errorMessage
+      || "Kein gültiges Produktlabel erkannt. Bitte das Produktlabel vollständig und gut lesbar fotografieren.";
     slot.profile = null;
     slot.extraction = null;
-    slot.error = "Kein gültiges Produktlabel erkannt. Bitte das Henkel-Produktlabel vollständig und gut lesbar fotografieren.";
+    slot.error = message;
     slot.state = "error";
   } else if (key === "product") {
     slot.error = "";
@@ -389,14 +388,25 @@ function resolveProfile(key) {
     : null;
 }
 
-function isVerifiedProductLabel(slot) {
+function isVerifiedConfiguredLabel(slot) {
+  const profile = slot?.profile;
   const extraction = slot?.extraction;
-  const anchorScore = Number(extraction?.anchorMatch?.matchScore || 0);
-  const batch = extraction?.fields?.batch;
-  return String(slot?.profile?.id || "").toUpperCase() === "HENKEL"
-    && !String(extraction?.warning || "").trim()
-    && anchorScore >= 0.55
-    && Boolean(batch?.value && batch?.valid);
+  if (!profile || !extraction || String(extraction.warning || "").trim()) return false;
+
+  const validation = profile.validation || {};
+  if (profile.source?.type !== "qr") {
+    const minAnchorScore = Math.max(0, Math.min(1, Number(validation.minAnchorScore ?? 0.55)));
+    const anchorScore = Number(extraction?.anchorMatch?.matchScore || 0);
+    if (anchorScore < minAnchorScore) return false;
+  }
+
+  const requiredKeys = Array.isArray(validation.requiredValidFields)
+    ? validation.requiredValidFields
+    : [];
+  return requiredKeys.every((key) => {
+    const field = extraction?.fields?.[key];
+    return Boolean(field?.value && field?.valid);
+  });
 }
 
 async function selectProfile(key, id) {
@@ -411,9 +421,8 @@ async function selectProfile(key, id) {
     return;
   }
 
-  // QR-Profile (aktuell Tesla) werden auch bei manueller Auswahl wieder über
-  // detectQrProfile geprüft. Damit fällt eine manuelle Tesla-Auswahl nicht in
-  // die normale PaddleOCR-/Textanker-Extraktion zurück.
+  // QR-Profile werden auch bei manueller Auswahl wieder über detectQrProfile
+  // geprüft und fallen nicht in die normale OCR-/Textanker-Extraktion zurück.
   if (slot.selectedProfileId && slot.profile?.source?.type === "qr") {
     const qrStartedAt = performance.now();
     const qrMatch = detectQrProfile(slot.prepared.canvas, [slot.profile], key);
@@ -456,10 +465,12 @@ async function selectProfile(key, id) {
   if (slot.result) {
     if (slot.selectedProfileId) {
       slot.extraction = slot.profile ? extractProfileFields(slot.result.items, slot.profile, slot.result.image) : null;
-      if (key === "product" && !isVerifiedProductLabel(slot)) {
+      if (key === "product" && !isVerifiedConfiguredLabel(slot)) {
+        const message = slot.profile?.validation?.errorMessage
+          || "Kein gültiges Produktlabel erkannt. Bitte das Produktlabel vollständig und gut lesbar fotografieren.";
         slot.profile = null;
         slot.extraction = null;
-        slot.error = "Kein gültiges Produktlabel erkannt. Bitte das Henkel-Produktlabel vollständig und gut lesbar fotografieren.";
+        slot.error = message;
         slot.state = "error";
       } else {
         slot.error = "";

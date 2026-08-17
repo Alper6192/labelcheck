@@ -2,9 +2,11 @@ import "./styles.css";
 import { APP_VERSION, QUALITY_PRESETS } from "./config.js";
 import { PaddleOcrEngine, formatRuntimeDetails } from "./ocr-engine.js";
 import { prepareImage } from "./image-tools.js";
+import { detectQrProfile } from "./qr-engine.js";
 import { boundsFromPoly, formatMilliseconds, safeError } from "./utils.js";
 import {
   FIELD_ORDER,
+  PROFILE_SCHEMA_VERSION,
   createField,
   createProfile,
   expandPoly,
@@ -57,9 +59,20 @@ function setupEvents() {
   el("deleteProfileButton").onclick = deleteProfile;
   el("profileSelect").addEventListener("change", () => selectProfile(el("profileSelect").value));
 
-  for (const id of ["profileId", "profileName", "profileRole", "profileActive", "anchorAliases"]) {
-    el(id).addEventListener(id === "profileActive" ? "change" : "input", updateProfileMeta);
+  for (const id of [
+    "profileId", "profileName", "profileRole", "profileActive", "profileSourceType",
+    "anchorAliases", "anchorLocalizeAlias", "anchorScaleFrom", "anchorAlignFrom", "anchorFallbacksJson",
+    "detectionEvidenceAliases", "detectionMinEvidenceMatches", "detectionExcludeAliases", "detectionMinScore",
+    "validationMinAnchorScore", "validationErrorMessage"
+  ]) {
+    const node = el(id);
+    const eventName = ["profileActive", "profileSourceType", "anchorLocalizeAlias", "anchorScaleFrom", "anchorAlignFrom"].includes(id)
+      ? "change" : "input";
+    node.addEventListener(eventName, updateProfileMeta);
   }
+  document.querySelectorAll("[data-required-valid-field]").forEach((node) => node.addEventListener("change", updateProfileMeta));
+  el("useSelectionAsQrRegion").onclick = useSelectionAsQrRegion;
+  el("testQrButton").onclick = testQrProfile;
 
   el("masterInput").addEventListener("change", loadMasterImage);
   el("ocrJsonInput").addEventListener("change", importOcrJson);
@@ -101,9 +114,18 @@ function setupEvents() {
 
   for (const id of [
     "fieldLabel", "fieldRegex", "fieldSourceRegex", "fieldNormalizer",
-    "fieldDigits", "fieldAdjacentTo", "fieldRequired", "fieldCompare"
+    "fieldDigits", "fieldAdjacentTo", "fieldStrategy", "fieldSearchRadius", "fieldMinOverlap",
+    "fieldPreferRightmost", "fieldPreferUnit", "fieldStrategyUnits", "fieldFallbackStrategy",
+    "fieldPairLeftMinDigits", "fieldPairLeftMaxDigits", "fieldTailDigits", "fieldCombinedMinDigits",
+    "fieldLocatorAliases", "fieldLocatorDirection", "fieldLocatorMaxDistance", "fieldLocatorMinAliasScore",
+    "fieldLocatorStrict", "fieldLocatorPreferRightmost", "fieldLocatorPreferLeftmost",
+    "fieldLocatorPreferUnit", "fieldLocatorPreferBatch", "fieldRequired", "fieldCompare"
   ]) {
-    el(id).addEventListener(["fieldRequired", "fieldCompare"].includes(id) ? "change" : "input", updateFieldProperties);
+    const checkboxIds = new Set([
+      "fieldPreferRightmost", "fieldPreferUnit", "fieldLocatorStrict", "fieldLocatorPreferRightmost",
+      "fieldLocatorPreferLeftmost", "fieldLocatorPreferUnit", "fieldLocatorPreferBatch", "fieldRequired", "fieldCompare"
+    ]);
+    el(id).addEventListener(checkboxIds.has(id) || id === "fieldStrategy" || id === "fieldFallbackStrategy" || id === "fieldLocatorDirection" ? "change" : "input", updateFieldProperties);
   }
   el("deleteAssignmentButton").onclick = deleteSelectedAssignment;
   window.addEventListener("beforeunload", (event) => {
@@ -148,31 +170,65 @@ async function importConfig(event) {
 
 function exportConfig() {
   syncProfileMeta();
-  state.config.schemaVersion = 2;
-  state.config.exportedAt = new Date().toISOString();
-  const warnings = validateConfig(state.config);
+  const exportable = normalizeProfileConfig({
+    ...state.config,
+    schemaVersion: PROFILE_SCHEMA_VERSION,
+    appVersion: APP_VERSION,
+    exportedAt: new Date().toISOString()
+  }, APP_VERSION);
+  const warnings = validateConfig(exportable);
   if (warnings.length && !confirm(`Die Konfiguration enthält Hinweise:\n\n${warnings.join("\n")}\n\nTrotzdem exportieren?`)) return;
-  download(JSON.stringify(state.config, null, 2), "label-profiles.json", "application/json");
+  download(JSON.stringify(exportable, null, 2), "label-profiles.json", "application/json");
+  state.config = exportable;
   state.dirty = false;
+  renderProfileList();
+  renderProfileMeta();
   setConfigStatus(`${state.config.profiles.length} Profile exportiert`, "ok");
 }
 
 function validateConfig(config) {
   const warnings = [];
+  const activeProducts = config.profiles.filter((profile) => profile.active !== false && profile.role === "product");
+  if (!activeProducts.length) warnings.push("Kein aktives Produktprofil vorhanden.");
+
   for (const profile of config.profiles) {
     if (!profile.id) warnings.push("Ein Profil besitzt keine ID.");
     const qrProfile = profile.source?.type === "qr";
-    if (!qrProfile && !profile.anchor?.aliases?.length) warnings.push(`${profile.name}: keine Anker-Aliase.`);
-    if (!qrProfile && (profile.anchor?.poly || []).length < 4) warnings.push(`${profile.name}: kein Ankerbereich.`);
-    const requiredFieldKeys = qrProfile ? ["batch", "weight", "delivery_note"] : ["batch", "idh", "weight"];
-    for (const key of requiredFieldKeys) {
-      if (!findField(profile, key)) warnings.push(`${profile.name}: ${key} fehlt.`);
+
+    if (!qrProfile) {
+      if (!profile.anchor?.aliases?.length) warnings.push(`${profile.name}: keine Anker-Aliase.`);
+      if ((profile.anchor?.poly || []).length < 4) warnings.push(`${profile.name}: kein Ankerbereich.`);
+      const fallbackText = profile.id === state.selectedProfileId ? el("anchorFallbacksJson").value.trim() : "";
+      if (fallbackText) {
+        try { JSON.parse(fallbackText); } catch { warnings.push(`${profile.name}: Alternative Anker enthalten ungültiges JSON.`); }
+      }
+    } else {
+      const regions = profile.source?.regions || [];
+      if (!regions.length) warnings.push(`${profile.name}: kein QR-Suchbereich.`);
+      const parser = profile.source?.parser || {};
+      if (!Object.keys(parser.fields || {}).length) warnings.push(`${profile.name}: keine QR-Feldregeln.`);
+      for (const key of parser.requiredFields || []) {
+        if (!parser.fields?.[key]) warnings.push(`${profile.name}: QR-Pflichtfeld ${key} besitzt keine Parserregel.`);
+      }
+      for (const [key, rule] of Object.entries(parser.fields || {})) {
+        const primary = validateRegex(rule.primaryRegex);
+        const secondary = validateRegex(rule.secondaryRegex);
+        if (!primary.valid) warnings.push(`${profile.name}/QR ${key}: ungültiger Primär-RegEx.`);
+        if (!secondary.valid) warnings.push(`${profile.name}/QR ${key}: ungültiger Sekundär-RegEx.`);
+        if (!String(rule.primaryRegex || "").trim()) warnings.push(`${profile.name}/QR ${key}: Primär-RegEx fehlt.`);
+      }
     }
+
+    for (const key of profile.validation?.requiredValidFields || []) {
+      if (!findField(profile, key)) warnings.push(`${profile.name}: Validierungs-Pflichtfeld ${key} ist nicht angelegt.`);
+    }
+
     for (const field of profile.fields || []) {
       const finalRegex = validateRegex(field.regex);
       const sourceRegex = validateRegex(field.sourceRegex);
       if (!finalRegex.valid) warnings.push(`${profile.name}/${field.label}: ungültiger Ergebnis-RegEx.`);
       if (!sourceRegex.valid) warnings.push(`${profile.name}/${field.label}: ungültiger OCR-RegEx.`);
+      if (!qrProfile && (field.poly || []).length < 4) warnings.push(`${profile.name}/${field.label}: keine Feldzone.`);
     }
   }
   return warnings;
@@ -248,12 +304,45 @@ function selectProfile(id) {
 function renderProfileMeta() {
   const profile = selectedProfile();
   const disabled = !profile;
-  for (const id of ["profileId", "profileName", "profileRole", "profileActive", "anchorAliases"]) el(id).disabled = disabled;
+  const ids = [
+    "profileId", "profileName", "profileRole", "profileActive", "profileSourceType",
+    "anchorAliases", "anchorLocalizeAlias", "anchorScaleFrom", "anchorAlignFrom", "anchorFallbacksJson",
+    "detectionEvidenceAliases", "detectionMinEvidenceMatches", "detectionExcludeAliases", "detectionMinScore",
+    "validationMinAnchorScore", "validationErrorMessage"
+  ];
+  for (const id of ids) el(id).disabled = disabled;
+  document.querySelectorAll("[data-required-valid-field]").forEach((node) => { node.disabled = disabled; });
+
   el("profileId").value = profile?.id || "";
   el("profileName").value = profile?.name || "";
   el("profileRole").value = profile?.role || "vda";
   el("profileActive").checked = profile?.active !== false;
+  el("profileSourceType").value = profile?.source?.type === "qr" ? "qr" : "ocr";
+
   el("anchorAliases").value = (profile?.anchor?.aliases || []).join("\n");
+  el("anchorLocalizeAlias").checked = profile?.anchor?.localizeAlias === true;
+  el("anchorScaleFrom").value = profile?.anchor?.scaleFrom === "height" ? "height" : "width";
+  el("anchorAlignFrom").value = profile?.anchor?.alignFrom === "left" ? "left" : "center";
+  el("anchorFallbacksJson").value = profile?.anchor?.fallbacks?.length
+    ? JSON.stringify(profile.anchor.fallbacks, null, 2)
+    : "";
+
+  el("detectionEvidenceAliases").value = (profile?.detection?.evidenceAliases || []).join("\n");
+  el("detectionMinEvidenceMatches").value = Number(profile?.detection?.minEvidenceMatches || 0);
+  el("detectionExcludeAliases").value = (profile?.detection?.excludeAliases || []).join("\n");
+  el("detectionMinScore").value = Number(profile?.detection?.minScore ?? 0.55);
+  el("validationMinAnchorScore").value = Number(profile?.validation?.minAnchorScore ?? 0.55);
+  el("validationErrorMessage").value = profile?.validation?.errorMessage || "";
+  const required = new Set(profile?.validation?.requiredValidFields || []);
+  document.querySelectorAll("[data-required-valid-field]").forEach((node) => {
+    node.checked = required.has(node.dataset.requiredValidField);
+  });
+
+  const qr = profile?.source?.type === "qr";
+  el("ocrProfileSettings").classList.toggle("hidden", qr);
+  el("qrProfileSettings").classList.toggle("hidden", !qr);
+  renderQrSettings(profile);
+  refreshMasterControls();
 }
 
 function updateProfileMeta() {
@@ -265,7 +354,46 @@ function updateProfileMeta() {
   profile.name = el("profileName").value.trim() || profile.id;
   profile.role = el("profileRole").value === "product" ? "product" : "vda";
   profile.active = el("profileActive").checked;
-  profile.anchor.aliases = el("anchorAliases").value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+
+  const wantedSource = el("profileSourceType").value === "qr" ? "qr" : "ocr";
+  if (wantedSource === "qr" && profile.source?.type !== "qr") {
+    profile.source = {
+      type: "qr",
+      regions: [{ x: 0, y: 0, width: 1, height: 1 }],
+      parser: { requiredFields: [], fields: {} }
+    };
+  } else if (wantedSource === "ocr" && profile.source?.type !== "ocr") {
+    profile.source = { type: "ocr" };
+  }
+
+  profile.anchor.aliases = readLines(el("anchorAliases").value);
+  profile.anchor.localizeAlias = el("anchorLocalizeAlias").checked;
+  profile.anchor.scaleFrom = el("anchorScaleFrom").value === "height" ? "height" : "width";
+  profile.anchor.alignFrom = el("anchorAlignFrom").value === "left" ? "left" : "center";
+  const fallbackText = el("anchorFallbacksJson").value.trim();
+  if (!fallbackText) {
+    profile.anchor.fallbacks = [];
+  } else {
+    try {
+      const parsed = JSON.parse(fallbackText);
+      if (Array.isArray(parsed)) profile.anchor.fallbacks = parsed;
+    } catch {
+      // Während der Eingabe nicht überschreiben; Exportvalidierung meldet ungültiges JSON.
+    }
+  }
+
+  profile.detection = profile.detection || {};
+  profile.detection.evidenceAliases = readLines(el("detectionEvidenceAliases").value);
+  profile.detection.minEvidenceMatches = Math.max(0, Math.floor(Number(el("detectionMinEvidenceMatches").value || 0)));
+  profile.detection.excludeAliases = readLines(el("detectionExcludeAliases").value);
+  profile.detection.minScore = clamp01Number(el("detectionMinScore").value, 0.55);
+
+  profile.validation = profile.validation || {};
+  profile.validation.minAnchorScore = clamp01Number(el("validationMinAnchorScore").value, 0.55);
+  profile.validation.requiredValidFields = Array.from(document.querySelectorAll("[data-required-valid-field]:checked"))
+    .map((node) => node.dataset.requiredValidField);
+  profile.validation.errorMessage = el("validationErrorMessage").value.trim();
+
   if (profile.id !== previousId) {
     state.sessions.rename(previousId, profile.id);
     renameEditorMaster(previousId, profile.id).catch(() => undefined);
@@ -274,6 +402,236 @@ function updateProfileMeta() {
   markDirty();
   renderProfileList();
   renderAssignments();
+
+  const qr = profile.source?.type === "qr";
+  el("ocrProfileSettings").classList.toggle("hidden", qr);
+  el("qrProfileSettings").classList.toggle("hidden", !qr);
+  renderQrSettings(profile);
+  drawOverlay();
+}
+
+
+function renderQrSettings(profile) {
+  const regionContainer = el("qrRegionInputs");
+  const rulesContainer = el("qrRules");
+  if (!regionContainer || !rulesContainer) return;
+  regionContainer.replaceChildren();
+  rulesContainer.replaceChildren();
+  if (!profile || profile.source?.type !== "qr") {
+    el("qrTestResult").textContent = "";
+    return;
+  }
+
+  const source = ensureQrSource(profile);
+  const regions = Array.isArray(source.regions) ? source.regions : [];
+  for (let index = 0; index < 2; index += 1) {
+    const region = regions[index] || (index === 0 ? { x: 0, y: 0, width: 1, height: 1 } : null);
+    const card = document.createElement("div");
+    card.className = "qr-region-card";
+    card.innerHTML = `<strong>${index === 0 ? "Primärer QR-Bereich" : "Fallback-QR-Bereich (optional)"}</strong><div class="mini-grid"></div>`;
+    const grid = card.querySelector(".mini-grid");
+    for (const prop of ["x", "y", "width", "height"]) {
+      const label = document.createElement("label");
+      label.textContent = ({ x: "X", y: "Y", width: "Breite", height: "Höhe" })[prop];
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.max = "1";
+      input.step = "0.01";
+      input.dataset.qrRegion = String(index);
+      input.dataset.qrRegionProp = prop;
+      input.value = region ? String(Number(region[prop] ?? (prop === "width" || prop === "height" ? 1 : 0))) : "";
+      input.placeholder = index === 1 ? "optional" : "0";
+      input.addEventListener("input", updateQrRegionsFromDom);
+      label.append(input);
+      grid.append(label);
+    }
+    regionContainer.append(card);
+  }
+
+  const labels = {
+    batch: "Batch",
+    drum_number: "Fassnummer",
+    idh: "IDH",
+    weight: "Gewicht",
+    delivery_note: "Lieferscheinnummer"
+  };
+  const required = new Set(source.parser.requiredFields || []);
+  for (const key of FIELD_ORDER) {
+    const rule = source.parser.fields?.[key] || null;
+    const enabled = Boolean(rule || findField(profile, key));
+    const card = document.createElement("div");
+    card.className = "qr-rule-card";
+    card.dataset.qrKey = key;
+    card.innerHTML = `
+      <h4>${labels[key] || key}</h4>
+      <label class="checkbox-row"><input type="checkbox" data-qr-enabled ${enabled ? "checked" : ""}> Feld aus QR lesen</label>
+      <label class="checkbox-row"><input type="checkbox" data-qr-required ${required.has(key) ? "checked" : ""} ${enabled ? "" : "disabled"}> für QR-Profilerkennung erforderlich</label>
+      <label>Primär-RegEx<input type="text" spellcheck="false" data-qr-rule="primaryRegex"></label>
+      <div class="mini-grid">
+        <label>Capture-Gruppe<input type="number" min="0" max="20" step="1" data-qr-rule="primaryGroup"></label>
+        <label>Template<input type="text" spellcheck="false" data-qr-rule="template" placeholder="{primary}"></label>
+      </div>
+      <label>Sekundär-RegEx (optional)<input type="text" spellcheck="false" data-qr-rule="secondaryRegex"></label>
+      <div class="mini-grid">
+        <label>Sekundär-Gruppe<input type="number" min="0" max="20" step="1" data-qr-rule="secondaryGroup"></label>
+        <label>Fallback Sekundärwert<input type="text" data-qr-rule="secondaryDefault"></label>
+      </div>
+      <label>Ersetzungen, eine pro Zeile <textarea rows="2" data-qr-rule="replacements" placeholder="KGM => KG"></textarea></label>
+      <button type="button" data-open-qr-field>Feldeigenschaften öffnen</button>
+    `;
+    const effective = rule || {
+      primaryRegex: "",
+      primaryGroup: 1,
+      secondaryRegex: "",
+      secondaryGroup: 1,
+      secondaryDefault: "",
+      template: "{primary}",
+      replacements: []
+    };
+    card.querySelector('[data-qr-rule="primaryRegex"]').value = effective.primaryRegex || "";
+    card.querySelector('[data-qr-rule="primaryGroup"]').value = Number(effective.primaryGroup ?? 1);
+    card.querySelector('[data-qr-rule="secondaryRegex"]').value = effective.secondaryRegex || "";
+    card.querySelector('[data-qr-rule="secondaryGroup"]').value = Number(effective.secondaryGroup ?? 1);
+    card.querySelector('[data-qr-rule="secondaryDefault"]').value = effective.secondaryDefault || "";
+    card.querySelector('[data-qr-rule="template"]').value = effective.template || "{primary}";
+    card.querySelector('[data-qr-rule="replacements"]').value = (effective.replacements || [])
+      .map((entry) => `${entry.from} => ${entry.to}`)
+      .join("\n");
+
+    card.querySelectorAll("input,textarea").forEach((node) => {
+      if (node.matches("[data-qr-enabled]")) node.addEventListener("change", updateQrRulesFromDom);
+      else if (node.matches("[data-qr-required]")) node.addEventListener("change", updateQrRulesFromDom);
+      else node.addEventListener("input", updateQrRulesFromDom);
+    });
+    card.querySelector("[data-open-qr-field]").onclick = () => {
+      const current = selectedProfile();
+      if (!findField(current, key)) {
+        upsertField(current, createField(key));
+        updateQrRulesFromDom();
+      }
+      selectAssignment("field", key);
+    };
+    rulesContainer.append(card);
+  }
+}
+
+function updateQrRegionsFromDom() {
+  const profile = selectedProfile();
+  if (!profile || profile.source?.type !== "qr") return;
+  const source = ensureQrSource(profile);
+  const regions = [];
+  for (let index = 0; index < 2; index += 1) {
+    const values = {};
+    let hasAny = false;
+    for (const prop of ["x", "y", "width", "height"]) {
+      const node = document.querySelector(`[data-qr-region="${index}"][data-qr-region-prop="${prop}"]`);
+      const raw = String(node?.value || "").trim();
+      if (raw !== "") hasAny = true;
+      values[prop] = raw === "" ? NaN : Number(raw);
+    }
+    if (!hasAny) continue;
+    const x = clamp01Number(values.x, 0);
+    const y = clamp01Number(values.y, 0);
+    const width = Math.max(0.01, Math.min(1 - x, Number.isFinite(values.width) ? values.width : 1));
+    const height = Math.max(0.01, Math.min(1 - y, Number.isFinite(values.height) ? values.height : 1));
+    regions.push({ x, y, width, height });
+  }
+  source.regions = regions.length ? regions : [{ x: 0, y: 0, width: 1, height: 1 }];
+  markDirty();
+  drawOverlay();
+}
+
+function updateQrRulesFromDom() {
+  const profile = selectedProfile();
+  if (!profile || profile.source?.type !== "qr") return;
+  const source = ensureQrSource(profile);
+  const fields = {};
+  const required = [];
+
+  for (const card of el("qrRules").querySelectorAll("[data-qr-key]")) {
+    const key = card.dataset.qrKey;
+    const enabled = card.querySelector("[data-qr-enabled]")?.checked === true;
+    const requiredChecked = card.querySelector("[data-qr-required]")?.checked === true;
+    if (!enabled) {
+      profile.fields = (profile.fields || []).filter((field) => field.key !== key);
+      continue;
+    }
+    if (!findField(profile, key)) upsertField(profile, createField(key));
+    if (requiredChecked) required.push(key);
+    fields[key] = {
+      primaryRegex: card.querySelector('[data-qr-rule="primaryRegex"]').value.trim(),
+      primaryGroup: Math.max(0, Math.floor(Number(card.querySelector('[data-qr-rule="primaryGroup"]').value || 1))),
+      secondaryRegex: card.querySelector('[data-qr-rule="secondaryRegex"]').value.trim(),
+      secondaryGroup: Math.max(0, Math.floor(Number(card.querySelector('[data-qr-rule="secondaryGroup"]').value || 1))),
+      secondaryDefault: card.querySelector('[data-qr-rule="secondaryDefault"]').value.trim(),
+      template: card.querySelector('[data-qr-rule="template"]').value || "{primary}",
+      replacements: parseReplacementLines(card.querySelector('[data-qr-rule="replacements"]').value)
+    };
+  }
+
+  source.parser.fields = fields;
+  source.parser.requiredFields = required;
+  markDirty();
+  renderAssignments();
+}
+
+function useSelectionAsQrRegion() {
+  const profile = selectedProfile();
+  const session = currentSession(false);
+  if (!profile || profile.source?.type !== "qr") return;
+  if (!session?.selection?.poly?.length) {
+    alert("Zuerst im Masterbild eine OCR-Box auswählen oder im Modus „Freie Zone zeichnen“ einen QR-Suchbereich markieren.");
+    return;
+  }
+  const source = ensureQrSource(profile);
+  const rect = polyToRect(session.selection.poly);
+  source.regions = [rect, ...(source.regions || []).slice(1, 2)];
+  session.selection = null;
+  markDirty();
+  renderQrSettings(profile);
+  renderSelectionInfo();
+  drawOverlay();
+}
+
+async function testQrProfile() {
+  const profile = selectedProfile();
+  const session = currentSession(false);
+  const status = el("qrTestResult");
+  if (!profile || profile.source?.type !== "qr") return;
+  if (!session?.prepared?.canvas) {
+    status.textContent = "Bitte zuerst ein Masterbild mit QR-Code laden.";
+    status.className = "regex-status bad";
+    return;
+  }
+  updateQrRegionsFromDom();
+  updateQrRulesFromDom();
+  const match = detectQrProfile(session.prepared.canvas, [profile], profile.role);
+  if (!match) {
+    status.textContent = "Kein QR-Code passend zu diesen Regeln erkannt.";
+    status.className = "regex-status bad";
+    return;
+  }
+  status.textContent = `QR erfolgreich: ${Object.entries(match.parsed.fields || {}).map(([key, value]) => `${key}=${value}`).join(" · ")}`;
+  status.className = "regex-status ok";
+}
+
+function ensureQrSource(profile) {
+  if (profile.source?.type !== "qr") {
+    profile.source = { type: "qr", regions: [{ x: 0, y: 0, width: 1, height: 1 }], parser: { requiredFields: [], fields: {} } };
+  }
+  if (!Array.isArray(profile.source.regions)) profile.source.regions = [{ x: 0, y: 0, width: 1, height: 1 }];
+  if (!profile.source.parser || typeof profile.source.parser !== "object") profile.source.parser = { requiredFields: [], fields: {} };
+  if (!Array.isArray(profile.source.parser.requiredFields)) profile.source.parser.requiredFields = [];
+  if (!profile.source.parser.fields || typeof profile.source.parser.fields !== "object") profile.source.parser.fields = {};
+  return profile.source;
+}
+
+function parseReplacementLines(value) {
+  return readLines(value).map((line) => {
+    const [from, ...rest] = line.split(/\s*=>\s*/);
+    return { from: String(from || "").trim(), to: rest.join(" => ").trim() };
+  }).filter((entry) => entry.from);
 }
 
 function syncProfileMeta() {
@@ -782,7 +1140,7 @@ function renderProperties() {
   }
   if (assignment.type === "anchor") {
     el("anchorProperties").classList.remove("hidden");
-    el("anchorProperties").textContent = "Der Anker wird über die Alias-Texte identifiziert. Position und Größe kannst du im Bearbeitungsmodus direkt im Bild ändern.";
+    el("anchorProperties").textContent = "Der Anker wird über die Alias-Texte identifiziert. Position und Größe kannst du im Bearbeitungsmodus direkt im Bild ändern; zusätzliche Ankerparameter stehen links in den Profileinstellungen.";
     el("fieldProperties").classList.add("hidden");
     return;
   }
@@ -796,6 +1154,29 @@ function renderProperties() {
   el("fieldNormalizer").value = field.normalizer || "text";
   el("fieldDigits").value = Number(field.digits || 4);
   el("fieldAdjacentTo").value = field.adjacentTo || "";
+  el("fieldStrategy").value = field.strategy || "";
+  el("fieldSearchRadius").value = field.searchRadius == null ? "" : Number(field.searchRadius);
+  el("fieldMinOverlap").value = field.minOverlap == null ? "" : Number(field.minOverlap);
+  el("fieldPreferRightmost").checked = field.preferRightmost === true;
+  el("fieldPreferUnit").checked = field.preferUnit === true;
+  el("fieldStrategyUnits").value = (field.strategyUnits || []).join(", ");
+  el("fieldFallbackStrategy").value = field.fallbackStrategy || "";
+  el("fieldPairLeftMinDigits").value = field.pairLeftMinDigits == null ? "" : Number(field.pairLeftMinDigits);
+  el("fieldPairLeftMaxDigits").value = field.pairLeftMaxDigits == null ? "" : Number(field.pairLeftMaxDigits);
+  el("fieldTailDigits").value = field.tailDigits == null ? "" : Number(field.tailDigits);
+  el("fieldCombinedMinDigits").value = field.combinedMinDigits == null ? "" : Number(field.combinedMinDigits);
+
+  const locator = field.locator || {};
+  el("fieldLocatorAliases").value = (locator.aliases || []).join("\n");
+  el("fieldLocatorDirection").value = locator.direction || "below_or_right";
+  el("fieldLocatorMaxDistance").value = Number(locator.maxDistance || 7);
+  el("fieldLocatorMinAliasScore").value = Number(locator.minAliasScore ?? 0.72);
+  el("fieldLocatorStrict").checked = locator.strict === true;
+  el("fieldLocatorPreferRightmost").checked = locator.preferRightmost === true;
+  el("fieldLocatorPreferLeftmost").checked = locator.preferLeftmost === true;
+  el("fieldLocatorPreferUnit").checked = locator.preferUnit === true;
+  el("fieldLocatorPreferBatch").checked = locator.preferBatch === true;
+
   el("fieldRequired").checked = Boolean(field.required);
   el("fieldCompare").checked = Boolean(field.compare);
   el("digitsRow").classList.toggle("hidden", el("fieldNormalizer").value !== "last_digits");
@@ -812,6 +1193,39 @@ function updateFieldProperties() {
   field.normalizer = el("fieldNormalizer").value;
   field.digits = Math.max(1, Number(el("fieldDigits").value || 4));
   field.adjacentTo = el("fieldAdjacentTo").value || undefined;
+  field.strategy = el("fieldStrategy").value || undefined;
+  field.searchRadius = optionalNumber(el("fieldSearchRadius").value);
+  field.minOverlap = optionalNumber(el("fieldMinOverlap").value);
+  field.preferRightmost = el("fieldPreferRightmost").checked || undefined;
+  field.preferUnit = el("fieldPreferUnit").checked || undefined;
+  const strategyUnits = String(el("fieldStrategyUnits").value || "")
+    .split(/[,;\n]/)
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+  field.strategyUnits = strategyUnits.length ? strategyUnits : undefined;
+  field.fallbackStrategy = el("fieldFallbackStrategy").value || undefined;
+  field.pairLeftMinDigits = optionalInteger(el("fieldPairLeftMinDigits").value);
+  field.pairLeftMaxDigits = optionalInteger(el("fieldPairLeftMaxDigits").value);
+  field.tailDigits = optionalInteger(el("fieldTailDigits").value);
+  field.combinedMinDigits = optionalInteger(el("fieldCombinedMinDigits").value);
+
+  const aliases = readLines(el("fieldLocatorAliases").value);
+  if (aliases.length) {
+    field.locator = {
+      aliases,
+      direction: el("fieldLocatorDirection").value || "below_or_right",
+      maxDistance: Math.max(0.1, Number(el("fieldLocatorMaxDistance").value || 7)),
+      minAliasScore: clamp01Number(el("fieldLocatorMinAliasScore").value, 0.72),
+      strict: el("fieldLocatorStrict").checked,
+      preferRightmost: el("fieldLocatorPreferRightmost").checked,
+      preferLeftmost: el("fieldLocatorPreferLeftmost").checked,
+      preferUnit: el("fieldLocatorPreferUnit").checked,
+      preferBatch: el("fieldLocatorPreferBatch").checked
+    };
+  } else {
+    field.locator = undefined;
+  }
+
   field.required = el("fieldRequired").checked;
   field.compare = el("fieldCompare").checked;
   el("digitsRow").classList.toggle("hidden", field.normalizer !== "last_digits");
@@ -839,7 +1253,15 @@ function deleteSelectedAssignment() {
   const assignment = currentAssignment();
   if (!profile || !assignment) return;
   if (assignment.type === "anchor") profile.anchor.poly = [];
-  else profile.fields = profile.fields.filter((field) => field.key !== assignment.key);
+  else {
+    profile.fields = profile.fields.filter((field) => field.key !== assignment.key);
+    if (profile.source?.type === "qr") {
+      const source = ensureQrSource(profile);
+      delete source.parser.fields[assignment.key];
+      source.parser.requiredFields = source.parser.requiredFields.filter((key) => key !== assignment.key);
+      renderQrSettings(profile);
+    }
+  }
   state.selectedAssignment = null;
   markDirty();
   renderAssignments();
@@ -888,11 +1310,17 @@ function drawOverlay() {
   }
 
   const profile = selectedProfile();
-  if (profile && (profile.anchor?.poly || []).length) {
+  if (profile?.source?.type === "qr") {
+    (profile.source.regions || []).forEach((region, index) => {
+      drawLabeledNormalizedPoly(context, rectToPoly(region), width, height, "#b58cff", `QR ${index + 1}`, false);
+    });
+  } else if (profile && (profile.anchor?.poly || []).length) {
     drawLabeledNormalizedPoly(context, profile.anchor.poly, width, height, "#37dc91", "ANKER", isSelected("anchor", "anchor"));
   }
   for (const field of profile?.fields || []) {
-    drawLabeledNormalizedPoly(context, field.poly, width, height, "#4cc9f0", field.label, isSelected("field", field.key));
+    if ((field.poly || []).length >= 4) {
+      drawLabeledNormalizedPoly(context, field.poly, width, height, "#4cc9f0", field.label, isSelected("field", field.key));
+    }
   }
 
   if (session.selection?.poly?.length) {
@@ -1038,6 +1466,28 @@ function escapeHtml(value) {
   return String(value || "").replace(/[&<>'"]/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
   })[character]);
+}
+
+function readLines(value) {
+  return String(value || "").split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
+}
+
+function clamp01Number(value, fallback = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(1, number));
+}
+
+function optionalNumber(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return undefined;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function optionalInteger(value) {
+  const number = optionalNumber(value);
+  return number == null ? undefined : Math.max(1, Math.floor(number));
 }
 
 function createOcrInputCanvas(sourceCanvas, maxSide) {

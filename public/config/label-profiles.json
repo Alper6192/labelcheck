@@ -1,13 +1,27 @@
 {
-  "schemaVersion": 2,
-  "appVersion": "0.16.7",
-  "exportedAt": "2026-08-10T15:51:56.398Z",
+  "schemaVersion": 3,
+  "appVersion": "0.17.0",
+  "exportedAt": "2026-08-17T11:15:28.221364Z",
   "profiles": [
     {
       "id": "STELLANTIS",
       "name": "Stellantis",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "Stellantis"
@@ -152,6 +166,20 @@
       "name": "Mercedes",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "MERCEDES",
@@ -298,6 +326,22 @@
       "name": "Henkel",
       "role": "product",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [
+          "batch"
+        ],
+        "errorMessage": "Kein gültiges Produktlabel erkannt. Bitte das Produktlabel vollständig und gut lesbar fotografieren."
+      },
       "anchor": {
         "aliases": [
           "Henkel"
@@ -435,7 +479,9 @@
               0.44828282828282834
             ]
           ],
-          "digits": 4
+          "digits": 4,
+          "strategy": "unit_required_weight",
+          "searchRadius": 2.4
         }
       ]
     },
@@ -444,6 +490,20 @@
       "name": "BMW",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "BMW",
@@ -591,6 +651,20 @@
       "name": "STAB",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "STAB",
@@ -737,6 +811,20 @@
       "name": "Jaguar",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "Jaguar",
@@ -882,6 +970,20 @@
       "name": "Dachser",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "Henkel Teroson GmbH"
@@ -1026,6 +1128,20 @@
       "name": "Scania",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "SCANIA",
@@ -1139,7 +1255,8 @@
           "searchRadius": 1.8,
           "minOverlap": 0,
           "preferRightmost": true,
-          "preferUnit": true
+          "preferUnit": true,
+          "strategy": "net_pair_weight"
         },
         {
           "key": "delivery_note",
@@ -1175,6 +1292,20 @@
       "name": "VW",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "Volkswagen",
@@ -1240,8 +1371,12 @@
             ],
             "direction": "below_or_right",
             "maxDistance": 6,
-            "preferBatch": true,
-            "strict": true
+            "minAliasScore": 0.72,
+            "strict": true,
+            "preferRightmost": false,
+            "preferLeftmost": false,
+            "preferUnit": false,
+            "preferBatch": true
           }
         },
         {
@@ -1279,10 +1414,18 @@
             ],
             "direction": "below_or_right",
             "maxDistance": 8,
+            "minAliasScore": 0.72,
+            "strict": true,
             "preferRightmost": true,
-            "strict": true
+            "preferLeftmost": false,
+            "preferUnit": false,
+            "preferBatch": false
           },
-          "strategy": "vw_delivery_pair"
+          "strategy": "numeric_pair",
+          "pairLeftMinDigits": 7,
+          "pairLeftMaxDigits": 10,
+          "tailDigits": 7,
+          "combinedMinDigits": 14
         },
         {
           "key": "weight",
@@ -1317,11 +1460,19 @@
             ],
             "direction": "below_or_right",
             "maxDistance": 5.5,
+            "minAliasScore": 0.72,
+            "strict": false,
+            "preferRightmost": false,
+            "preferLeftmost": false,
             "preferUnit": true,
-            "strict": false
+            "preferBatch": false
           },
           "strategy": "quantity_weight",
-          "searchRadius": 2.2
+          "searchRadius": 2.2,
+          "strategyUnits": [
+            "KGM",
+            "LTR"
+          ]
         },
         {
           "key": "delivery_note",
@@ -1357,12 +1508,18 @@
             ],
             "direction": "below_or_right",
             "maxDistance": 8,
+            "minAliasScore": 0.72,
+            "strict": true,
+            "preferRightmost": false,
             "preferLeftmost": true,
-            "strict": true
+            "preferUnit": false,
+            "preferBatch": false
           },
           "tailDigits": 7,
           "combinedMinDigits": 14,
-          "strategy": "vw_delivery_pair"
+          "strategy": "numeric_pair",
+          "pairLeftMinDigits": 7,
+          "pairLeftMaxDigits": 10
         }
       ]
     },
@@ -1371,6 +1528,20 @@
       "name": "Segro",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "SEGRO LOGISTICS PARK",
@@ -1516,6 +1687,20 @@
       "name": "Skoda",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "SKODA AUTO A.S.",
@@ -1662,6 +1847,20 @@
       "name": "Intern1",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "Alte Materialnummer"
@@ -1807,7 +2006,12 @@
             ],
             "direction": "below_or_right",
             "maxDistance": 6.5,
-            "strict": true
+            "minAliasScore": 0.72,
+            "strict": true,
+            "preferRightmost": false,
+            "preferLeftmost": false,
+            "preferUnit": false,
+            "preferBatch": false
           },
           "digits": 4
         }
@@ -1818,6 +2022,9 @@
       "name": "Intern2",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
       "detection": {
         "evidenceAliases": [
           "Prüflos",
@@ -1830,6 +2037,11 @@
           "Alte Materialnummer"
         ],
         "minScore": 0.62
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
       },
       "anchor": {
         "aliases": [
@@ -1977,7 +2189,12 @@
             ],
             "direction": "below_or_right",
             "maxDistance": 6.5,
-            "strict": true
+            "minAliasScore": 0.72,
+            "strict": true,
+            "preferRightmost": false,
+            "preferLeftmost": false,
+            "preferUnit": false,
+            "preferBatch": false
           },
           "digits": 4
         }
@@ -1990,8 +2207,67 @@
       "active": true,
       "source": {
         "type": "qr",
-        "parser": "tesla",
-        "region": "lower-left"
+        "regions": [
+          {
+            "x": 0,
+            "y": 0.48,
+            "width": 0.42,
+            "height": 0.48
+          },
+          {
+            "x": 0,
+            "y": 0.34,
+            "width": 0.58,
+            "height": 0.6599999999999999
+          }
+        ],
+        "parser": {
+          "requiredFields": [
+            "batch",
+            "delivery_note",
+            "weight"
+          ],
+          "fields": {
+            "batch": {
+              "primaryRegex": "(?:^|:)1T(D\\d{8,10})(?=:|$)",
+              "primaryGroup": 1,
+              "secondaryRegex": "",
+              "secondaryGroup": 1,
+              "secondaryDefault": "",
+              "template": "{primary}",
+              "replacements": []
+            },
+            "weight": {
+              "primaryRegex": "(?:^|:)Q(\\d+(?:[.,]\\d+)?)(?=:|$)",
+              "primaryGroup": 1,
+              "secondaryRegex": "(?:^|:)3Q(KGM?|G|L|LTR)(?=:|$)",
+              "secondaryGroup": 1,
+              "secondaryDefault": "KG",
+              "template": "{primary} {secondary}",
+              "replacements": []
+            },
+            "delivery_note": {
+              "primaryRegex": "(?:^|:)99Z(\\d{7,12})(?=:|$)",
+              "primaryGroup": 1,
+              "secondaryRegex": "",
+              "secondaryGroup": 1,
+              "secondaryDefault": "",
+              "template": "{primary}",
+              "replacements": []
+            }
+          }
+        }
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
       },
       "anchor": {
         "aliases": [
@@ -2042,6 +2318,20 @@
       "name": "Seat",
       "role": "vda",
       "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
       "anchor": {
         "aliases": [
           "SEAT",

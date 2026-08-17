@@ -1460,3 +1460,14 @@ main > .card:first-child .engine-badge {
   .labelcheck-app .log-head { align-items: flex-start; }
   .labelcheck-app .log-head-meta { max-width: 58%; }
 }
+
+/* Erweiterter Profileditor 0.17 */
+.advanced-settings-block{display:grid;gap:.65rem;margin-top:.4rem;padding:.8rem;border:1px solid rgba(255,255,255,.12);border-radius:10px}
+.advanced-settings-block>strong{margin-top:.25rem}
+.compact-fieldset{display:grid;gap:.35rem;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:.6rem}
+.qr-region-grid,.strategy-number-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem}
+.qr-region-card,.qr-rule-card{display:grid;gap:.45rem;padding:.65rem;border:1px solid rgba(255,255,255,.12);border-radius:8px}
+.qr-region-card .mini-grid,.qr-rule-card .mini-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
+.qr-rules{display:grid;gap:.6rem}
+.qr-rule-card h4{margin:.1rem 0}
+@media(max-width:800px){.qr-region-grid,.strategy-number-grid,.qr-region-card .mini-grid,.qr-rule-card .mini-grid{grid-template-columns:1fr}}

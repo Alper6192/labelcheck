@@ -46,7 +46,47 @@
           <label>Name<input id="profileName" type="text"></label>
           <label>Rolle<select id="profileRole"><option value="product">Produktlabel</option><option value="vda">VDA-Label</option></select></label>
           <label class="checkbox-row"><input id="profileActive" type="checkbox"> Profil aktiv</label>
-          <label>Anker-Aliase<textarea id="anchorAliases" rows="5" placeholder="Ein Alias pro Zeile, z. B. Mercedes-Benz AG"></textarea></label>
+          <label>Erkennungsquelle<select id="profileSourceType"><option value="ocr">OCR / Textlayout</option><option value="qr">QR-Code</option></select></label>
+
+          <div id="ocrProfileSettings" class="advanced-settings-block">
+            <strong>OCR-Profil &amp; Anker</strong>
+            <label>Anker-Aliase<textarea id="anchorAliases" rows="5" placeholder="Ein Alias pro Zeile"></textarea></label>
+            <label class="checkbox-row"><input id="anchorLocalizeAlias" type="checkbox"> Alias innerhalb längerer OCR-Zeile lokalisieren</label>
+            <label>Skalierung des Layouts<select id="anchorScaleFrom"><option value="width">über Ankerbreite</option><option value="height">über Ankerhöhe</option></select></label>
+            <label>Ausrichtung<select id="anchorAlignFrom"><option value="center">Ankermitte</option><option value="left">linke Ankerkante</option></select></label>
+            <label>Alternative Anker (JSON)<textarea id="anchorFallbacksJson" rows="4" spellcheck="false" placeholder='[{"aliases":["Alternative"],"poly":[...]}]'></textarea></label>
+
+            <strong>Profilerkennung</strong>
+            <label>Zusätzliche Erkennungsmerkmale<textarea id="detectionEvidenceAliases" rows="3" placeholder="Ein Text pro Zeile"></textarea></label>
+            <label>Mindestens erkannte Merkmale<input id="detectionMinEvidenceMatches" type="number" min="0" max="20" step="1" value="0"></label>
+            <label>Ausschlussmerkmale<textarea id="detectionExcludeAliases" rows="3" placeholder="Wenn einer dieser Texte vorkommt, Profil ausschließen"></textarea></label>
+            <label>Mindest-Ankerquote für Profilauswahl<input id="detectionMinScore" type="number" min="0" max="1" step="0.01" value="0.55"></label>
+
+            <label>Mindest-Ankerquote für gültiges OCR-Label<input id="validationMinAnchorScore" type="number" min="0" max="1" step="0.01" value="0.55"></label>
+          </div>
+
+          <div id="qrProfileSettings" class="advanced-settings-block hidden">
+            <strong>QR-Suchbereiche</strong>
+            <p class="muted">Werte sind relativ zum Bild: 0 = links/oben, 1 = rechts/unten. Ein zweiter Bereich ist optional und dient als Fallback.</p>
+            <div class="qr-region-grid" id="qrRegionInputs"></div>
+            <button id="useSelectionAsQrRegion" type="button">Aktuelle Auswahl als ersten QR-Bereich übernehmen</button>
+            <strong>QR-Feldregeln</strong>
+            <div id="qrRules" class="qr-rules"></div>
+            <button id="testQrButton" type="button">QR-Regeln am Masterbild testen</button>
+            <div id="qrTestResult" class="regex-status"></div>
+          </div>
+
+          <div id="profileValidationSettings" class="advanced-settings-block">
+            <strong>Labelvalidierung</strong>
+            <fieldset class="compact-fieldset"><legend>Diese Felder müssen für ein gültiges Label vorhanden sein</legend>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="batch"> Batch</label>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="idh"> IDH</label>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="weight"> Gewicht</label>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="delivery_note"> Lieferscheinnummer</label>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="drum_number"> Fassnummer</label>
+            </fieldset>
+            <label>Fehlermeldung bei ungültigem Label<textarea id="validationErrorMessage" rows="3"></textarea></label>
+          </div>
         </div>
       </div>
     </aside>
@@ -122,6 +162,39 @@
               </select></label>
               <label id="digitsRow">Anzahl der letzten Ziffern<input id="fieldDigits" type="number" min="1" max="12" value="4"></label>
               <label>Nachbarfeld<select id="fieldAdjacentTo"><option value="">kein Nachbarfeld</option><option value="batch">rechts neben Batch suchen</option></select></label>
+
+              <strong>Erkennungsstrategie</strong>
+              <label>Strategie<select id="fieldStrategy">
+                <option value="">Standard: Zone / Nähe</option>
+                <option value="unit_required_weight">Gewicht nur mit Einheit</option>
+                <option value="net_pair_weight">Netto aus Zahlenpaar / rechter Wert</option>
+                <option value="numeric_pair">Große Zahlen-Kombizeile</option>
+                <option value="quantity_weight">Quantity-Gewicht mit bevorzugter Einheit</option>
+              </select></label>
+              <label>Suchradius-Faktor<input id="fieldSearchRadius" type="number" min="0.1" max="20" step="0.05" placeholder="Standard 1.8"></label>
+              <label>Mindest-Überlappung<input id="fieldMinOverlap" type="number" min="0" max="1" step="0.01" placeholder="Standard 0"></label>
+              <label class="checkbox-row"><input id="fieldPreferRightmost" type="checkbox"> rechten Kandidaten bevorzugen</label>
+              <label class="checkbox-row"><input id="fieldPreferUnit" type="checkbox"> Kandidaten mit Einheit bevorzugen</label>
+              <label>Strategie-Einheiten<input id="fieldStrategyUnits" type="text" placeholder="z. B. KGM, LTR"></label>
+              <label>Fallback-Strategie<select id="fieldFallbackStrategy"><option value="">keine</option><option value="net_pair">Zahlenpaar Gross/Net</option></select></label>
+              <div class="strategy-number-grid">
+                <label>Linke Zahl min. Stellen<input id="fieldPairLeftMinDigits" type="number" min="1" max="20" placeholder="7"></label>
+                <label>Linke Zahl max. Stellen<input id="fieldPairLeftMaxDigits" type="number" min="1" max="20" placeholder="10"></label>
+                <label>Rechter Anteil / Tail<input id="fieldTailDigits" type="number" min="1" max="20" placeholder="7"></label>
+                <label>Kombizeile min. Stellen<input id="fieldCombinedMinDigits" type="number" min="1" max="40" placeholder="14"></label>
+              </div>
+
+              <strong>Locator – Wert relativ zu einer Feldbeschriftung</strong>
+              <label>Locator-Aliase<textarea id="fieldLocatorAliases" rows="3" placeholder="Ein Text pro Zeile; leer = Locator aus"></textarea></label>
+              <label>Richtung<select id="fieldLocatorDirection"><option value="below_or_right">unterhalb oder rechts</option><option value="below">unterhalb</option><option value="right">rechts</option></select></label>
+              <label>Max. Abstand<input id="fieldLocatorMaxDistance" type="number" min="0.1" max="30" step="0.1" value="7"></label>
+              <label>Mindest-Aliasquote<input id="fieldLocatorMinAliasScore" type="number" min="0" max="1" step="0.01" value="0.72"></label>
+              <label class="checkbox-row"><input id="fieldLocatorStrict" type="checkbox"> nur Locator-Treffer zulassen</label>
+              <label class="checkbox-row"><input id="fieldLocatorPreferRightmost" type="checkbox"> rechten Locator-Wert bevorzugen</label>
+              <label class="checkbox-row"><input id="fieldLocatorPreferLeftmost" type="checkbox"> linken Locator-Wert bevorzugen</label>
+              <label class="checkbox-row"><input id="fieldLocatorPreferUnit" type="checkbox"> Locator-Wert mit Einheit bevorzugen</label>
+              <label class="checkbox-row"><input id="fieldLocatorPreferBatch" type="checkbox"> Batchformat bevorzugen</label>
+
               <label class="checkbox-row"><input id="fieldRequired" type="checkbox"> Pflichtfeld</label>
               <label class="checkbox-row"><input id="fieldCompare" type="checkbox"> Produkt und VDA vergleichen</label>
               <button id="deleteAssignmentButton" class="danger">Diese Zuordnung löschen</button>

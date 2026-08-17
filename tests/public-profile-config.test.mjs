@@ -70,8 +70,13 @@ test("Tesla-Profil verwendet den QR-Parser und benötigt keine IDH", () => {
   const raw = readConfig();
   const profile = raw.profiles.find((entry) => entry.id === "TESLA");
   assert.equal(profile?.source?.type, "qr");
-  assert.equal(profile?.source?.parser, "tesla");
-  assert.equal(profile?.source?.region, "lower-left");
+  assert.equal(typeof profile?.source?.parser, "object");
+  assert.ok(Array.isArray(profile?.source?.regions));
+  assert.ok(profile.source.regions.length >= 1);
+  assert.ok(profile.source.parser.requiredFields.includes("batch"));
+  assert.ok(profile.source.parser.requiredFields.includes("delivery_note"));
+  assert.ok(profile.source.parser.requiredFields.includes("weight"));
+  assert.match(profile.source.parser.fields.batch.primaryRegex, /1T/);
   assert.equal(profile?.fields?.some((field) => field.key === "idh"), false);
   assert.equal(profile?.fields?.find((field) => field.key === "delivery_note")?.required, true);
 });
@@ -103,7 +108,7 @@ test("VW verwendet für die IDH die letzten 7 Ziffern der untersten Zahlenzeile"
   assert.equal(idh?.normalizer, "last_digits");
   assert.equal(idh?.digits, 7);
   assert.equal(idh?.regex, "^\\d{7}$");
-  assert.equal(idh?.strategy, "vw_delivery_pair");
+  assert.equal(idh?.strategy, "numeric_pair");
   assert.match(idh?.sourceRegex || "", /\\d\{7\}/);
 });
 
@@ -111,7 +116,7 @@ test("Scania-Gewicht verlangt K/KG und verwendet Netto-Logik", () => {
   const scania = readConfig().profiles.find((profile) => profile.id === "SCANIA");
   const weight = scania?.fields?.find((field) => field.key === "weight");
   assert.equal(weight?.normalizer, "net_weight");
-  assert.equal(weight?.strategy, undefined);
+  assert.equal(weight?.strategy, "net_pair_weight");
   assert.equal(weight?.minOverlap, 0);
   assert.equal(weight?.searchRadius, 1.8);
   const re = new RegExp(weight?.sourceRegex || "", "i");
@@ -148,9 +153,9 @@ test("Interne Profile binden die Lieferscheinnummer an Transportauftrag - Positi
 test("VW nutzt die große Kombizeile und das obere Quantity-Gewicht", () => {
   const vw = readConfig().profiles.find((profile) => profile.id === "VW");
   const byKey = Object.fromEntries(vw.fields.map((field) => [field.key, field]));
-  assert.equal(byKey.delivery_note.strategy, "vw_delivery_pair");
+  assert.equal(byKey.delivery_note.strategy, "numeric_pair");
   assert.equal(byKey.delivery_note.normalizer, "leading_delivery_digits");
-  assert.equal(byKey.idh.strategy, "vw_delivery_pair");
+  assert.equal(byKey.idh.strategy, "numeric_pair");
   assert.equal(byKey.idh.normalizer, "last_digits");
   assert.equal(byKey.weight.strategy, "quantity_weight");
   assert.equal(byKey.weight.normalizer, "weight");
@@ -176,4 +181,24 @@ test("Schema-Normalisierung erhält VWs height- und left-Ankerausrichtung", () =
   assert.equal(vw?.anchor?.scaleFrom, "height");
   assert.equal(vw?.anchor?.alignFrom, "left");
   assert.equal(vw?.fields?.find((field) => field.key === "delivery_note")?.locator?.strict, true);
+});
+
+test("Produktgewicht und Spezialgewichte werden über allgemeine JSON-Strategien gesteuert", () => {
+  const raw = readConfig();
+  const product = raw.profiles.find((profile) => profile.role === "product");
+  const productWeight = product?.fields?.find((field) => field.key === "weight");
+  assert.equal(productWeight?.strategy, "unit_required_weight");
+
+  const netPair = raw.profiles.find((profile) => profile.fields?.some((field) => field.strategy === "net_pair_weight"));
+  assert.ok(netPair, "Mindestens das bestehende Netto-Paar-Profil muss die Strategie in JSON tragen.");
+});
+
+test("QR-Parserregeln der produktiven JSON enthalten nur gültige RegEx", () => {
+  const raw = readConfig();
+  for (const profile of raw.profiles.filter((entry) => entry.source?.type === "qr")) {
+    for (const [key, rule] of Object.entries(profile.source.parser?.fields || {})) {
+      assert.ok(validateRegex(rule.primaryRegex).valid, `${profile.id}/${key}: primaryRegex`);
+      assert.ok(validateRegex(rule.secondaryRegex).valid, `${profile.id}/${key}: secondaryRegex`);
+    }
+  }
 });

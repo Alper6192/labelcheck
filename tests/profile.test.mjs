@@ -249,7 +249,7 @@ test("Scania-Gewicht nimmt Netto rechts und nicht Gross oder Batch-Suffix", () =
       key: "weight", label: "Gewicht", required: true, compare: true,
       regex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
       sourceRegex: "^(?:\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?)$",
-      normalizer: "net_weight", searchRadius: 1.2, minOverlap: 0.05,
+      normalizer: "net_weight", strategy: "net_pair_weight", searchRadius: 1.2, minOverlap: 0.05,
       poly: [[0.75,0.50],[0.90,0.50],[0.90,0.60],[0.75,0.60]]
     }]
   };
@@ -320,7 +320,7 @@ test("Scania-Netto darf knapp rechts neben der Sollbox liegen und gewinnt gegen 
       key: "weight", label: "Gewicht", required: true, compare: true,
       regex: "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
       sourceRegex: "^(?:\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?(?:\\s*(?:KG|KGM))?)$",
-      normalizer: "net_weight", searchRadius: 1.8, minOverlap: 0,
+      normalizer: "net_weight", strategy: "net_pair_weight", searchRadius: 1.8, minOverlap: 0,
       preferRightmost: true, preferUnit: true,
       poly: [[0.70,0.50],[0.78,0.50],[0.78,0.60],[0.70,0.60]]
     }]
@@ -502,7 +502,7 @@ test("Scania akzeptiert allein nur Gewicht mit K oder KG", () => {
       key: "weight", label: "Gewicht", required: true, compare: true,
       regex: "^\\d+(?:[.,]\\d+)?\\s*KG$",
       sourceRegex: "^(?:\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?)$",
-      normalizer: "net_weight", searchRadius: 1.8, minOverlap: 0,
+      normalizer: "net_weight", strategy: "net_pair_weight", searchRadius: 1.8, minOverlap: 0,
       preferRightmost: true, preferUnit: true,
       poly: [[0.66,0.50],[0.90,0.50],[0.90,0.60],[0.66,0.60]]
     }]
@@ -525,7 +525,7 @@ test("Scania setzt getrennte OCR-Boxen 1300 + KG zum Nettogewicht zusammen", () 
       key: "weight", label: "Gewicht", required: true, compare: true,
       regex: "^\\d+(?:[.,]\\d+)?\\s*KG$",
       sourceRegex: "^(?:\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?)$",
-      normalizer: "net_weight", searchRadius: 1.8, minOverlap: 0,
+      normalizer: "net_weight", strategy: "net_pair_weight", searchRadius: 1.8, minOverlap: 0,
       preferRightmost: true, preferUnit: true,
       poly: [[0.66,0.50],[0.90,0.50],[0.90,0.60],[0.66,0.60]]
     }]
@@ -539,7 +539,7 @@ test("Scania setzt getrennte OCR-Boxen 1300 + KG zum Nettogewicht zusammen", () 
   ], profile, { width: 1000, height: 500 });
   assert.equal(result.fields.weight.value, "1300 KG");
   assert.equal(result.fields.weight.valid, true);
-  assert.equal(result.fields.weight.source, "ocr-scania-net");
+  assert.equal(result.fields.weight.source, "ocr-net-weight");
 });
 
 test("Scania extrahiert aus kompletter Gross-Net-Zeile nur den Wert mit KG", () => {
@@ -548,7 +548,7 @@ test("Scania extrahiert aus kompletter Gross-Net-Zeile nur den Wert mit KG", () 
     anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
     fields: [{
       key: "weight", label: "Gewicht", required: true, compare: true,
-      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$", normalizer: "net_weight",
+      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$", normalizer: "net_weight", strategy: "net_pair_weight",
       poly: [[0.66,0.50],[0.90,0.50],[0.90,0.60]]
     }]
   };
@@ -568,7 +568,7 @@ test("Scania findet Netto auch wenn die Sollbox oberhalb der echten Gross-Net-Ze
       key: "weight", label: "Gewicht", required: true, compare: true,
       regex: "^\\d+(?:[.,]\\d+)?\\s*KG$",
       sourceRegex: "^(?:\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?|\\d{1,4}(?:[.,]\\d+)?\\s*[/|I]\\s*\\d{1,4}(?:[.,]\\d+)?\\s*K(?:G)?)$",
-      normalizer: "net_weight",
+      normalizer: "net_weight", strategy: "net_pair_weight",
       // Absichtlich deutlich zu hoch gesetzte Sollbox wie auf dem Live-Screenshot.
       poly: [[0.66,0.38],[0.90,0.38],[0.90,0.44],[0.66,0.44]]
     }]
@@ -578,13 +578,13 @@ test("Scania findet Netto auch wenn die Sollbox oberhalb der echten Gross-Net-Ze
     item("1550 / 1300 KG", .95, [[650,310],[910,310],[910,355],[650,355]])
   ], profile, { width: 1000, height: 500 });
   assert.equal(result.fields.weight.value, "1300 KG");
-  assert.equal(result.fields.weight.source, "ocr-scania-net");
+  assert.equal(result.fields.weight.source, "ocr-net-weight");
 });
 
 test("VW liest LSN und IDH direkt aus der großen unteren Zeile ohne Beschriftung", () => {
   const baseField = {
     sourceRegex: "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$",
-    strategy: "vw_delivery_pair"
+    strategy: "numeric_pair"
   };
   const profile = {
     id: "VW", name: "VW", role: "vda", active: true,
@@ -606,8 +606,8 @@ test("VW liest LSN und IDH direkt aus der großen unteren Zeile ohne Beschriftun
   ], profile, { width: 1000, height: 500 });
   assert.equal(result.fields.delivery_note.value, "13014402");
   assert.equal(result.fields.idh.value, "2503891");
-  assert.equal(result.fields.delivery_note.source, "ocr-vw-pair");
-  assert.equal(result.fields.idh.source, "ocr-vw-pair");
+  assert.equal(result.fields.delivery_note.source, "ocr-numeric-pair");
+  assert.equal(result.fields.idh.source, "ocr-numeric-pair");
 });
 
 test("VW Kombizeile funktioniert auch bei getrennten OCR-Boxen", () => {
@@ -615,8 +615,8 @@ test("VW Kombizeile funktioniert auch bei getrennten OCR-Boxen", () => {
     id: "VW", name: "VW", role: "vda", active: true,
     anchor: { aliases: ["Volkswagen AG"], scaleFrom: "height", alignFrom: "left", poly: [[0.2,0.1],[0.5,0.1],[0.5,0.18],[0.2,0.18]] },
     fields: [
-      { key: "delivery_note", label: "Lieferscheinnummer", regex: "^\\d{7,12}$", sourceRegex: "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$", normalizer: "leading_delivery_digits", tailDigits: 7, combinedMinDigits: 14, strategy: "vw_delivery_pair", poly: [[0.1,0.35],[0.25,0.35],[0.25,0.42],[0.1,0.42]] },
-      { key: "idh", label: "IDH", regex: "^\\d{7}$", sourceRegex: "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$", normalizer: "last_digits", digits: 7, strategy: "vw_delivery_pair", poly: [[0.15,0.72],[0.55,0.72],[0.55,0.80],[0.15,0.80]] }
+      { key: "delivery_note", label: "Lieferscheinnummer", regex: "^\\d{7,12}$", sourceRegex: "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$", normalizer: "leading_delivery_digits", tailDigits: 7, combinedMinDigits: 14, strategy: "numeric_pair", poly: [[0.1,0.35],[0.25,0.35],[0.25,0.42],[0.1,0.42]] },
+      { key: "idh", label: "IDH", regex: "^\\d{7}$", sourceRegex: "^(?:\\d{7,10}\\s+\\d{7}|\\d{14,17})$", normalizer: "last_digits", digits: 7, strategy: "numeric_pair", poly: [[0.15,0.72],[0.55,0.72],[0.55,0.80],[0.15,0.80]] }
     ]
   };
   const result = extractProfileFields([
@@ -677,7 +677,7 @@ test("Scania Gross/Net funktioniert auch wenn OCR die Einheit als K6 liest", () 
     anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
     fields: [{
       key: "weight", label: "Gewicht", required: true, compare: true,
-      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$", normalizer: "net_weight",
+      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$", normalizer: "net_weight", strategy: "net_pair_weight",
       poly: [[0.66,0.38],[0.90,0.38],[0.90,0.44],[0.66,0.44]]
     }]
   };
@@ -695,7 +695,7 @@ test("Scania Gross/Net nimmt rechten Wert auch wenn OCR die Einheit komplett ver
     anchor: { aliases: ["SCANIA AB (PUBL)"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.18],[0.1,0.18]] },
     fields: [{
       key: "weight", label: "Gewicht", required: true, compare: true,
-      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$", normalizer: "net_weight",
+      regex: "^\\d+(?:[.,]\\d+)?\\s*KG$", normalizer: "net_weight", strategy: "net_pair_weight",
       poly: [[0.66,0.38],[0.90,0.38],[0.90,0.44],[0.66,0.44]]
     }]
   };
@@ -706,7 +706,7 @@ test("Scania Gross/Net nimmt rechten Wert auch wenn OCR die Einheit komplett ver
     item("1300", .96, [[775,310],[860,310],[860,355],[775,355]])
   ], profile, { width: 1000, height: 500 });
   assert.equal(result.fields.weight.value, "1300 KG");
-  assert.equal(result.fields.weight.source, "ocr-scania-pair");
+  assert.equal(result.fields.weight.source, "ocr-net-pair");
   assert.equal(result.fields.weight.valid, true);
 });
 
@@ -714,6 +714,7 @@ test("Scania Gross/Net nimmt rechten Wert auch wenn OCR die Einheit komplett ver
 test("Henkel-Fassnummer kann nicht als Produktgewicht verwendet werden", () => {
   const henkel = structuredClone(product);
   henkel.id = "HENKEL";
+  henkel.fields.find((field) => field.key === "weight").strategy = "unit_required_weight";
   const withoutWeight = productItems.filter((entry) => entry.text !== "25 KG" && entry.text !== "10001" && entry.text !== "D562900431");
   withoutWeight.push(item("D562900431 /0007", .99, [[858,404],[1155,399],[1155,437],[858,437]]));
   const result = extractProfileFields(withoutWeight, henkel, { width: 1800, height: 1013 });
@@ -725,6 +726,7 @@ test("Henkel-Fassnummer kann nicht als Produktgewicht verwendet werden", () => {
 test("Henkel-Produktgewicht verlangt Einheit und bleibt trotz Fassnummer korrekt", () => {
   const henkel = structuredClone(product);
   henkel.id = "HENKEL";
+  henkel.fields.find((field) => field.key === "weight").strategy = "unit_required_weight";
   const withDrum = productItems.filter((entry) => entry.text !== "10001" && entry.text !== "D562900431");
   withDrum.push(item("D562900431 /0007", .99, [[858,404],[1155,399],[1155,437],[858,437]]));
   const result = extractProfileFields(withDrum, henkel, { width: 1800, height: 1013 });
@@ -736,6 +738,7 @@ test("Henkel-Produktgewicht verlangt Einheit und bleibt trotz Fassnummer korrekt
 test("Henkel-Produktgewicht verbindet getrennte Zahl- und Einheitsbox", () => {
   const henkel = structuredClone(product);
   henkel.id = "HENKEL";
+  henkel.fields.find((field) => field.key === "weight").strategy = "unit_required_weight";
   const split = productItems.filter((entry) => entry.text !== "25 KG" && entry.text !== "10001" && entry.text !== "D562900431");
   split.push(item("D562900431 /0007", .99, [[858,404],[1155,399],[1155,437],[858,437]]));
   split.push(item("25", .97, [[1004,333],[1090,329],[1092,380],[1005,384]]));

@@ -1,5 +1,6 @@
 import { clamp, normalizePoly } from "./utils.js";
 
+export const PROFILE_SCHEMA_VERSION = 3;
 export const FIELD_ORDER = ["batch", "drum_number", "idh", "weight", "delivery_note"];
 
 export const FIELD_PRESETS = {
@@ -52,14 +53,44 @@ export const FIELD_PRESETS = {
   }
 };
 
+export const FIELD_STRATEGIES = [
+  "",
+  "unit_required_weight",
+  "net_pair_weight",
+  "numeric_pair",
+  "quantity_weight"
+];
+
 export function createProfile(role = "vda", index = 1) {
   const stamp = String(index).padStart(3, "0");
+  const product = role === "product";
   return {
-    id: role === "product" ? `PRODUCT_${stamp}` : `VDA_${stamp}`,
-    name: role === "product" ? `Produktprofil ${stamp}` : `VDA-Profil ${stamp}`,
-    role,
+    id: product ? `PRODUCT_${stamp}` : `VDA_${stamp}`,
+    name: product ? `Produktprofil ${stamp}` : `VDA-Profil ${stamp}`,
+    role: product ? "product" : "vda",
     active: true,
-    anchor: { aliases: [], poly: [] },
+    source: { type: "ocr" },
+    detection: {
+      evidenceAliases: [],
+      minEvidenceMatches: 0,
+      excludeAliases: [],
+      minScore: 0.55
+    },
+    validation: {
+      minAnchorScore: 0.55,
+      requiredValidFields: product ? ["batch"] : [],
+      errorMessage: product
+        ? "Kein gültiges Produktlabel erkannt. Bitte das Produktlabel vollständig und gut lesbar fotografieren."
+        : ""
+    },
+    anchor: {
+      aliases: [],
+      poly: [],
+      localizeAlias: false,
+      scaleFrom: "width",
+      alignFrom: "center",
+      fallbacks: []
+    },
     fields: []
   };
 }
@@ -70,10 +101,22 @@ export function createField(key, poly = []) {
   return { ...structuredCloneSafe(preset), poly: normalizeNormalizedPoly(poly) };
 }
 
+export function createQrFieldRule() {
+  return {
+    primaryRegex: "",
+    primaryGroup: 1,
+    secondaryRegex: "",
+    secondaryGroup: 1,
+    secondaryDefault: "",
+    template: "{primary}",
+    replacements: []
+  };
+}
+
 export function normalizeProfileConfig(raw, appVersion = "") {
   const profiles = Array.isArray(raw?.profiles) ? raw.profiles : [];
   return {
-    schemaVersion: 2,
+    schemaVersion: PROFILE_SCHEMA_VERSION,
     appVersion: appVersion || String(raw?.appVersion || ""),
     exportedAt: raw?.exportedAt || null,
     profiles: profiles.map((profile, index) => normalizeProfile(profile, index))
@@ -84,26 +127,54 @@ export function normalizeProfile(profile, index = 0) {
   const role = profile?.role === "product" ? "product" : "vda";
   const fallback = createProfile(role, index + 1);
   const fields = Array.isArray(profile?.fields) ? profile.fields : [];
+  const source = normalizeProfileSource(profile?.source);
   return {
     id: String(profile?.id || fallback.id),
     name: String(profile?.name || fallback.name),
     role,
     active: profile?.active !== false,
-    source: normalizeProfileSource(profile?.source) || undefined,
-    detection: normalizeProfileDetection(profile?.detection) || undefined,
+    source,
+    detection: normalizeProfileDetection(profile?.detection),
+    validation: normalizeProfileValidation(profile?.validation, role),
     anchor: normalizeAnchor(profile?.anchor),
     fields: fields
       .filter((field) => FIELD_PRESETS[field?.key])
-      .map((field) => ({
-        ...structuredCloneSafe(FIELD_PRESETS[field.key]),
-        ...field,
-        key: field.key,
-        label: String(field.label || FIELD_PRESETS[field.key].label),
-        required: Boolean(field.required),
-        compare: Boolean(field.compare),
-        digits: field.digits == null ? FIELD_PRESETS[field.key].digits : Number(field.digits),
-        poly: normalizeNormalizedPoly(field.poly)
-      }))
+      .map((field) => normalizeField(field))
+  };
+}
+
+function normalizeField(field) {
+  const preset = FIELD_PRESETS[field.key];
+  const locator = normalizeLocator(field.locator);
+  const strategy = String(field.strategy || "").trim();
+  const strategyUnits = Array.isArray(field.strategyUnits)
+    ? field.strategyUnits.map((value) => String(value).trim().toUpperCase()).filter(Boolean)
+    : [];
+  return {
+    ...structuredCloneSafe(preset),
+    ...field,
+    key: field.key,
+    label: String(field.label || preset.label),
+    required: Boolean(field.required),
+    compare: Boolean(field.compare),
+    regex: String(field.regex ?? preset.regex ?? ""),
+    sourceRegex: String(field.sourceRegex ?? field.regex ?? preset.sourceRegex ?? preset.regex ?? ""),
+    normalizer: String(field.normalizer || preset.normalizer || "text"),
+    digits: field.digits == null ? preset.digits : Math.max(1, Number(field.digits || 1)),
+    adjacentTo: field.adjacentTo ? String(field.adjacentTo) : undefined,
+    strategy: strategy || undefined,
+    fallbackStrategy: field.fallbackStrategy ? String(field.fallbackStrategy) : undefined,
+    strategyUnits: strategyUnits.length ? strategyUnits : undefined,
+    searchRadius: finiteOrUndefined(field.searchRadius),
+    minOverlap: finiteOrUndefined(field.minOverlap),
+    preferRightmost: field.preferRightmost === true || undefined,
+    preferUnit: field.preferUnit === true || undefined,
+    pairLeftMinDigits: finiteOrUndefined(field.pairLeftMinDigits),
+    pairLeftMaxDigits: finiteOrUndefined(field.pairLeftMaxDigits),
+    tailDigits: finiteOrUndefined(field.tailDigits),
+    combinedMinDigits: finiteOrUndefined(field.combinedMinDigits),
+    locator: locator || undefined,
+    poly: normalizeNormalizedPoly(field.poly)
   };
 }
 
@@ -181,21 +252,16 @@ export function safeProfileId(value) {
     .replace(/^_+|_+$/g, "") || "PROFILE";
 }
 
-
 function normalizeAnchor(anchor) {
-  const normalized = {
-    aliases: Array.isArray(anchor?.aliases)
-      ? anchor.aliases.map((value) => String(value).trim()).filter(Boolean)
-      : [],
+  return {
+    aliases: linesOrArray(anchor?.aliases),
     poly: normalizeNormalizedPoly(anchor?.poly),
     localizeAlias: anchor?.localizeAlias === true,
     scaleFrom: anchor?.scaleFrom === "height" ? "height" : "width",
     alignFrom: anchor?.alignFrom === "left" ? "left" : "center",
     fallbacks: Array.isArray(anchor?.fallbacks)
       ? anchor.fallbacks.map((fallback) => ({
-          aliases: Array.isArray(fallback?.aliases)
-            ? fallback.aliases.map((value) => String(value).trim()).filter(Boolean)
-            : [],
+          aliases: linesOrArray(fallback?.aliases),
           poly: normalizeNormalizedPoly(fallback?.poly),
           localizeAlias: fallback?.localizeAlias === true,
           scaleFrom: fallback?.scaleFrom === "height" ? "height" : "width",
@@ -203,39 +269,125 @@ function normalizeAnchor(anchor) {
         })).filter((fallback) => fallback.aliases.length && fallback.poly.length >= 4)
       : []
   };
-  return normalized;
 }
 
 function normalizeProfileDetection(detection) {
-  if (!detection || typeof detection !== "object") return null;
-  const evidenceAliases = Array.isArray(detection.evidenceAliases)
-    ? detection.evidenceAliases.map((value) => String(value).trim()).filter(Boolean)
-    : [];
-  const excludeAliases = Array.isArray(detection.excludeAliases)
-    ? detection.excludeAliases.map((value) => String(value).trim()).filter(Boolean)
-    : [];
-  const minEvidenceMatches = Math.max(0, Number(detection.minEvidenceMatches || 0));
-  const minScore = Number(detection.minScore);
-  if (!evidenceAliases.length && !excludeAliases.length && !Number.isFinite(minScore)) return null;
+  const value = detection && typeof detection === "object" ? detection : {};
+  const minScore = Number(value.minScore);
   return {
-    evidenceAliases,
-    minEvidenceMatches,
-    excludeAliases,
-    ...(Number.isFinite(minScore) ? { minScore: clamp(minScore, 0, 1) } : {})
+    evidenceAliases: linesOrArray(value.evidenceAliases),
+    minEvidenceMatches: Math.max(0, Math.floor(Number(value.minEvidenceMatches || 0))),
+    excludeAliases: linesOrArray(value.excludeAliases),
+    minScore: Number.isFinite(minScore) ? clamp(minScore, 0, 1) : 0.55
+  };
+}
+
+function normalizeProfileValidation(validation, role) {
+  const value = validation && typeof validation === "object" ? validation : {};
+  const minAnchorScore = Number(value.minAnchorScore);
+  const requiredValidFields = Array.isArray(value.requiredValidFields)
+    ? value.requiredValidFields.filter((key) => FIELD_PRESETS[key])
+    : role === "product" ? ["batch"] : [];
+  return {
+    minAnchorScore: Number.isFinite(minAnchorScore) ? clamp(minAnchorScore, 0, 1) : 0.55,
+    requiredValidFields,
+    errorMessage: String(value.errorMessage || (role === "product"
+      ? "Kein gültiges Produktlabel erkannt. Bitte das Produktlabel vollständig und gut lesbar fotografieren."
+      : ""))
   };
 }
 
 function normalizeProfileSource(source) {
-  if (source?.type !== "qr") return null;
+  if (source?.type === "qr") {
+    const regions = normalizeQrRegions(source);
+    return {
+      type: "qr",
+      regions,
+      parser: normalizeQrParser(source.parser)
+    };
+  }
+  return { type: "ocr" };
+}
+
+function normalizeQrRegions(source) {
+  if (Array.isArray(source?.regions) && source.regions.length) {
+    return source.regions.map(normalizeRect).filter((rect) => rect.width > 0 && rect.height > 0);
+  }
+  const legacy = String(source?.region || "").toLowerCase();
+  if (legacy === "lower-left") {
+    return [
+      { x: 0, y: 0.48, width: 0.42, height: 0.48 },
+      { x: 0, y: 0.34, width: 0.58, height: 0.66 }
+    ];
+  }
+  return [{ x: 0, y: 0, width: 1, height: 1 }];
+}
+
+function normalizeQrParser(parser) {
+  const value = parser && typeof parser === "object" ? parser : {};
+  const fields = {};
+  for (const key of FIELD_ORDER) {
+    const rule = value.fields?.[key];
+    if (!rule || typeof rule !== "object") continue;
+    fields[key] = normalizeQrFieldRule(rule);
+  }
   return {
-    type: "qr",
-    parser: String(source?.parser || "").trim(),
-    region: String(source?.region || "").trim()
+    requiredFields: Array.isArray(value.requiredFields)
+      ? value.requiredFields.filter((key) => FIELD_PRESETS[key])
+      : [],
+    fields
+  };
+}
+
+function normalizeQrFieldRule(rule) {
+  const replacements = Array.isArray(rule.replacements)
+    ? rule.replacements.map((entry) => ({
+        from: String(entry?.from || ""),
+        to: String(entry?.to || "")
+      })).filter((entry) => entry.from)
+    : [];
+  return {
+    primaryRegex: String(rule.primaryRegex || ""),
+    primaryGroup: Math.max(0, Math.floor(Number(rule.primaryGroup ?? 1))),
+    secondaryRegex: String(rule.secondaryRegex || ""),
+    secondaryGroup: Math.max(0, Math.floor(Number(rule.secondaryGroup ?? 1))),
+    secondaryDefault: String(rule.secondaryDefault || ""),
+    template: String(rule.template || "{primary}"),
+    replacements
+  };
+}
+
+function normalizeLocator(locator) {
+  if (!locator || typeof locator !== "object") return null;
+  const aliases = linesOrArray(locator.aliases);
+  if (!aliases.length) return null;
+  return {
+    aliases,
+    direction: ["below", "right", "below_or_right"].includes(locator.direction)
+      ? locator.direction
+      : "below_or_right",
+    maxDistance: Math.max(0.1, Number(locator.maxDistance || 7)),
+    minAliasScore: clamp(Number(locator.minAliasScore ?? 0.72), 0, 1),
+    strict: locator.strict === true,
+    preferRightmost: locator.preferRightmost === true,
+    preferLeftmost: locator.preferLeftmost === true,
+    preferUnit: locator.preferUnit === true,
+    preferBatch: locator.preferBatch === true
   };
 }
 
 function normalizeNormalizedPoly(poly) {
   return normalizePoly(poly).map(([x, y]) => [clamp(x, 0, 1), clamp(y, 0, 1)]);
+}
+
+function linesOrArray(value) {
+  if (Array.isArray(value)) return value.map((entry) => String(entry).trim()).filter(Boolean);
+  return String(value || "").split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
+}
+
+function finiteOrUndefined(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
 }
 
 function structuredCloneSafe(value) {

@@ -1,53 +1,94 @@
-# LabelCheck PaddleOCR 0.16.22
+# LabelCheck PaddleOCR 0.17.0
 
-> **0.16.22:** Manuelle Eingaben führen immer zuerst zu `ÜBERPRÜFEN`; erst nach Klick auf `Überprüft` wird anhand der Batch endgültig grün `FREIGEGEBEN` oder rot `NICHT FREIGEGEBEN` angezeigt.
+LabelCheck prüft weiterhin immer **ein Produktlabel** gegen **ein VDA-/TA-Label**. Die Bedienoberfläche, Freigabelogik, Kamera, Bedienerprüfung, Scanprotokoll und CSV-Funktion bleiben wie in 0.16.22. Neu in 0.17.0 ist die Profilarchitektur: **alle labelabhängigen Erkennungsregeln liegen in `public/config/label-profiles.json` und können vollständig im erweiterten Profileditor gepflegt werden.**
 
-LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
+## Architektur
 
-## Laufzeit
+Die Scanner-App ist eine generische Engine. Sie kennt keine einzelnen Kunden-/Labelprofile mehr als Sonderfall im JavaScript. Ein Profil beschreibt in der JSON:
 
-- Mobilgeräte starten standardmäßig im stabilen Modus: WASM, 1 Thread, Recognition-Batch 1, verkleinerte Bilddekodierung.
-- Desktop/Notebook startet standardmäßig im schnellen AUTO-Modus mit WebGPU/WASM.
-- Eine manuelle Moduswahl wird lokal pro Browser gespeichert.
-- Ein erkannter Browserabsturz während OCR erzwingt beim nächsten Start automatisch den stabilen Modus.
-- Die PP-OCRv5-Modelle werden beim GitHub-Actions-Build in die Pages-Site kopiert und zur Laufzeit same-origin geladen.
+- Rolle: Produktlabel oder VDA-/TA-Label
+- Quelle: OCR/Textlayout oder QR-Code
+- Profilanker und alternative Anker
+- zusätzliche Erkennungs- und Ausschlussmerkmale
+- Mindestquoten für Profilerkennung und Labelvalidierung
+- feste LabelCheck-Felder: Batch, IDH, Gewicht, Lieferscheinnummer, Fassnummer
+- Feldzonen, Regex, Normalizer und Pflicht-/Vergleichsstatus
+- Locator-Regeln relativ zu Feldbeschriftungen
+- Erkennungsstrategien und deren Parameter
+- QR-Suchbereiche und QR-Parserregeln
+- Pflichtfelder und profilspezifische Fehlermeldung
 
-## Intern2
+Damit kann ein neues OCR- oder QR-Label über den Editor angelegt werden, ohne `index.html`, `main.js` oder `profile-engine.js` anzupassen.
 
-Intern2 verwendet ausschließlich `Prüflos` als Anker. Wird der Text zusammen mit einer längeren OCR-Zeile erkannt, wird nur der Teilbereich von `Prüflos` für die Geometrie verwendet. `Alte Materialnummer` schließt Intern2 ausdrücklich aus.
+## Globale Regeln
 
-## Tesla
+Regeln, die für alle Standorte und Labels identisch sind, bleiben zentral in der App. Dazu gehören insbesondere:
 
-Tesla-Versandlabel werden ohne PaddleOCR aus dem kleinen QR-Code links unten gelesen. Auch eine manuelle Tesla-Auswahl startet erneut die QR-Erkennung. Der Parser verwendet:
+- Workflow Produktlabel → VDA/TA → Batchvergleich
+- Freigabe ausschließlich über die Batchnummer
+- Bedienerprüfung bei manueller Korrektur oder Erkennungsquote unter 60 %
+- keine identische Doppelbelegung zweier Felder innerhalb desselben Labels
+- Gewicht maximal fünf Ziffern vor dem Dezimaltrennzeichen
+- Querformatprüfung nach der Fotoaufnahme
+- Scanprotokoll, Exportstatus und CSV-Verhalten
 
-- `1T` → Batch
-- `99Z` → Lieferscheinnummer
-- `Q` + `3Q` → Gewicht und Einheit
+## Erweiterter Profileditor
 
-Tesla besitzt in dieser Prüfung keine IDH; der IDH-Vergleich wird für dieses Profil übersprungen.
+Der Editor ist bewusst als erweiterter Modus ausgelegt. Typischer Ablauf für ein neues OCR-Label:
+
+1. Neues Profil anlegen und Rolle wählen.
+2. `OCR / Textlayout` als Erkennungsquelle wählen.
+3. Masterbild laden und PaddleOCR ausführen.
+4. Profilanker markieren und Aliase festlegen.
+5. Batch, IDH, Gewicht, Lieferscheinnummer und/oder Fassnummer zuordnen.
+6. Für jedes Feld Regex, Normalizer, Suchbereich und bei Bedarf eine Erkennungsstrategie einstellen.
+7. Profilerkennung, Ausschlussmerkmale, Pflichtfelder und Mindestquoten einstellen.
+8. Konfiguration als `label-profiles.json` exportieren und unter `public/config/` ablegen.
+
+### Allgemeine Erkennungsstrategien
+
+Die bisher im Code eingebauten Sonderlogiken wurden in allgemeine, im Editor wählbare Strategien überführt:
+
+- **Standard: Zone / Nähe** – normale Feldsuche um die markierte Sollposition
+- **Gewicht nur mit Einheit** – akzeptiert nur Gewichtswerte mit Einheit und verbindet bei Bedarf getrennte Zahl-/Einheitsboxen
+- **Netto aus Zahlenpaar / rechter Wert** – verarbeitet Gross-/Netto-Zeilen und toleriert typische OCR-Fehler der Gewichtseinheit
+- **Große Zahlen-Kombizeile** – teilt kombinierte Zahlenzeilen in linken und rechten Wert
+- **Quantity-Gewicht mit bevorzugter Einheit** – sucht Mengenwerte mit konfigurierbaren Einheiten
+
+Zusätzlich lassen sich Suchradius, Mindestüberlappung, bevorzugte Position/Einheit, Tail-Länge, Kombizeilenlänge und Locator-Regeln einstellen. Die bestehende produktive Konfiguration wurde auf diese Strategien migriert, sodass die bisherige Erkennungsleistung erhalten bleibt.
+
+## QR-Profile ohne Codeänderung
+
+QR-Profile sind ebenfalls vollständig konfigurationsgesteuert. Im Editor können eingestellt werden:
+
+- primärer und optionaler Fallback-Suchbereich im Bild
+- welche der fünf LabelCheck-Felder aus dem QR gelesen werden
+- Primär-RegEx und Capture-Gruppe
+- optionaler Sekundär-RegEx, z. B. für eine Einheit
+- Fallbackwert für den Sekundärteil
+- Template zur Zusammensetzung des Feldwerts
+- einfache Ersetzungen
+- Pflichtfelder, die erfüllt sein müssen, damit der QR zu diesem Profil gehört
+
+Über **„QR-Regeln am Masterbild testen“** kann die Konfiguration direkt im Editor geprüft werden.
+
+## Bedienerprüfung
+
+Wenn die Analyse `ÜBERPRÜFEN` liefert, muss der Bediener die Werte kontrollieren und **„Überprüft“** drücken. Erst danach wird die endgültige Batchentscheidung sichtbar und der Datensatz kann übernommen werden. Bei Batchabweichung bleibt das Ergebnis rot `NICHT FREIGEGEBEN`; bei gleicher Batch wird es grün `FREIGEGEBEN`.
 
 ## Scanprotokoll und CSV
 
-Kontrollen werden lokal in IndexedDB gespeichert; vorhandene Datensätze aus dem bisherigen localStorage werden beim ersten Start übernommen. Nach einer erfolgreichen Übernahme bleibt der Speicher-Button gesperrt, bis ein Scan, Profil oder Feld geändert beziehungsweise erneut analysiert wurde.
-
-Jede übernommene Kontrolle entspricht einer Zeile. Enthalten sind Zeit, Ergebnis, Produkt-/Lieferschein-Batch, Produkt-/Lieferschein-IDH, Produkt-/Lieferschein-Gewicht, Lieferscheinnummer und ergänzende Protokollinformationen.
+Das Protokoll liegt lokal in IndexedDB. „Neue Teile senden“ hält die zu diesem Export gehörenden Datensätze fest, bis der Bediener den erfolgreichen OneDrive-Upload bestätigt. Neue Scans werden nicht in einen bereits versendeten Export gemischt. „Gesamtes Protokoll senden“ exportiert den vollständigen lokalen Verlauf. Bereits bestätigte Einträge können separat über „Gesendete leeren“ entfernt werden.
 
 Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.csv`.
 
-„Neue Teile senden“ exportiert genau die aktuell neuen, noch nicht bestätigten Teile. Direkt vor dem Öffnen des Teilen-Menüs merkt sich LabelCheck dauerhaft, welche Datensätze zu diesem Export gehören. Nach der Rückkehr werden dieselben zwei Exportbuttons automatisch zu „In OneDrive gespeichert“ und „CSV erneut senden“. Erst nach der ausdrücklichen Bestätigung werden genau diese Teile als gesendet markiert. Neue Scans, die währenddessen hinzukommen, warten getrennt auf den nächsten Export. „Gesamtes Protokoll senden“ exportiert den vollständigen lokalen Verlauf. Bereits bestätigte Einträge können über „Gesendete leeren“ entfernt werden; ungesendete Teile können nicht gelöscht werden.
+Die Spalte `Manuell korrigiert` enthält die konkret bearbeiteten Felder, z. B. `Gewicht Produkt, IDH VDA`.
 
+## Kamera und OCR-Laufzeit
 
-## Bedienerprüfung und Feldsperren
+Die native Kamera-App wird über `capture="environment"` angefordert. Nach der Aufnahme wird die tatsächliche Bildausrichtung einschließlich JPEG-EXIF-Rotation geprüft; Hochkantfotos werden vor der Analyse abgewiesen.
 
-Wenn die Analyse den Status **„ÜBERPRÜFEN“** liefert, muss der Bediener die erkannten Werte kontrollieren und anschließend den Button **„Überprüft“** drücken. Erst danach kann der Datensatz übernommen werden. Eine Bedienerprüfung wird zusätzlich ausgelöst, sobald ein erkannter Feldwert eine Erkennungsquote unter 60 % besitzt.
-
-Innerhalb eines einzelnen Labels darf derselbe Feldinhalt nur einmal verwendet werden. Erkennt die Zuordnung denselben Wert für zwei Felder, bleibt nur die plausiblere Zuordnung bestehen; die zweite Belegung wird gesperrt und als Prüfgrund markiert. Auch bei manueller Eingabe wird eine identische Doppelbelegung verhindert.
-
-Für Gewichte gilt profilübergreifend eine zusätzliche Plausibilitätsgrenze: Vor dem Dezimaltrennzeichen sind maximal fünf Ziffern zulässig. Nachkommastellen bleiben erlaubt, z. B. `99999,75 KG`. Längere Ganzzahlanteile werden nicht als Gewicht übernommen.
-
-## Profileditor
-
-Masterbilder und OCR-Ergebnisse werden profilbezogen in IndexedDB auf dem jeweiligen Browser gespeichert. Sie werden nicht in die JSON eingebettet und nicht auf GitHub hochgeladen.
+Mobilgeräte verwenden standardmäßig den stabilen OCR-Modus, Desktop/Notebook den schnellen AUTO-Modus. Die PP-OCRv5-Modelle werden beim Build in die Pages-Site kopiert und same-origin geladen.
 
 ## Deployment
 
@@ -57,18 +98,4 @@ npm test
 npm run build
 ```
 
-GitHub Pages veröffentlicht den erzeugten `dist`-Ordner über GitHub Actions.
-
-
-## Produktlabel-Prüfung
-
-Ein Produktfoto wird nur als Henkel-Produktlabel akzeptiert, wenn der Henkel-Anker sicher erkannt wird und eine gültige Batchnummer vorhanden ist. Andere Fotos werden mit einer klaren Fehlermeldung abgewiesen.
-
-## Kamera
-
-Die native Kamera-App wird über Datei-Inputs mit `capture="environment"` geöffnet. Die Kamera darf unabhängig von der aktuellen Gerätehaltung öffnen. Erst nach der Aufnahme prüft LabelCheck die tatsächliche Bildausrichtung einschließlich JPEG-EXIF-Rotation; Hochkantfotos werden vor der OCR abgewiesen. Die Wahl der konkreten Front-/Rückkamera innerhalb einer externen Kamera-App bleibt eine Entscheidung des Browsers bzw. Betriebssystems.
-
-
-## Manuelle Korrekturen im CSV-Protokoll
-
-Die Spalte `Manuell korrigiert` enthält ab Version 0.16.19 die konkret bearbeiteten Felder, z. B. `Gewicht Produkt, IDH VDA`. Ohne manuelle Korrektur bleibt die Zelle leer.
+GitHub Pages veröffentlicht anschließend den erzeugten `dist`-Ordner über den enthaltenen GitHub-Actions-Workflow.
