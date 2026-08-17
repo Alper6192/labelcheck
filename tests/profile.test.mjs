@@ -785,6 +785,19 @@ test("Erkennungsquote unter 60 Prozent erzwingt Bedienerprüfung", () => {
   assert.match(comparison.message, /59 %/);
 });
 
+test("Batch-Abweichung wird auch bei zusätzlichem Prüfgrund als echte Abweichung markiert", () => {
+  const left = { fields: {
+    batch: { value: "D562808695", valid: true, confidence: 0.59, source: "ocr" }
+  }};
+  const right = { fields: {
+    batch: { value: "D562808696", valid: true, confidence: 0.99, source: "ocr" }
+  }};
+  const comparison = compareExtractions(left, right);
+  assert.equal(comparison.status, "review");
+  assert.equal(comparison.batchMismatch, true);
+  assert.equal(comparison.rows[0].status, "mismatch");
+});
+
 test("60 Prozent Erkennungsquote löst noch keine zusätzliche Prüfung aus", () => {
   const left = { fields: {
     batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" },

@@ -1,4 +1,12 @@
-# LabelCheck PaddleOCR 0.16.20
+# LabelCheck PaddleOCR 0.16.21
+
+## 0.16.21
+
+- Bedienerprüfung ändert eine echte Batch-Abweichung nicht mehr in einen neutralen Prüfstatus.
+- Nach Klick auf „Überprüft“ bleibt eine abweichende Batch **rot** und wird als `NICHT FREIGEGEBEN` angezeigt.
+- Der Hinweis `✓ Vom Bediener überprüft` wird zusätzlich angezeigt.
+- Beim Speichern/CSV-Export wird in diesem Fall ebenfalls der endgültige Status `NICHT FREIGEGEBEN` persistiert.
+
 
 - Neuer Bedienerschritt „Überprüft“: Bei Status „ÜBERPRÜFEN“ ist die Datensatzübernahme gesperrt, bis der Bediener die Prüfung bestätigt.
 - Erkennungsquote unter 60 % löst automatisch „ÜBERPRÜFEN“ aus und nennt die betroffenen Felder.

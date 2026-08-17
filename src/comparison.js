@@ -25,6 +25,7 @@ export function compareExtractions(product, vda) {
 
   return {
     released: !needsReview && !mismatch,
+    batchMismatch: mismatch,
     status: needsReview ? "review" : mismatch ? "rejected" : "released",
     rows,
     lowConfidenceFields,

@@ -66,3 +66,10 @@ test("Prüffälle müssen vom Bediener bestätigt werden, bevor gespeichert werd
   assert.match(source, /reviewConfirmed = true/);
   assert.match(source, /reviewRequired && !reviewConfirmed/);
 });
+
+test("Bedienerprüfung lässt Batch-Abweichung rot und nicht freigegeben", () => {
+  assert.match(source, /comparison\.batchMismatch/);
+  assert.match(source, /status:\s*"rejected"/);
+  assert.match(source, /NICHT FREIGEGEBEN – Batchnummern weichen ab\. · ✓ Vom Bediener überprüft\./);
+  assert.match(source, /status:\s*finalComparison\?\.status \|\| comparison\.status/);
+});

@@ -1,4 +1,6 @@
-# LabelCheck PaddleOCR 0.16.20
+# LabelCheck PaddleOCR 0.16.21
+
+> **0.16.21:** Eine Batch-Abweichung bleibt auch nach Bedienerprüfung rot und `NICHT FREIGEGEBEN`; die Prüfung wird zusätzlich als bestätigt gekennzeichnet.
 
 LabelCheck prüft Produkt- und Lieferschein-/VDA-Labels lokal im Browser. Die Profile werden aus `public/config/label-profiles.json` geladen und können im Profileditor bearbeitet werden.
 

@@ -507,6 +507,19 @@ function confirmOperatorReview() {
 
 function displayedComparison() {
   if (comparison?.status !== "review" || !reviewConfirmed) return comparison;
+
+  // Eine Bedienerprüfung bestätigt nur, dass der Fall kontrolliert wurde.
+  // Sie darf eine echte Batch-Abweichung niemals in einen neutralen Prüfstatus
+  // oder eine Freigabe verwandeln. Eine abweichende Batch bleibt rot.
+  if (comparison.batchMismatch || comparison.rows?.some((row) => row.key === "batch" && row.status === "mismatch")) {
+    return {
+      ...comparison,
+      released: false,
+      status: "rejected",
+      message: "NICHT FREIGEGEBEN – Batchnummern weichen ab. · ✓ Vom Bediener überprüft."
+    };
+  }
+
   return {
     ...comparison,
     message: `ÜBERPRÜFT – Bedienerprüfung bestätigt. ${comparison.message.replace(/^ÜBERPRÜFEN\s*[–-]\s*/i, "")}`
@@ -618,10 +631,11 @@ async function storeCurrent() {
     ...manualCorrections(slots.product.extraction, "Produkt"),
     ...manualCorrections(slots.vda.extraction, "VDA")
   ];
+  const finalComparison = displayedComparison();
   const record = {
     timestamp: new Date().toISOString(),
-    status: comparison.status,
-    result: displayedComparison()?.message || comparison.message,
+    status: finalComparison?.status || comparison.status,
+    result: finalComparison?.message || comparison.message,
     reviewRequired: comparison.status === "review",
     reviewedAt: comparison.status === "review" ? reviewConfirmedAt : "",
     productProfile: slots.product.profile?.name || "",
