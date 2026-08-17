@@ -1,6 +1,7 @@
 import "./styles.css";
 import { APP_VERSION, QUALITY_PRESETS } from "./config.js";
 import { PaddleOcrEngine, formatRuntimeDetails } from "./ocr-engine.js";
+import { detectRuntimePolicy } from "./runtime-policy.js";
 import { prepareImage } from "./image-tools.js";
 import { detectQrProfile } from "./qr-engine.js";
 import { boundsFromPoly, formatMilliseconds, safeError } from "./utils.js";
@@ -30,7 +31,10 @@ import {
 import { EditorProfileSessionStore } from "./editor-session.js";
 import { deleteEditorMaster, loadEditorMaster, renameEditorMaster, saveEditorMaster } from "./editor-persistence.js";
 
-const engine = new PaddleOcrEngine();
+const EDITOR_SELECTED_PROFILE_KEY = "labelcheck.editor.selected-profile.v1";
+const EDITOR_OCR_MAX_SIDE = 1000;
+const editorRuntimePolicy = detectRuntimePolicy({ compatibilityMode: true });
+const engine = new PaddleOcrEngine({ policyProvider: () => editorRuntimePolicy });
 const el = (id) => document.getElementById(id);
 const state = {
   config: normalizeProfileConfig({ profiles: [] }, APP_VERSION),
@@ -143,7 +147,10 @@ async function loadRepositoryConfig(confirmReplace = false) {
     state.config = normalizeProfileConfig(await response.json());
     state.sessions.clear();
     state.dirty = false;
-    const first = state.config.profiles[0]?.id || "";
+    const preferred = storedSelectedProfileId();
+    const first = state.config.profiles.some((profile) => profile.id === preferred)
+      ? preferred
+      : (state.config.profiles[0]?.id || "");
     renderProfileList();
     selectProfile(first);
     setConfigStatus(`${state.config.profiles.length} Profile geladen`, "ok");
@@ -161,7 +168,8 @@ async function importConfig(event) {
     state.sessions.clear();
     state.dirty = true;
     renderProfileList();
-    selectProfile(state.config.profiles[0]?.id || "");
+    const preferred = storedSelectedProfileId();
+    selectProfile(state.config.profiles.some((profile) => profile.id === preferred) ? preferred : (state.config.profiles[0]?.id || ""));
     setConfigStatus(`${state.config.profiles.length} Profile importiert – noch nicht exportiert`, "warn");
   } catch (error) {
     setConfigStatus(`JSON-Import fehlgeschlagen: ${safeError(error)}`, "bad");
@@ -286,6 +294,7 @@ function selectProfile(id) {
   syncProfileMeta();
   if (state.ocrRun && state.ocrRun.profileId !== id) cancelOcrAnalysis(true);
   state.selectedProfileId = id;
+  storeSelectedProfileId(id);
   state.selectedAssignment = null;
   state.drag = null;
   const session = currentSession();
@@ -662,11 +671,11 @@ async function initializeEngineInternal(force) {
       force
     );
     setEditorEngine(`PaddleOCR bereit · ${info.mode}`, "ok");
-    el("editorEngineDetails").textContent = `Initialisierung ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary)}`;
+    el("editorEngineDetails").textContent = `Editor-Stabilmodus · Initialisierung ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`;
     return true;
   } catch (error) {
     setEditorEngine(`PaddleOCR nicht bereit: ${safeError(error)}`, "bad");
-    el("editorEngineDetails").textContent = "Scanner und Editor verwenden dieselbe automatische WebGPU/WASM-Engine im Web Worker.";
+    el("editorEngineDetails").textContent = "Der Editor verwendet bewusst WASM mit einem Thread im Web Worker, damit große Masterbilder den Browser nicht neu starten. Die Scanner-Performance bleibt davon unberührt.";
     return false;
   }
 }
@@ -769,13 +778,14 @@ async function runOcr() {
     // Der Editor benötigt nur anklickbare Textboxen. Dafür wird eine separate,
     // kleinere OCR-Kopie verwendet; das hochauflösende Masterbild bleibt für
     // die genaue Zonenbearbeitung unverändert erhalten.
-    const ocrInput = createOcrInputCanvas(session.prepared.canvas, 1200);
+    await nextEditorPaint();
+    const ocrInput = createOcrInputCanvas(session.prepared.canvas, EDITOR_OCR_MAX_SIDE);
     const output = await engine.predict(
       ocrInput.canvas,
       {
-        textDetLimitSideLen: 1200,
+        textDetLimitSideLen: EDITOR_OCR_MAX_SIDE,
         textDetLimitType: "max",
-        textDetMaxSideLimit: 1200,
+        textDetMaxSideLimit: EDITOR_OCR_MAX_SIDE,
         textDetThresh: 0.25,
         textDetBoxThresh: 0.44,
         textDetUnclipRatio: 1.55,
@@ -804,7 +814,7 @@ async function runOcr() {
         `Gesamt ${formatMilliseconds(output.wallMs)}`,
         Number.isFinite(metrics.detMs) ? `Detektion ${formatMilliseconds(metrics.detMs)}` : "",
         Number.isFinite(metrics.recMs) ? `Erkennung ${formatMilliseconds(metrics.recMs)}` : "",
-        formatRuntimeDetails(engine.summary, output.runtime),
+        formatRuntimeDetails(engine.summary, output.runtime, editorRuntimePolicy),
         `OCR-Bild ${ocrInput.width} × ${ocrInput.height} px`
       ].filter(Boolean).join(" · ");
       drawOverlay();
@@ -1466,6 +1476,28 @@ function escapeHtml(value) {
   return String(value || "").replace(/[&<>'"]/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
   })[character]);
+}
+
+
+function storedSelectedProfileId() {
+  try {
+    return String(globalThis.localStorage?.getItem(EDITOR_SELECTED_PROFILE_KEY) || "");
+  } catch {
+    return "";
+  }
+}
+
+function storeSelectedProfileId(profileId) {
+  try {
+    if (profileId) globalThis.localStorage?.setItem(EDITOR_SELECTED_PROFILE_KEY, String(profileId));
+    else globalThis.localStorage?.removeItem(EDITOR_SELECTED_PROFILE_KEY);
+  } catch {
+    // Der Editor bleibt auch bei gesperrtem Storage benutzbar.
+  }
+}
+
+function nextEditorPaint() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
 function readLines(value) {

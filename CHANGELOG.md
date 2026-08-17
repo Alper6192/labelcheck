@@ -1,4 +1,13 @@
-# LabelCheck PaddleOCR 0.17.0
+# LabelCheck PaddleOCR 0.17.1
+
+## 0.17.1 – stabiler PaddleOCR-Lauf im Profileditor
+
+- Der Profileditor verwendet für „PaddleOCR auf Masterbild“ bewusst einen eigenen stabilen Web-Worker-Modus mit WASM, einem Thread und Recognition-Batchgröße 1. Der Scanner behält seine bisherige automatische Performance-Policy unverändert.
+- Das OCR-Arbeitsbild im Editor ist auf maximal 1000 px Kantenlänge begrenzt. Das hochauflösende Masterbild für Zonen und Zuordnungen bleibt unverändert erhalten.
+- Vor dem Start der rechenintensiven OCR erhält der Browser zwei Rendering-Zyklen, damit Status und Bedienoberfläche sicher aktualisiert werden.
+- Der zuletzt ausgewählte Editor-Profilname wird lokal gespeichert. Nach einem Browser-Neustart wird dadurch wieder dasselbe Profil geöffnet und dessen bereits in IndexedDB gespeichertes Masterbild automatisch wiederhergestellt.
+- `PaddleOcrEngine` unterstützt jetzt optional eine eigene Runtime-Policy. Dadurch kann der Editor stabil laufen, ohne die Scanner-Einstellungen zu verändern.
+
 
 ## 0.17.0 – vollständig konfigurationsgesteuerte Labelprofile
 

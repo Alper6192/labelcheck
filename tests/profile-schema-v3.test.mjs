@@ -24,7 +24,7 @@ test("Schema v3 erhält erweiterte OCR-Strategie-, Locator- und Erkennungsparame
         poly: [[.6,.4],[.8,.4],[.8,.5],[.6,.5]]
       }]
     }]
-  }, "0.17.0");
+  }, "0.17.1");
 
   const profile = normalized.profiles[0];
   assert.equal(normalized.schemaVersion, 3);
@@ -65,7 +65,7 @@ test("Schema v3 erhält QR-Suchbereiche und frei definierte Parserregeln", () =>
       { key: "batch", label: "Batch", required: true, compare: true, regex: "^D\\d+$", sourceRegex: "^D\\d+$", normalizer: "batch", poly: [] },
       { key: "weight", label: "Gewicht", required: true, compare: true, regex: "^\\d+ KG$", sourceRegex: "^\\d+ KG$", normalizer: "weight", poly: [] }
     ]
-  }] }, "0.17.0");
+  }] }, "0.17.1");
 
   const source = normalized.profiles[0].source;
   assert.equal(source.type, "qr");

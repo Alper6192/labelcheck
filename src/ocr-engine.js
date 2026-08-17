@@ -16,6 +16,7 @@ const DISPOSE_TIMEOUT_MS = 5000;
  */
 export class PaddleOcrEngine {
   #ocr = null;
+  #policyProvider = getRuntimePolicy;
   #modelKey = null;
   #initPromise = null;
   #queue = Promise.resolve();
@@ -24,6 +25,11 @@ export class PaddleOcrEngine {
   #summary = null;
   #lastRuntime = null;
   #mode = `Web Worker · ${getRuntimePolicy().label}`;
+
+  constructor({ policyProvider = getRuntimePolicy } = {}) {
+    this.#policyProvider = typeof policyProvider === "function" ? policyProvider : getRuntimePolicy;
+    this.#mode = `Web Worker · ${this.#policyProvider().label}`;
+  }
 
   get ready() {
     return Boolean(this.#ocr);
@@ -50,7 +56,7 @@ export class PaddleOcrEngine {
   }
 
   get diagnostics() {
-    return createRuntimeDiagnostics(this.#summary, this.#lastRuntime);
+    return createRuntimeDiagnostics(this.#summary, this.#lastRuntime, this.#policyProvider());
   }
 
   async initialize(modelKey, onStatus = () => {}, force = false) {
@@ -79,8 +85,8 @@ export class PaddleOcrEngine {
     if (this.ready && this.#modelKey === modelKey) return this.#reuseInfo();
 
     const startedAt = performance.now();
-    const options = createCommonOptions(model);
-    const policy = getRuntimePolicy();
+    const policy = this.#policyProvider();
+    const options = createCommonOptions(model, policy);
     onStatus(`PaddleOCR lädt im Web Worker · ${policy.label} …`);
 
     try {
@@ -94,7 +100,7 @@ export class PaddleOcrEngine {
     this.#modelKey = modelKey;
     this.#summary = this.#ocr.getInitializationSummary?.() ?? null;
     this.#lastRuntime = null;
-    this.#mode = describeRuntimeMode(this.#summary, null);
+    this.#mode = describeRuntimeMode(this.#summary, null, policy);
 
     return {
       reused: false,
@@ -124,7 +130,7 @@ export class PaddleOcrEngine {
       }
 
       this.#lastRuntime = result.runtime ?? null;
-      this.#mode = describeRuntimeMode(this.#summary, this.#lastRuntime);
+      this.#mode = describeRuntimeMode(this.#summary, this.#lastRuntime, this.#policyProvider());
       return {
         result,
         wallMs: performance.now() - startedAt,
@@ -160,7 +166,7 @@ export class PaddleOcrEngine {
     this.#modelKey = null;
     this.#summary = null;
     this.#lastRuntime = null;
-    this.#mode = `Web Worker · ${getRuntimePolicy().label}`;
+    this.#mode = `Web Worker · ${this.#policyProvider().label}`;
     this.#queue = Promise.resolve();
     this.#pendingCount = 0;
   }
@@ -176,8 +182,7 @@ export class PaddleOcrEngine {
   }
 }
 
-export function createCommonOptions(model) {
-  const policy = getRuntimePolicy();
+export function createCommonOptions(model, policy = getRuntimePolicy()) {
   const wasmPaths = new URL("./ort/", window.location.href).href;
   const modelBase = new URL("./models/", window.location.href);
   return {
@@ -200,8 +205,7 @@ export function createCommonOptions(model) {
   };
 }
 
-export function createRuntimeDiagnostics(summary = null, runtime = null) {
-  const policy = getRuntimePolicy();
+export function createRuntimeDiagnostics(summary = null, runtime = null, policy = getRuntimePolicy()) {
   const requestedBackend = runtime?.requestedBackend ?? summary?.backend ?? policy.backend;
   const detProvider = runtime?.detProvider ?? summary?.detProvider ?? null;
   const recProvider = runtime?.recProvider ?? summary?.recProvider ?? null;
@@ -217,8 +221,8 @@ export function createRuntimeDiagnostics(summary = null, runtime = null) {
   };
 }
 
-export function describeRuntimeMode(summary = null, runtime = null) {
-  const info = createRuntimeDiagnostics(summary, runtime);
+export function describeRuntimeMode(summary = null, runtime = null, policy = getRuntimePolicy()) {
+  const info = createRuntimeDiagnostics(summary, runtime, policy);
   const det = formatProvider(info.detProvider);
   const rec = formatProvider(info.recProvider);
 
@@ -226,11 +230,11 @@ export function describeRuntimeMode(summary = null, runtime = null) {
     const provider = det === rec ? det : `${det}/${rec}`;
     return `Web Worker · ${provider}`;
   }
-  return `Web Worker · ${getRuntimePolicy().label}`;
+  return `Web Worker · ${policy.label}`;
 }
 
-export function formatRuntimeDetails(summary = null, runtime = null) {
-  const info = createRuntimeDiagnostics(summary, runtime);
+export function formatRuntimeDetails(summary = null, runtime = null, policy = getRuntimePolicy()) {
+  const info = createRuntimeDiagnostics(summary, runtime, policy);
   const parts = [];
   if (info.detProvider) parts.push(`Detektor ${formatProvider(info.detProvider)}`);
   if (info.recProvider) parts.push(`Erkennung ${formatProvider(info.recProvider)}`);

@@ -1,6 +1,11 @@
-# LabelCheck PaddleOCR 0.17.0
+# LabelCheck PaddleOCR 0.17.1
 
-LabelCheck prüft weiterhin immer **ein Produktlabel** gegen **ein VDA-/TA-Label**. Die Bedienoberfläche, Freigabelogik, Kamera, Bedienerprüfung, Scanprotokoll und CSV-Funktion bleiben wie in 0.16.22. Neu in 0.17.0 ist die Profilarchitektur: **alle labelabhängigen Erkennungsregeln liegen in `public/config/label-profiles.json` und können vollständig im erweiterten Profileditor gepflegt werden.**
+LabelCheck prüft weiterhin immer **ein Produktlabel** gegen **ein VDA-/TA-Label**. Die Bedienoberfläche, Freigabelogik, Kamera, Bedienerprüfung, Scanprotokoll und CSV-Funktion bleiben wie in 0.16.22. Seit 0.17.0 ist die Profilarchitektur vollständig konfigurationsgesteuert: **alle labelabhängigen Erkennungsregeln liegen in `public/config/label-profiles.json` und können vollständig im erweiterten Profileditor gepflegt werden.**
+
+## Editor-Stabilität 0.17.1
+
+Der Profileditor verwendet für **„PaddleOCR auf Masterbild“** absichtlich einen stabilen WASM-Web-Worker mit einem Thread und einem auf 1000 px begrenzten OCR-Arbeitsbild. Das gespeicherte Masterbild selbst bleibt in voller Editorauflösung erhalten. Diese Editor-Policy verändert die Performance-Einstellungen des eigentlichen Scanners nicht. Der zuletzt ausgewählte Profil-Eintrag wird lokal gemerkt, damit nach einem Browser-Neustart wieder dasselbe Profil samt lokal gespeichertem Masterbild geöffnet wird.
+
 
 ## Architektur
 
