@@ -901,3 +901,23 @@ test("sechsstellige Zahl wird nie als Gewicht übernommen", () => {
   assert.equal(result.fields.weight.source, "weight-blocked");
   assert.equal(result.validationIssues.some((issue) => issue.type === "weight-limit"), true);
 });
+
+test("Generisches Nachbarfeld kann links, rechts, oben oder unten relativ zu einem anderen Feld suchen", () => {
+  const profile = {
+    id: "NEIGHBOR", name: "Neighbor", role: "vda", active: true,
+    validation: { minAnchorScore: .5, requiredValidFields: [] },
+    anchor: { aliases: ["ANCHOR"], poly: [[.1,.1],[.2,.1],[.2,.16],[.1,.16]], scaleFrom: "width", alignFrom: "center" },
+    fields: [
+      { key: "batch", label: "Batch", required: true, compare: true, regex: "^D\\d{8}$", sourceRegex: "^D\\d{8}$", normalizer: "batch", poly: [[.3,.4],[.45,.4],[.45,.48],[.3,.48]] },
+      { key: "idh", label: "IDH", required: true, compare: false, regex: "^\\d{2}$", sourceRegex: "^\\d{2}$", normalizer: "digits", neighbor: { field: "batch", directions: ["right"], maxDistance: 8 }, poly: [[.15,.7],[.2,.7],[.2,.76],[.15,.76]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("ANCHOR", .99, [[100,50],[200,50],[200,80],[100,80]]),
+    item("D12345678", .99, [[300,200],[450,200],[450,240],[300,240]]),
+    item("12", .98, [[470,202],[510,202],[510,238],[470,238]]),
+    item("99", .99, [[150,350],[190,350],[190,380],[150,380]])
+  ], profile, { width: 1000, height: 500 });
+  assert.equal(result.fields.idh.value, "12");
+  assert.equal(result.fields.idh.source, "ocr-neighbor");
+});

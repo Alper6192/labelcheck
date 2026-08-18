@@ -22,7 +22,7 @@ export const FIELD_PRESETS = {
     sourceRegex: "^(?:[/|I1]?\\s*)?\\d{4}$",
     normalizer: "last_digits",
     digits: 4,
-    adjacentTo: "batch"
+    neighbor: { field: "batch", directions: ["right"], maxDistance: 6 }
   },
   idh: {
     key: "idh",
@@ -161,7 +161,7 @@ function normalizeField(field) {
     sourceRegex: String(field.sourceRegex ?? field.regex ?? preset.sourceRegex ?? preset.regex ?? ""),
     normalizer: String(field.normalizer || preset.normalizer || "text"),
     digits: field.digits == null ? preset.digits : Math.max(1, Number(field.digits || 1)),
-    adjacentTo: field.adjacentTo ? String(field.adjacentTo) : undefined,
+    neighbor: normalizeNeighbor(field.neighbor, field.adjacentTo),
     strategy: strategy || undefined,
     fallbackStrategy: field.fallbackStrategy ? String(field.fallbackStrategy) : undefined,
     strategyUnits: strategyUnits.length ? strategyUnits : undefined,
@@ -175,6 +175,23 @@ function normalizeField(field) {
     combinedMinDigits: finiteOrUndefined(field.combinedMinDigits),
     locator: locator || undefined,
     poly: normalizeNormalizedPoly(field.poly)
+  };
+}
+
+function normalizeNeighbor(neighbor, legacyAdjacentTo) {
+  const source = neighbor && typeof neighbor === "object" ? neighbor : null;
+  const field = String(source?.field || legacyAdjacentTo || "").trim();
+  if (!FIELD_PRESETS[field]) return undefined;
+  const allowed = new Set(["left", "right", "above", "below"]);
+  let directions = Array.isArray(source?.directions)
+    ? source.directions.map((value) => String(value)).filter((value) => allowed.has(value))
+    : [];
+  if (!directions.length && legacyAdjacentTo) directions = ["right"];
+  if (!directions.length) directions = ["right"];
+  return {
+    field,
+    directions: Array.from(new Set(directions)),
+    maxDistance: Math.max(0.5, Number(source?.maxDistance || 6))
   };
 }
 

@@ -29,7 +29,8 @@ test("Fassnummer-Preset enthält robuste OCR-Bereinigung", () => {
   const field = createField("drum_number", rectToPoly({ x: .1, y: .1, width: .2, height: .1 }));
   assert.equal(field.normalizer, "last_digits");
   assert.equal(field.digits, 4);
-  assert.equal(field.adjacentTo, "batch");
+  assert.equal(field.neighbor.field, "batch");
+  assert.deepEqual(field.neighbor.directions, ["right"]);
   assert.equal(validateRegex(field.sourceRegex).valid, true);
   const expanded = polyToRect(expandPoly(field.poly, .2));
   assert.ok(expanded.width > .2);

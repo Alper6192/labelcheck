@@ -63,8 +63,20 @@ export function extractProfileFields(items, profile, imageSize) {
     let candidate = candidates[field.key] || null;
     let source = candidate ? (candidate.source || "ocr") : "missing";
 
+    const neighborFieldKey = field?.neighbor?.field || field?.adjacentTo || "";
+    const neighborReference = neighborFieldKey ? candidates[neighborFieldKey] : null;
+    if (neighborReference) {
+      const neighborCandidate = chooseCandidateByNeighbor(items, neighborReference, field);
+      if (neighborCandidate) {
+        candidate = neighborCandidate;
+        source = neighborCandidate.source || "ocr-neighbor";
+        candidates[field.key] = neighborCandidate;
+      }
+    }
+
     if (field.key === "drum_number") {
-      const derived = deriveDrumCandidate(items, candidates.batch, field, expected);
+      const batchCandidate = candidates.batch;
+      const derived = deriveDrumCandidate(items, batchCandidate, field, expected);
       if (!candidate || (derived && derived.selectionScore > Number(candidate.selectionScore || 0))) {
         candidate = derived || candidate;
         source = derived ? derived.source || "ocr-neighbor" : source;
@@ -499,6 +511,65 @@ function chooseCandidate(items, expectedPoly, field, profile = null) {
       }
 
       if (!best || score > best.selectionScore) best = { ...fragment, selectionScore: score };
+    }
+  }
+  return best;
+}
+
+
+function chooseCandidateByNeighbor(items, referenceCandidate, field) {
+  if (!referenceCandidate?.poly?.length) return null;
+  const relation = field?.neighbor || (field?.adjacentTo ? { field: field.adjacentTo, directions: ["right"], maxDistance: 6 } : null);
+  if (!relation?.field) return null;
+
+  const directions = new Set(Array.isArray(relation.directions) && relation.directions.length ? relation.directions : ["right"]);
+  const rb = boundsFromPoly(referenceCandidate.poly);
+  const rcx = rb.x + rb.width / 2;
+  const rcy = rb.y + rb.height / 2;
+  const unit = Math.max(12, rb.height || 0, rb.width * 0.18);
+  const maxDistance = Math.max(0.5, Number(relation.maxDistance || 6)) * unit + 20;
+  const sourceRegex = field.sourceRegex || field.regex;
+  let best = null;
+
+  for (const item of items || []) {
+    for (const fragment of matchingFieldFragments(item, sourceRegex)) {
+      if (fragment === referenceCandidate) continue;
+      const b = boundsFromPoly(fragment.poly);
+      const fcx = b.x + b.width / 2;
+      const fcy = b.y + b.height / 2;
+      const horizontalGap = b.x > rb.x + rb.width
+        ? b.x - (rb.x + rb.width)
+        : rb.x > b.x + b.width
+          ? rb.x - (b.x + b.width)
+          : 0;
+      const verticalGap = b.y > rb.y + rb.height
+        ? b.y - (rb.y + rb.height)
+        : rb.y > b.y + b.height
+          ? rb.y - (b.y + b.height)
+          : 0;
+
+      const relations = [];
+      if (directions.has("right") && fcx >= rcx + unit * 0.12) {
+        relations.push(Math.hypot(Math.max(0, b.x - (rb.x + rb.width)), verticalGap * 0.7));
+      }
+      if (directions.has("left") && fcx <= rcx - unit * 0.12) {
+        relations.push(Math.hypot(Math.max(0, rb.x - (b.x + b.width)), verticalGap * 0.7));
+      }
+      if (directions.has("below") && fcy >= rcy + unit * 0.12) {
+        relations.push(Math.hypot(horizontalGap * 0.7, Math.max(0, b.y - (rb.y + rb.height))));
+      }
+      if (directions.has("above") && fcy <= rcy - unit * 0.12) {
+        relations.push(Math.hypot(horizontalGap * 0.7, Math.max(0, rb.y - (b.y + b.height))));
+      }
+      if (!relations.length) continue;
+      const relationDistance = Math.min(...relations);
+      if (relationDistance > maxDistance) continue;
+
+      let score = Math.max(0, 1 - relationDistance / maxDistance) * 0.72 + Number(fragment.score || 0) * 0.28;
+      if (field.preferUnit && /\b(?:KG|KGM|G|L|LTR)\b/i.test(String(fragment.text || ""))) score += 0.25;
+      if (field.preferRightmost) score += Math.max(0, Math.min(0.18, (fcx - rcx) / Math.max(1, maxDistance) * 0.18));
+      const candidate = { ...fragment, selectionScore: score, source: "ocr-neighbor", neighborField: relation.field };
+      if (!best || candidate.selectionScore > best.selectionScore) best = candidate;
     }
   }
   return best;
@@ -1138,7 +1209,8 @@ function deriveDrumCandidate(items, batchCandidate, field, expectedPoly) {
     };
   }
 
-  if (field.adjacentTo !== "batch") return null;
+  const neighborField = field?.neighbor?.field || field?.adjacentTo || "";
+  if (neighborField !== "batch") return null;
   const batchBounds = boundsFromPoly(batchCandidate.poly);
   const expected = boundsFromPoly(expectedPoly || []);
   const sourceRegex = field.sourceRegex || "^(?:[/|I1]?\\s*)?\\d{4}$";

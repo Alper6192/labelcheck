@@ -1471,3 +1471,79 @@ main > .card:first-child .engine-badge {
 .qr-rules{display:grid;gap:.6rem}
 .qr-rule-card h4{margin:.1rem 0}
 @media(max-width:800px){.qr-region-grid,.strategy-number-grid,.qr-region-card .mini-grid,.qr-rule-card .mini-grid{grid-template-columns:1fr}}
+
+/* ==============================================================
+   Profileditor 0.17.2 – übersichtliche, zweisprachige Oberfläche
+   ============================================================== */
+.editor-page {
+  --editor-green: #16854f;
+  --editor-green-dark: #0d6a3d;
+  --editor-soft: #fff7f7;
+  --editor-dash: rgba(225,0,15,.42);
+}
+.editor-page .editor-header-row { align-items: center; }
+.editor-page .editor-header-actions { display:flex; align-items:center; gap:14px; margin-left:auto; }
+.editor-page .language-toggle { display:flex; align-items:center; gap:8px; font-weight:800; color:#000; }
+.editor-page .language-switch { position:relative; width:54px; height:30px; display:inline-block; margin:0; }
+.editor-page .language-switch input { opacity:0; width:0; height:0; position:absolute; }
+.editor-page .language-slider { position:absolute; inset:0; cursor:pointer; border:2px solid #E1000F; border-radius:999px; background:#fff; transition:.18s ease; }
+.editor-page .language-slider::before { content:""; position:absolute; width:20px; height:20px; left:3px; top:3px; border-radius:50%; background:#E1000F; transition:.18s ease; }
+.editor-page .language-switch input:checked + .language-slider::before { transform:translateX(24px); }
+.editor-page .compact-card .card-body { padding:12px 14px; }
+.editor-page .editor-toolbar .actions { gap:8px; }
+.editor-page .settings-section { display:grid; gap:10px; padding-top:16px; margin-top:12px; border-top:2px dashed var(--editor-dash); }
+.editor-page .settings-section.first-section { border-top:0; padding-top:0; margin-top:0; }
+.editor-page .settings-section h3 { margin:0 0 2px; font-size:1rem; color:#000; }
+.editor-page .workspace-section { border-top:2px dashed var(--editor-dash); margin-top:14px; padding-top:12px; }
+.editor-page .sub-settings { display:grid; gap:10px; padding:10px 12px; background:var(--editor-soft); border:1px dashed #E1000F; border-radius:10px; }
+.editor-page .primary-editor-actions { margin-top:0; }
+.editor-page .secondary-editor-actions { margin-top:8px; }
+.editor-page .secondary-editor-actions button { min-height:38px; padding:7px 10px; font-weight:700; }
+.editor-page .mode-toolbar { border-style:dashed; justify-content:flex-start; }
+.editor-page .mode-toolbar button.active-mode,
+.editor-page .assignment-toolbar button.active-assignment,
+.editor-page .assignment-chip.selected {
+  background:var(--editor-green) !important;
+  border-color:var(--editor-green-dark) !important;
+  color:#fff !important;
+  outline:3px solid rgba(22,133,79,.22) !important;
+}
+.editor-page .assignment-toolbar button { min-width:120px; }
+.editor-page .assignment-chip.selected { outline-width:2px !important; }
+.editor-page .field-title { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; color:#000; }
+.editor-page .help-icon { position:relative; display:inline-grid; place-items:center; flex:0 0 20px; width:20px; height:20px; border-radius:50%; background:#E1000F; color:#fff; font-size:12px; font-weight:900; cursor:help; user-select:none; }
+.editor-page .help-icon::after { content:attr(data-tooltip); position:absolute; z-index:80; right:0; bottom:calc(100% + 9px); width:min(320px, 72vw); padding:10px 12px; background:#111; color:#fff; border-radius:8px; font-size:13px; line-height:1.35; font-weight:500; box-shadow:0 5px 18px rgba(0,0,0,.24); opacity:0; visibility:hidden; transform:translateY(4px); transition:.12s ease; pointer-events:none; white-space:normal; }
+.editor-page .help-icon::before { content:""; position:absolute; right:6px; bottom:calc(100% + 3px); border:6px solid transparent; border-top-color:#111; opacity:0; visibility:hidden; transition:.12s ease; }
+.editor-page .help-icon:hover::after,
+.editor-page .help-icon:focus::after,
+.editor-page .help-icon:hover::before,
+.editor-page .help-icon:focus::before { opacity:1; visibility:visible; transform:translateY(0); }
+.editor-page .checkbox-row .help-icon { margin-left:auto; }
+.editor-page .compact-fieldset { border:1px dashed #E1000F; border-radius:10px; padding:10px 12px; }
+.editor-page .compact-fieldset legend { padding:0 6px; font-weight:700; }
+.editor-page .direction-fieldset { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px 12px; }
+.editor-page .strategy-number-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:10px 12px; border:1px dashed #E1000F; border-radius:10px; background:var(--editor-soft); }
+.editor-page .regex-status.warn { color:#8a5b00; border-color:#d8a000; }
+.editor-page .properties-card .card-body { padding-top:8px; }
+.editor-page .qr-region-card,
+.editor-page .qr-rule-card { border:1px dashed #E1000F; border-radius:10px; padding:10px; margin-bottom:10px; }
+.editor-page .mini-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.editor-page .qr-rules { display:grid; gap:10px; }
+.editor-page .qr-rule-card h4 { margin:0 0 8px; }
+.editor-page .form-grid label,
+.editor-page .qr-rule-card label,
+.editor-page .qr-region-card label { color:#000; }
+.editor-page .form-grid input,
+.editor-page .form-grid select,
+.editor-page .form-grid textarea,
+.editor-page .qr-rule-card input,
+.editor-page .qr-rule-card textarea,
+.editor-page .qr-region-card input { border-width:2px; }
+@media (max-width: 760px) {
+  .editor-page .editor-header-row { align-items:stretch; }
+  .editor-page .editor-header-actions { width:100%; justify-content:space-between; margin-left:0; }
+  .editor-page .strategy-number-grid,
+  .editor-page .mini-grid,
+  .editor-page .direction-fieldset { grid-template-columns:1fr; }
+  .editor-page .assignment-toolbar button { min-width:0; }
+}

@@ -38,11 +38,13 @@ test("Profileditor zeigt Laufzeit und echte Providerdaten an", () => {
   assert.match(editorSource, /metrics\.recMs/);
 });
 
-test("Profileditor unterstützt OCR-JSON und kombinierte Batch-Fass-Zuordnung", () => {
-  assert.match(editorHtml, /OCR-JSON importieren/);
-  assert.match(editorHtml, /assignBatchDrumButton/);
-  assert.match(editorSource, /function importOcrJson/);
-  assert.match(editorSource, /function assignBatchAndDrum/);
+test("Profileditor blendet technische Alt-Funktionen aus und verwendet festen 10-Prozent-Zonenrand", () => {
+  assert.doesNotMatch(editorHtml, /Repository-Konfiguration neu laden/);
+  assert.doesNotMatch(editorHtml, /OCR-JSON importieren/);
+  assert.doesNotMatch(editorHtml, /Modell neu laden/);
+  assert.doesNotMatch(editorHtml, /assignBatchDrumButton/);
+  assert.doesNotMatch(editorHtml, /paddingInput/);
+  assert.match(editorSource, /FIELD_ZONE_PADDING = 0\.10/);
 });
 
 
@@ -54,8 +56,8 @@ test("OCR-Modelle werden same-origin von GitHub Pages geladen", () => {
 });
 
 test("Profileditor bewahrt Netto- und VW-Kombizeilen-Normalizer", () => {
-  assert.match(editorHtml, /option value="net_weight"/);
-  assert.match(editorHtml, /option value="leading_delivery_digits"/);
+  assert.match(editorSource, /"net_weight"/);
+  assert.match(editorSource, /"leading_delivery_digits"/);
 });
 
 test("Erweiterter Editor kann alle profilabhängigen Erkennungsparameter konfigurieren", () => {
@@ -65,14 +67,15 @@ test("Erweiterter Editor kann alle profilabhängigen Erkennungsparameter konfigu
     "validationMinAnchorScore", "fieldStrategy", "fieldSearchRadius", "fieldMinOverlap",
     "fieldStrategyUnits", "fieldFallbackStrategy", "fieldPairLeftMinDigits", "fieldPairLeftMaxDigits",
     "fieldTailDigits", "fieldCombinedMinDigits", "fieldLocatorAliases", "fieldLocatorDirection",
-    "fieldLocatorMaxDistance", "fieldLocatorMinAliasScore"
+    "fieldLocatorMaxDistance", "fieldLocatorMinAliasScore", "fieldNeighborEnabled", "fieldNeighborTarget",
+    "fieldNeighborLeft", "fieldNeighborRight", "fieldNeighborAbove", "fieldNeighborBelow"
   ]) {
     assert.match(editorHtml, new RegExp(`id=["']${id}["']`), `${id} fehlt im Editor`);
   }
-  assert.match(editorHtml, /unit_required_weight/);
-  assert.match(editorHtml, /net_pair_weight/);
-  assert.match(editorHtml, /numeric_pair/);
-  assert.match(editorHtml, /quantity_weight/);
+  assert.match(editorSource, /unit_required_weight/);
+  assert.match(editorSource, /net_pair_weight/);
+  assert.match(editorSource, /numeric_pair/);
+  assert.match(editorSource, /quantity_weight/);
 });
 
 test("QR-Profile werden vollständig im Editor konfiguriert und am Masterbild getestet", () => {
@@ -90,4 +93,21 @@ test("Labelvalidierung bleibt auch bei QR-Profilen im gemeinsamen Editorbereich 
   assert.match(editorHtml, /id="profileValidationSettings"/);
   assert.match(editorHtml, /data-required-valid-field="batch"/);
   assert.match(editorHtml, /id="validationErrorMessage"/);
+});
+
+
+test("Editor besitzt DE/EN-Schalter, Hilfetexte und feldspezifische Auswahlmenüs", () => {
+  assert.match(editorHtml, /id="languageToggle"/);
+  assert.match(editorHtml, /data-help-key=/);
+  assert.match(editorSource, /FIELD_NORMALIZER_OPTIONS/);
+  assert.match(editorSource, /FIELD_STRATEGY_OPTIONS/);
+  assert.match(editorSource, /populateFieldNormalizerOptions/);
+  assert.match(editorSource, /populateFieldStrategyOptions/);
+  assert.match(editorSource, /renderRegexStatus/);
+});
+
+test("Ausgewählte Bearbeitungsart und Feldzuordnung werden visuell markiert", () => {
+  assert.match(editorHtml, /data-assignment-button="anchor"/);
+  assert.match(editorSource, /renderAssignmentToolbar/);
+  assert.match(editorSource, /active-assignment/);
 });

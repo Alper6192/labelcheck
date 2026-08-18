@@ -30,12 +30,44 @@ import {
 } from "./editor-geometry.js";
 import { EditorProfileSessionStore } from "./editor-session.js";
 import { deleteEditorMaster, loadEditorMaster, renameEditorMaster, saveEditorMaster } from "./editor-persistence.js";
+import { applyEditorTranslations, getEditorLanguage, localText, setEditorLanguage, text as uiText } from "./editor-i18n.js";
 
 const EDITOR_SELECTED_PROFILE_KEY = "labelcheck.editor.selected-profile.v1";
 const EDITOR_OCR_MAX_SIDE = 1000;
+const FIELD_ZONE_PADDING = 0.10;
+
+const FIELD_UI_LABEL_KEYS = {
+  batch: "batch",
+  drum_number: "drum",
+  idh: "idh",
+  weight: "weight",
+  delivery_note: "deliveryNote"
+};
+
+const FIELD_NORMALIZER_OPTIONS = {
+  batch: [["text", "normalText"], ["batch", "normalBatch"]],
+  drum_number: [["digits", "normalDigits"], ["last_digits", "normalLastDigits"], ["text", "normalText"]],
+  idh: [["digits", "normalDigits"], ["last_digits", "normalLastDigits"], ["text", "normalText"]],
+  weight: [["weight", "normalWeight"], ["net_weight", "normalNetWeight"], ["text", "normalText"]],
+  delivery_note: [["digits", "normalDigits"], ["leading_delivery_digits", "normalDeliveryPair"], ["last_digits", "normalLastDigits"], ["text", "normalText"]]
+};
+
+const FIELD_STRATEGY_OPTIONS = {
+  batch: [["", "strategyStandard"]],
+  drum_number: [["", "strategyStandard"]],
+  idh: [["", "strategyStandard"], ["numeric_pair", "strategyNumericPair"]],
+  weight: [
+    ["", "strategyStandard"],
+    ["unit_required_weight", "strategyUnitWeight"],
+    ["net_pair_weight", "strategyNetPair"],
+    ["quantity_weight", "strategyQuantity"]
+  ],
+  delivery_note: [["", "strategyStandard"], ["numeric_pair", "strategyNumericPair"]]
+};
 const editorRuntimePolicy = detectRuntimePolicy({ compatibilityMode: true });
 const engine = new PaddleOcrEngine({ policyProvider: () => editorRuntimePolicy });
 const el = (id) => document.getElementById(id);
+const msg = (de, en) => localText(de, en, state.language);
 const state = {
   config: normalizeProfileConfig({ profiles: [] }, APP_VERSION),
   selectedProfileId: "",
@@ -46,16 +78,30 @@ const state = {
   dirty: false,
   ocrRun: null,
   engineInitPromise: null,
-  elapsedTimer: null
+  elapsedTimer: null,
+  language: getEditorLanguage()
 };
 
 el("version").textContent = `v${APP_VERSION}`;
+el("languageToggle").checked = state.language === "en";
+applyEditorTranslations(document, state.language);
 setupEvents();
 loadRepositoryConfig();
 initializeEngine().catch(() => undefined);
 
 function setupEvents() {
-  el("reloadConfigButton").onclick = () => loadRepositoryConfig(true);
+  el("languageToggle").addEventListener("change", () => {
+    state.language = setEditorLanguage(el("languageToggle").checked ? "en" : "de");
+    applyEditorTranslations(document, state.language);
+    renderProfileList();
+    renderProfileMeta();
+    renderAssignments();
+    renderProperties();
+    renderSelectionInfo();
+    renderAssignmentToolbar();
+    refreshMasterControls();
+  });
+
   el("configInput").addEventListener("change", importConfig);
   el("exportConfigButton").onclick = exportConfig;
   el("newProfileButton").onclick = newProfile;
@@ -65,7 +111,7 @@ function setupEvents() {
 
   for (const id of [
     "profileId", "profileName", "profileRole", "profileActive", "profileSourceType",
-    "anchorAliases", "anchorLocalizeAlias", "anchorScaleFrom", "anchorAlignFrom", "anchorFallbacksJson",
+    "anchorAliases", "anchorLocalizeAlias", "anchorScaleFrom", "anchorAlignFrom",
     "detectionEvidenceAliases", "detectionMinEvidenceMatches", "detectionExcludeAliases", "detectionMinScore",
     "validationMinAnchorScore", "validationErrorMessage"
   ]) {
@@ -79,14 +125,9 @@ function setupEvents() {
   el("testQrButton").onclick = testQrProfile;
 
   el("masterInput").addEventListener("change", loadMasterImage);
-  el("ocrJsonInput").addEventListener("change", importOcrJson);
   el("exportOcrJsonButton").onclick = exportOcrJson;
   el("runOcrButton").onclick = runOcr;
   el("cancelOcrButton").onclick = () => cancelOcrAnalysis(false);
-  el("initializeEditorButton").onclick = async () => {
-    await cancelOcrAnalysis(true);
-    await initializeEngine(true);
-  };
   el("clearOcrButton").onclick = () => {
     const session = currentSession(false);
     if (!session) return;
@@ -101,11 +142,7 @@ function setupEvents() {
   el("selectModeButton").onclick = () => setMode("select");
   el("drawModeButton").onclick = () => setMode("draw");
   el("editModeButton").onclick = () => setMode("edit");
-  el("paddingInput").addEventListener("input", () => {
-    el("paddingValue").textContent = `${el("paddingInput").value} %`;
-  });
   el("assignAnchorButton").onclick = assignAnchor;
-  el("assignBatchDrumButton").onclick = assignBatchAndDrum;
   document.querySelectorAll("[data-field]").forEach((button) => {
     button.addEventListener("click", () => assignField(button.dataset.field));
   });
@@ -117,30 +154,42 @@ function setupEvents() {
   overlay.addEventListener("pointercancel", pointerUp);
 
   for (const id of [
-    "fieldLabel", "fieldRegex", "fieldSourceRegex", "fieldNormalizer",
-    "fieldDigits", "fieldAdjacentTo", "fieldStrategy", "fieldSearchRadius", "fieldMinOverlap",
-    "fieldPreferRightmost", "fieldPreferUnit", "fieldStrategyUnits", "fieldFallbackStrategy",
+    "fieldLabel", "fieldRegex", "fieldSourceRegex", "fieldNormalizer", "fieldDigits",
+    "fieldSearchRadius", "fieldMinOverlap", "fieldPreferRightmost", "fieldPreferUnit",
+    "fieldNeighborEnabled", "fieldNeighborTarget", "fieldNeighborLeft", "fieldNeighborRight",
+    "fieldNeighborAbove", "fieldNeighborBelow", "fieldNeighborMaxDistance",
+    "fieldStrategy", "fieldStrategyUnits", "fieldFallbackStrategy",
     "fieldPairLeftMinDigits", "fieldPairLeftMaxDigits", "fieldTailDigits", "fieldCombinedMinDigits",
     "fieldLocatorAliases", "fieldLocatorDirection", "fieldLocatorMaxDistance", "fieldLocatorMinAliasScore",
     "fieldLocatorStrict", "fieldLocatorPreferRightmost", "fieldLocatorPreferLeftmost",
     "fieldLocatorPreferUnit", "fieldLocatorPreferBatch", "fieldRequired", "fieldCompare"
   ]) {
     const checkboxIds = new Set([
-      "fieldPreferRightmost", "fieldPreferUnit", "fieldLocatorStrict", "fieldLocatorPreferRightmost",
-      "fieldLocatorPreferLeftmost", "fieldLocatorPreferUnit", "fieldLocatorPreferBatch", "fieldRequired", "fieldCompare"
+      "fieldPreferRightmost", "fieldPreferUnit", "fieldNeighborEnabled", "fieldNeighborLeft",
+      "fieldNeighborRight", "fieldNeighborAbove", "fieldNeighborBelow", "fieldLocatorStrict",
+      "fieldLocatorPreferRightmost", "fieldLocatorPreferLeftmost", "fieldLocatorPreferUnit",
+      "fieldLocatorPreferBatch", "fieldRequired", "fieldCompare"
     ]);
-    el(id).addEventListener(checkboxIds.has(id) || id === "fieldStrategy" || id === "fieldFallbackStrategy" || id === "fieldLocatorDirection" ? "change" : "input", updateFieldProperties);
+    const changeIds = new Set([
+      "fieldNormalizer", "fieldNeighborTarget", "fieldStrategy", "fieldFallbackStrategy", "fieldLocatorDirection"
+    ]);
+    el(id).addEventListener(checkboxIds.has(id) || changeIds.has(id) ? "change" : "input", updateFieldProperties);
   }
+
+  // RegEx-Status bewusst zusätzlich direkt an die beiden Textfelder binden:
+  // jede Eingabe wird sofort neu geprüft und visualisiert.
+  el("fieldRegex").addEventListener("input", renderRegexStatus);
+  el("fieldSourceRegex").addEventListener("input", renderRegexStatus);
+
   el("deleteAssignmentButton").onclick = deleteSelectedAssignment;
   window.addEventListener("beforeunload", (event) => {
     if (!state.dirty) return;
     event.preventDefault();
   });
 }
-
 async function loadRepositoryConfig(confirmReplace = false) {
-  if (confirmReplace && state.dirty && !confirm("Nicht exportierte Änderungen verwerfen und Repository-Konfiguration neu laden?")) return;
-  setConfigStatus("Repository-Konfiguration wird geladen …", "wait");
+  if (confirmReplace && state.dirty && !confirm(msg("Nicht exportierte Änderungen verwerfen und Repository-Konfiguration neu laden?", "Discard unexported changes and reload the repository configuration?"))) return;
+  setConfigStatus(msg("Konfiguration wird geladen …", "Loading configuration …"), "wait");
   try {
     const response = await fetch(new URL(`./config/label-profiles.json?t=${Date.now()}`, window.location.href), { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -153,9 +202,9 @@ async function loadRepositoryConfig(confirmReplace = false) {
       : (state.config.profiles[0]?.id || "");
     renderProfileList();
     selectProfile(first);
-    setConfigStatus(`${state.config.profiles.length} Profile geladen`, "ok");
+    setConfigStatus(msg(`${state.config.profiles.length} Profile geladen`, `${state.config.profiles.length} profiles loaded`), "ok");
   } catch (error) {
-    setConfigStatus(`Konfiguration konnte nicht geladen werden: ${safeError(error)}`, "bad");
+    setConfigStatus(msg(`Konfiguration konnte nicht geladen werden: ${safeError(error)}`, `Configuration could not be loaded: ${safeError(error)}`), "bad");
   }
 }
 
@@ -170,9 +219,9 @@ async function importConfig(event) {
     renderProfileList();
     const preferred = storedSelectedProfileId();
     selectProfile(state.config.profiles.some((profile) => profile.id === preferred) ? preferred : (state.config.profiles[0]?.id || ""));
-    setConfigStatus(`${state.config.profiles.length} Profile importiert – noch nicht exportiert`, "warn");
+    setConfigStatus(msg(`${state.config.profiles.length} Profile importiert – noch nicht exportiert`, `${state.config.profiles.length} profiles imported – not exported yet`), "warn");
   } catch (error) {
-    setConfigStatus(`JSON-Import fehlgeschlagen: ${safeError(error)}`, "bad");
+    setConfigStatus(msg(`JSON-Import fehlgeschlagen: ${safeError(error)}`, `JSON import failed: ${safeError(error)}`), "bad");
   }
 }
 
@@ -185,13 +234,13 @@ function exportConfig() {
     exportedAt: new Date().toISOString()
   }, APP_VERSION);
   const warnings = validateConfig(exportable);
-  if (warnings.length && !confirm(`Die Konfiguration enthält Hinweise:\n\n${warnings.join("\n")}\n\nTrotzdem exportieren?`)) return;
+  if (warnings.length && !confirm(msg(`Die Konfiguration enthält Hinweise:\n\n${warnings.join("\n")}\n\nTrotzdem exportieren?`, `The configuration contains warnings:\n\n${warnings.join("\n")}\n\nExport anyway?`))) return;
   download(JSON.stringify(exportable, null, 2), "label-profiles.json", "application/json");
   state.config = exportable;
   state.dirty = false;
   renderProfileList();
   renderProfileMeta();
-  setConfigStatus(`${state.config.profiles.length} Profile exportiert`, "ok");
+  setConfigStatus(msg(`${state.config.profiles.length} Profile exportiert`, `${state.config.profiles.length} profiles exported`), "ok");
 }
 
 function validateConfig(config) {
@@ -206,10 +255,6 @@ function validateConfig(config) {
     if (!qrProfile) {
       if (!profile.anchor?.aliases?.length) warnings.push(`${profile.name}: keine Anker-Aliase.`);
       if ((profile.anchor?.poly || []).length < 4) warnings.push(`${profile.name}: kein Ankerbereich.`);
-      const fallbackText = profile.id === state.selectedProfileId ? el("anchorFallbacksJson").value.trim() : "";
-      if (fallbackText) {
-        try { JSON.parse(fallbackText); } catch { warnings.push(`${profile.name}: Alternative Anker enthalten ungültiges JSON.`); }
-      }
     } else {
       const regions = profile.source?.regions || [];
       if (!regions.length) warnings.push(`${profile.name}: kein QR-Suchbereich.`);
@@ -268,7 +313,7 @@ function duplicateProfile() {
 
 function deleteProfile() {
   const current = selectedProfile();
-  if (!current || !confirm(`Profil „${current.name}“ wirklich löschen?`)) return;
+  if (!current || !confirm(msg(`Profil „${current.name}“ wirklich löschen?`, `Really delete profile “${current.name}”?`))) return;
   const index = state.config.profiles.findIndex((profile) => profile.id === current.id);
   state.config.profiles.splice(index, 1);
   state.sessions.delete(current.id);
@@ -283,7 +328,7 @@ function renderProfileList() {
   const selected = state.selectedProfileId;
   select.replaceChildren();
   for (const profile of state.config.profiles) {
-    const option = new Option(`${profile.role === "product" ? "Produkt" : "VDA"} · ${profile.name}`, profile.id);
+    const option = new Option(`${profile.role === "product" ? uiText("productLabel", state.language) : uiText("vdaLabel", state.language)} · ${profile.name}`, profile.id);
     select.append(option);
   }
   select.value = selected;
@@ -315,7 +360,7 @@ function renderProfileMeta() {
   const disabled = !profile;
   const ids = [
     "profileId", "profileName", "profileRole", "profileActive", "profileSourceType",
-    "anchorAliases", "anchorLocalizeAlias", "anchorScaleFrom", "anchorAlignFrom", "anchorFallbacksJson",
+    "anchorAliases", "anchorLocalizeAlias", "anchorScaleFrom", "anchorAlignFrom",
     "detectionEvidenceAliases", "detectionMinEvidenceMatches", "detectionExcludeAliases", "detectionMinScore",
     "validationMinAnchorScore", "validationErrorMessage"
   ];
@@ -332,10 +377,6 @@ function renderProfileMeta() {
   el("anchorLocalizeAlias").checked = profile?.anchor?.localizeAlias === true;
   el("anchorScaleFrom").value = profile?.anchor?.scaleFrom === "height" ? "height" : "width";
   el("anchorAlignFrom").value = profile?.anchor?.alignFrom === "left" ? "left" : "center";
-  el("anchorFallbacksJson").value = profile?.anchor?.fallbacks?.length
-    ? JSON.stringify(profile.anchor.fallbacks, null, 2)
-    : "";
-
   el("detectionEvidenceAliases").value = (profile?.detection?.evidenceAliases || []).join("\n");
   el("detectionMinEvidenceMatches").value = Number(profile?.detection?.minEvidenceMatches || 0);
   el("detectionExcludeAliases").value = (profile?.detection?.excludeAliases || []).join("\n");
@@ -351,6 +392,7 @@ function renderProfileMeta() {
   el("ocrProfileSettings").classList.toggle("hidden", qr);
   el("qrProfileSettings").classList.toggle("hidden", !qr);
   renderQrSettings(profile);
+  applyEditorTranslations(document, state.language);
   refreshMasterControls();
 }
 
@@ -379,18 +421,6 @@ function updateProfileMeta() {
   profile.anchor.localizeAlias = el("anchorLocalizeAlias").checked;
   profile.anchor.scaleFrom = el("anchorScaleFrom").value === "height" ? "height" : "width";
   profile.anchor.alignFrom = el("anchorAlignFrom").value === "left" ? "left" : "center";
-  const fallbackText = el("anchorFallbacksJson").value.trim();
-  if (!fallbackText) {
-    profile.anchor.fallbacks = [];
-  } else {
-    try {
-      const parsed = JSON.parse(fallbackText);
-      if (Array.isArray(parsed)) profile.anchor.fallbacks = parsed;
-    } catch {
-      // Während der Eingabe nicht überschreiben; Exportvalidierung meldet ungültiges JSON.
-    }
-  }
-
   profile.detection = profile.detection || {};
   profile.detection.evidenceAliases = readLines(el("detectionEvidenceAliases").value);
   profile.detection.minEvidenceMatches = Math.max(0, Math.floor(Number(el("detectionMinEvidenceMatches").value || 0)));
@@ -437,11 +467,14 @@ function renderQrSettings(profile) {
     const region = regions[index] || (index === 0 ? { x: 0, y: 0, width: 1, height: 1 } : null);
     const card = document.createElement("div");
     card.className = "qr-region-card";
-    card.innerHTML = `<strong>${index === 0 ? "Primärer QR-Bereich" : "Fallback-QR-Bereich (optional)"}</strong><div class="mini-grid"></div>`;
+    card.innerHTML = `<strong>${uiText(index === 0 ? "primaryQrRegion" : "fallbackQrRegion", state.language)}</strong><div class="mini-grid"></div>`;
     const grid = card.querySelector(".mini-grid");
     for (const prop of ["x", "y", "width", "height"]) {
       const label = document.createElement("label");
-      label.textContent = ({ x: "X", y: "Y", width: "Breite", height: "Höhe" })[prop];
+      label.dataset.helpKey = "qrRegions";
+      const caption = document.createElement("span");
+      caption.textContent = ({ x: "X", y: "Y", width: uiText("width", state.language), height: uiText("height", state.language) })[prop];
+      label.append(caption);
       const input = document.createElement("input");
       input.type = "number";
       input.min = "0";
@@ -450,7 +483,7 @@ function renderQrSettings(profile) {
       input.dataset.qrRegion = String(index);
       input.dataset.qrRegionProp = prop;
       input.value = region ? String(Number(region[prop] ?? (prop === "width" || prop === "height" ? 1 : 0))) : "";
-      input.placeholder = index === 1 ? "optional" : "0";
+      input.placeholder = index === 1 ? localText("optional", "optional", state.language) : "0";
       input.addEventListener("input", updateQrRegionsFromDom);
       label.append(input);
       grid.append(label);
@@ -459,13 +492,14 @@ function renderQrSettings(profile) {
   }
 
   const labels = {
-    batch: "Batch",
-    drum_number: "Fassnummer",
-    idh: "IDH",
-    weight: "Gewicht",
-    delivery_note: "Lieferscheinnummer"
+    batch: uiText("batch", state.language),
+    drum_number: uiText("drum", state.language),
+    idh: uiText("idh", state.language),
+    weight: uiText("weight", state.language),
+    delivery_note: uiText("deliveryNote", state.language)
   };
   const required = new Set(source.parser.requiredFields || []);
+
   for (const key of FIELD_ORDER) {
     const rule = source.parser.fields?.[key] || null;
     const enabled = Boolean(rule || findField(profile, key));
@@ -474,21 +508,22 @@ function renderQrSettings(profile) {
     card.dataset.qrKey = key;
     card.innerHTML = `
       <h4>${labels[key] || key}</h4>
-      <label class="checkbox-row"><input type="checkbox" data-qr-enabled ${enabled ? "checked" : ""}> Feld aus QR lesen</label>
-      <label class="checkbox-row"><input type="checkbox" data-qr-required ${required.has(key) ? "checked" : ""} ${enabled ? "" : "disabled"}> für QR-Profilerkennung erforderlich</label>
-      <label>Primär-RegEx<input type="text" spellcheck="false" data-qr-rule="primaryRegex"></label>
+      <label class="checkbox-row" data-help-key="qrReadField"><input type="checkbox" data-qr-enabled ${enabled ? "checked" : ""}><span>${uiText("qrReadField", state.language)}</span></label>
+      <label class="checkbox-row" data-help-key="qrRequired"><input type="checkbox" data-qr-required ${required.has(key) ? "checked" : ""} ${enabled ? "" : "disabled"}><span>${uiText("qrRequired", state.language)}</span></label>
+      <label data-help-key="primaryRegex"><span>${uiText("primaryRegex", state.language)}</span><input type="text" spellcheck="false" data-qr-rule="primaryRegex"></label>
       <div class="mini-grid">
-        <label>Capture-Gruppe<input type="number" min="0" max="20" step="1" data-qr-rule="primaryGroup"></label>
-        <label>Template<input type="text" spellcheck="false" data-qr-rule="template" placeholder="{primary}"></label>
+        <label data-help-key="captureGroup"><span>${uiText("captureGroup", state.language)}</span><input type="number" min="0" max="20" step="1" data-qr-rule="primaryGroup"></label>
+        <label data-help-key="template"><span>${uiText("template", state.language)}</span><input type="text" spellcheck="false" data-qr-rule="template" placeholder="{primary}"></label>
       </div>
-      <label>Sekundär-RegEx (optional)<input type="text" spellcheck="false" data-qr-rule="secondaryRegex"></label>
+      <label data-help-key="secondaryRegex"><span>${uiText("secondaryRegex", state.language)}</span><input type="text" spellcheck="false" data-qr-rule="secondaryRegex"></label>
       <div class="mini-grid">
-        <label>Sekundär-Gruppe<input type="number" min="0" max="20" step="1" data-qr-rule="secondaryGroup"></label>
-        <label>Fallback Sekundärwert<input type="text" data-qr-rule="secondaryDefault"></label>
+        <label data-help-key="secondaryGroup"><span>${uiText("secondaryGroup", state.language)}</span><input type="number" min="0" max="20" step="1" data-qr-rule="secondaryGroup"></label>
+        <label data-help-key="secondaryDefault"><span>${uiText("secondaryDefault", state.language)}</span><input type="text" data-qr-rule="secondaryDefault"></label>
       </div>
-      <label>Ersetzungen, eine pro Zeile <textarea rows="2" data-qr-rule="replacements" placeholder="KGM => KG"></textarea></label>
-      <button type="button" data-open-qr-field>Feldeigenschaften öffnen</button>
+      <label data-help-key="replacements"><span>${uiText("replacements", state.language)}</span><textarea rows="2" data-qr-rule="replacements" placeholder="KGM => KG"></textarea></label>
+      <button type="button" data-open-qr-field>${uiText("openFieldProperties", state.language)}</button>
     `;
+
     const effective = rule || {
       primaryRegex: "",
       primaryGroup: 1,
@@ -509,8 +544,7 @@ function renderQrSettings(profile) {
       .join("\n");
 
     card.querySelectorAll("input,textarea").forEach((node) => {
-      if (node.matches("[data-qr-enabled]")) node.addEventListener("change", updateQrRulesFromDom);
-      else if (node.matches("[data-qr-required]")) node.addEventListener("change", updateQrRulesFromDom);
+      if (node.matches("[data-qr-enabled], [data-qr-required]")) node.addEventListener("change", updateQrRulesFromDom);
       else node.addEventListener("input", updateQrRulesFromDom);
     });
     card.querySelector("[data-open-qr-field]").onclick = () => {
@@ -523,8 +557,9 @@ function renderQrSettings(profile) {
     };
     rulesContainer.append(card);
   }
-}
 
+  applyEditorTranslations(document, state.language);
+}
 function updateQrRegionsFromDom() {
   const profile = selectedProfile();
   if (!profile || profile.source?.type !== "qr") return;
@@ -590,7 +625,7 @@ function useSelectionAsQrRegion() {
   const session = currentSession(false);
   if (!profile || profile.source?.type !== "qr") return;
   if (!session?.selection?.poly?.length) {
-    alert("Zuerst im Masterbild eine OCR-Box auswählen oder im Modus „Freie Zone zeichnen“ einen QR-Suchbereich markieren.");
+    alert(msg("Zuerst im Masterbild eine OCR-Box auswählen oder im Modus „Freie Zone zeichnen“ einen QR-Suchbereich markieren.", "First select an OCR box in the master image or mark a QR search region in Draw free zone mode."));
     return;
   }
   const source = ensureQrSource(profile);
@@ -609,7 +644,7 @@ async function testQrProfile() {
   const status = el("qrTestResult");
   if (!profile || profile.source?.type !== "qr") return;
   if (!session?.prepared?.canvas) {
-    status.textContent = "Bitte zuerst ein Masterbild mit QR-Code laden.";
+    status.textContent = msg("Bitte zuerst ein Masterbild mit QR-Code laden.", "Please load a master image containing a QR code first.");
     status.className = "regex-status bad";
     return;
   }
@@ -617,11 +652,11 @@ async function testQrProfile() {
   updateQrRulesFromDom();
   const match = detectQrProfile(session.prepared.canvas, [profile], profile.role);
   if (!match) {
-    status.textContent = "Kein QR-Code passend zu diesen Regeln erkannt.";
+    status.textContent = msg("Kein QR-Code passend zu diesen Regeln erkannt.", "No QR code matching these rules was detected.");
     status.className = "regex-status bad";
     return;
   }
-  status.textContent = `QR erfolgreich: ${Object.entries(match.parsed.fields || {}).map(([key, value]) => `${key}=${value}`).join(" · ")}`;
+  status.textContent = msg(`QR erfolgreich: ${Object.entries(match.parsed.fields || {}).map(([key, value]) => `${key}=${value}`).join(" · ")}`, `QR successful: ${Object.entries(match.parsed.fields || {}).map(([key, value]) => `${key}=${value}`).join(" · ")}`);
   status.className = "regex-status ok";
 }
 
@@ -663,19 +698,19 @@ async function initializeEngine(force = false) {
 }
 
 async function initializeEngineInternal(force) {
-  setEditorEngine("PaddleOCR wird vorbereitet …", "wait");
+  setEditorEngine(msg("PaddleOCR wird vorbereitet …", "Preparing PaddleOCR …"), "wait");
   try {
     const info = await engine.initialize(
       "standard",
       (message) => setEditorEngine(message, "wait"),
       force
     );
-    setEditorEngine(`PaddleOCR bereit · ${info.mode}`, "ok");
-    el("editorEngineDetails").textContent = `Editor-Stabilmodus · Initialisierung ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`;
+    setEditorEngine(msg(`PaddleOCR bereit · ${info.mode}`, `PaddleOCR ready · ${info.mode}`), "ok");
+    el("editorEngineDetails").textContent = msg(`Editor-Stabilmodus · Initialisierung ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`, `Editor stability mode · initialization ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`);
     return true;
   } catch (error) {
-    setEditorEngine(`PaddleOCR nicht bereit: ${safeError(error)}`, "bad");
-    el("editorEngineDetails").textContent = "Der Editor verwendet bewusst WASM mit einem Thread im Web Worker, damit große Masterbilder den Browser nicht neu starten. Die Scanner-Performance bleibt davon unberührt.";
+    setEditorEngine(msg(`PaddleOCR nicht bereit: ${safeError(error)}`, `PaddleOCR not ready: ${safeError(error)}`), "bad");
+    el("editorEngineDetails").textContent = msg("Der Editor verwendet bewusst WASM mit einem Thread im Web Worker, damit große Masterbilder den Browser nicht neu starten. Die Scanner-Performance bleibt davon unberührt.", "The editor intentionally uses WASM with one thread in a web worker so large master images do not restart the browser. Scanner performance is unaffected.");
     return false;
   }
 }
@@ -703,50 +738,9 @@ async function loadMasterImage(event) {
     drawOverlay();
     renderSelectionInfo();
     refreshMasterControls();
-    el("editorHint").textContent = `Masterbild „${file.name}“ ist nur diesem Profil zugeordnet. PaddleOCR starten oder freie Zonen zeichnen.`;
+    el("editorHint").textContent = msg(`Masterbild „${file.name}“ ist nur diesem Profil zugeordnet. PaddleOCR starten oder freie Zonen zeichnen.`, `Master image “${file.name}” is assigned only to this profile. Run PaddleOCR or draw free zones.`);
   } catch (error) {
-    el("editorHint").textContent = `Masterbild konnte nicht geladen werden: ${safeError(error)}`;
-  }
-}
-
-async function importOcrJson(event) {
-  const file = event.target.files?.[0];
-  event.target.value = "";
-  if (!file) return;
-
-  const profile = selectedProfile();
-  const session = currentSession(false);
-  if (!profile || !session?.prepared) {
-    alert("Zuerst das passende Profil auswählen und das zugehörige Masterbild laden.");
-    return;
-  }
-
-  try {
-    const payload = JSON.parse(await file.text());
-    const rawResult = pickOcrResult(payload, profile.role);
-    if (!rawResult || !Array.isArray(rawResult.items)) {
-      throw new Error("In der JSON wurde kein PaddleOCR-Ergebnis für dieses Profil gefunden.");
-    }
-
-    const sourceWidth = Number(rawResult.image?.width || session.prepared.width);
-    const sourceHeight = Number(rawResult.image?.height || session.prepared.height);
-    session.ocrResult = scaleOcrResult(
-      rawResult,
-      sourceWidth,
-      sourceHeight,
-      session.prepared.width,
-      session.prepared.height
-    );
-    session.selection = null;
-    await persistSession(profile.id, session);
-    setEditorEngine(`OCR-JSON importiert · ${session.ocrResult.items.length} Textzeilen`, "ok");
-    el("editorEngineDetails").textContent = `Quelle „${file.name}“ · Boxen auf ${session.prepared.width} × ${session.prepared.height} px skaliert.`;
-    el("editorHint").textContent = "OCR-Box anklicken und einem Feld zuweisen. Für eine kombinierte Zeile wie D… / 0001 die Schaltfläche „Batch + Fassnummer“ verwenden.";
-    drawOverlay();
-    renderSelectionInfo();
-    refreshMasterControls();
-  } catch (error) {
-    setEditorEngine(`OCR-JSON konnte nicht importiert werden: ${safeError(error)}`, "bad");
+    el("editorHint").textContent = msg(`Masterbild konnte nicht geladen werden: ${safeError(error)}`, `Master image could not be loaded: ${safeError(error)}`);
   }
 }
 
@@ -771,7 +765,7 @@ async function runOcr() {
   };
   state.ocrRun = run;
   refreshMasterControls();
-  setEditorEngine("PaddleOCR analysiert das Masterbild im Web Worker …", "wait");
+  setEditorEngine(msg("PaddleOCR analysiert das Masterbild im Web Worker …", "PaddleOCR is analyzing the master image in the web worker …"), "wait");
   startElapsedDisplay(run, session);
 
   try {
@@ -809,24 +803,24 @@ async function runOcr() {
     if (state.selectedProfileId === run.profileId) {
       const result = targetSession.ocrResult;
       const metrics = result.metrics || {};
-      setEditorEngine(`PaddleOCR bereit · ${output.mode} · ${result.items?.length || 0} Textzeilen`, "ok");
+      setEditorEngine(msg(`PaddleOCR bereit · ${output.mode} · ${result.items?.length || 0} Textzeilen`, `PaddleOCR ready · ${output.mode} · ${result.items?.length || 0} text lines`), "ok");
       el("editorEngineDetails").textContent = [
-        `Gesamt ${formatMilliseconds(output.wallMs)}`,
-        Number.isFinite(metrics.detMs) ? `Detektion ${formatMilliseconds(metrics.detMs)}` : "",
-        Number.isFinite(metrics.recMs) ? `Erkennung ${formatMilliseconds(metrics.recMs)}` : "",
+        msg(`Gesamt ${formatMilliseconds(output.wallMs)}`, `Total ${formatMilliseconds(output.wallMs)}`),
+        Number.isFinite(metrics.detMs) ? msg(`Detektion ${formatMilliseconds(metrics.detMs)}`, `Detection ${formatMilliseconds(metrics.detMs)}`) : "",
+        Number.isFinite(metrics.recMs) ? msg(`Erkennung ${formatMilliseconds(metrics.recMs)}`, `Recognition ${formatMilliseconds(metrics.recMs)}`) : "",
         formatRuntimeDetails(engine.summary, output.runtime, editorRuntimePolicy),
-        `OCR-Bild ${ocrInput.width} × ${ocrInput.height} px`
+        msg(`OCR-Bild ${ocrInput.width} × ${ocrInput.height} px`, `OCR image ${ocrInput.width} × ${ocrInput.height} px`)
       ].filter(Boolean).join(" · ");
       drawOverlay();
       renderSelectionInfo();
     }
   } catch (error) {
     if (run.cancelled) {
-      setEditorEngine("OCR-Analyse verworfen", "warn");
-      el("editorEngineDetails").textContent = "Das Ergebnis wird nicht übernommen.";
+      setEditorEngine(msg("OCR-Analyse verworfen", "OCR analysis discarded"), "warn");
+      el("editorEngineDetails").textContent = msg("Das Ergebnis wird nicht übernommen.", "The result will not be applied.");
     } else {
-      setEditorEngine(`OCR fehlgeschlagen: ${safeError(error)}`, "bad");
-      el("editorEngineDetails").textContent = "Der Worker wurde nicht automatisch ersetzt. Modell bei Bedarf manuell neu laden.";
+      setEditorEngine(msg(`OCR fehlgeschlagen: ${safeError(error)}`, `OCR failed: ${safeError(error)}`), "bad");
+      el("editorEngineDetails").textContent = localText("Der OCR-Worker wurde beendet. Beim nächsten Start wird er automatisch neu initialisiert.", "The OCR worker was stopped. It will be initialized automatically on the next run.", state.language);
     }
   } finally {
     stopElapsedDisplay();
@@ -847,17 +841,17 @@ async function cancelOcrAnalysis(silent = false) {
   state.ocrRun = null;
   refreshMasterControls();
   if (!silent) {
-    setEditorEngine("PaddleOCR-Worker wird beendet …", "warn");
-    el("editorEngineDetails").textContent = "Der laufende Worker wird vollständig beendet; danach muss das Modell neu geladen werden.";
+    setEditorEngine(msg("PaddleOCR-Worker wird beendet …", "Stopping PaddleOCR worker …"), "warn");
+    el("editorEngineDetails").textContent = localText("Der laufende Worker wird vollständig beendet.", "The running worker is being stopped completely.", state.language);
   }
   try {
     await engine.abortCurrent();
     if (!silent) {
-      setEditorEngine("OCR abgebrochen · Modell neu laden", "warn");
-      el("editorEngineDetails").textContent = "Der alte Worker ist beendet. Vor der nächsten Analyse auf „Modell neu laden“ klicken.";
+      setEditorEngine(localText("OCR abgebrochen", "OCR cancelled", state.language), "warn");
+      el("editorEngineDetails").textContent = localText("Der Worker ist beendet. Beim nächsten OCR-Start wird er automatisch neu initialisiert.", "The worker has stopped. It will be initialized automatically on the next OCR run.", state.language);
     }
   } catch (error) {
-    if (!silent) setEditorEngine(`Worker konnte nicht sauber beendet werden: ${safeError(error)}`, "bad");
+    if (!silent) setEditorEngine(msg(`Worker konnte nicht sauber beendet werden: ${safeError(error)}`, `Worker could not be stopped cleanly: ${safeError(error)}`), "bad");
   }
 }
 
@@ -867,7 +861,7 @@ function startElapsedDisplay(run, session) {
   const update = () => {
     if (!isRunActive(run)) return;
     const seconds = Math.max(0, Math.round((performance.now() - startedAt) / 1000));
-    el("editorEngineDetails").textContent = `Bild ${session.prepared.width} × ${session.prepared.height} px · automatisches Backend läuft seit ${seconds} s.`;
+    el("editorEngineDetails").textContent = msg(`Bild ${session.prepared.width} × ${session.prepared.height} px · automatisches Backend läuft seit ${seconds} s.`, `Image ${session.prepared.width} × ${session.prepared.height} px · automatic backend running for ${seconds} s.`);
   };
   update();
   state.elapsedTimer = setInterval(update, 1000);
@@ -896,7 +890,7 @@ async function clearMasterImage() {
   renderSelectionInfo();
   renderProperties();
   refreshMasterControls();
-  el("editorHint").textContent = "Für dieses Profil ist kein Masterbild geladen.";
+  el("editorHint").textContent = msg("Für dieses Profil ist kein Masterbild geladen.", "No master image is loaded for this profile.");
 }
 
 async function restorePersistedMaster(profileId) {
@@ -921,7 +915,7 @@ async function restorePersistedMaster(profileId) {
       drawOverlay();
       renderSelectionInfo();
       refreshMasterControls();
-      el("editorHint").textContent = `Masterbild „${session.masterFileName}“ lokal aus dem Browser wiederhergestellt${session.ocrResult ? " · OCR-Boxen ebenfalls geladen" : ""}.`;
+      el("editorHint").textContent = msg(`Masterbild „${session.masterFileName}“ lokal aus dem Browser wiederhergestellt${session.ocrResult ? " · OCR-Boxen ebenfalls geladen" : ""}.`, `Master image “${session.masterFileName}” restored locally from the browser${session.ocrResult ? " · OCR boxes restored too" : ""}.`);
     }
   } catch {
     // Der Editor bleibt auch ohne IndexedDB vollständig benutzbar.
@@ -950,14 +944,23 @@ function refreshMasterControls() {
   el("runOcrButton").disabled = running || initializing || !session?.prepared;
   el("exportOcrJsonButton").disabled = running || !session?.ocrResult;
   el("cancelOcrButton").disabled = !running;
-  el("initializeEditorButton").disabled = running || initializing || engine.busy;
   el("clearMasterButton").disabled = running || !session?.prepared;
 
   if (!session?.prepared) {
-    el("editorHint").textContent = "Für dieses Profil ein eigenes Masterbild laden. Danach PaddleOCR starten oder direkt eine freie Zone zeichnen.";
+    el("editorHint").textContent = localText(
+      "Für dieses Profil ein eigenes Masterbild laden. Danach PaddleOCR starten oder direkt eine freie Zone zeichnen.",
+      "Load a master image for this profile. Then run PaddleOCR or draw a free zone directly.",
+      state.language
+    );
   } else if (!running) {
-    const suffix = session.ocrResult ? ` · ${session.ocrResult.items?.length || 0} OCR-Textzeilen vorhanden` : "";
-    el("editorHint").textContent = `Masterbild „${session.masterFileName || "ohne Dateiname"}“ gehört nur zu diesem Profil${suffix}.`;
+    const suffix = session.ocrResult
+      ? localText(` · ${session.ocrResult.items?.length || 0} OCR-Textzeilen vorhanden`, ` · ${session.ocrResult.items?.length || 0} OCR text lines available`, state.language)
+      : "";
+    el("editorHint").textContent = localText(
+      `Masterbild „${session.masterFileName || "ohne Dateiname"}“ gehört nur zu diesem Profil${suffix}.`,
+      `Master image “${session.masterFileName || "unnamed"}” belongs only to this profile${suffix}.`,
+      state.language
+    );
   }
 }
 
@@ -968,9 +971,9 @@ function setMode(mode) {
     el(buttonId).classList.toggle("active-mode", value === mode);
   }
   el("editorHint").textContent = {
-    select: "Klicke auf eine orange OCR-Box und ordne sie anschließend als Anker oder Feld zu.",
-    draw: "Ziehe mit gedrückter Maustaste eine großzügige Zone um den Wert.",
-    edit: "Wähle eine bestehende Zuordnung. Innen ziehen verschiebt sie; Eckpunkte ändern die Größe."
+    select: localText("Klicke auf eine OCR-Box und ordne sie anschließend als Anker oder Feld zu.", "Click an OCR box and then assign it as an anchor or field.", state.language),
+    draw: localText("Ziehe mit gedrückter Maustaste eine Zone um den gewünschten Wert.", "Drag a zone around the desired value.", state.language),
+    edit: localText("Wähle eine bestehende Zuordnung. Innen ziehen verschiebt sie; Eckpunkte ändern die Größe.", "Select an existing assignment. Drag inside to move it; use corners to resize it.", state.language)
   }[mode];
   drawOverlay();
 }
@@ -980,6 +983,11 @@ function pointerDown(event) {
   if (!session?.prepared) return;
   const point = pointerToNormalized(event, el("editorOverlayCanvas"));
   if (state.mode === "select") {
+    const assigned = findAssignmentAt(point);
+    if (assigned) {
+      selectAssignment(assigned.type, assigned.key);
+      return;
+    }
     const item = findOcrItem(point);
     session.selection = item ? {
       poly: polyFromPixelPoly(item.poly, session.prepared.width, session.prepared.height),
@@ -988,8 +996,10 @@ function pointerDown(event) {
       source: "ocr"
     } : null;
     state.selectedAssignment = null;
+    renderAssignments();
     renderSelectionInfo();
     renderProperties();
+    renderAssignmentToolbar();
     drawOverlay();
     return;
   }
@@ -1046,7 +1056,7 @@ function pointerUp(event) {
 function assignAnchor() {
   const profile = selectedProfile();
   const session = currentSession(false);
-  if (!profile || !session?.selection?.poly?.length) return alert("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.");
+  if (!profile || !session?.selection?.poly?.length) return alert(msg("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.", "First select an OCR box or draw a free zone."));
   profile.anchor.poly = session.selection.poly;
   if (!profile.anchor.aliases.length && session.selection.text) {
     profile.anchor.aliases = [session.selection.text.trim()];
@@ -1063,10 +1073,10 @@ function assignAnchor() {
 function assignField(key) {
   const profile = selectedProfile();
   const session = currentSession(false);
-  if (!profile || !session?.selection?.poly?.length) return alert("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.");
+  if (!profile || !session?.selection?.poly?.length) return alert(msg("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.", "First select an OCR box or draw a free zone."));
   const existing = findField(profile, key);
   const field = existing || createField(key);
-  const padding = session.selection.source === "ocr" ? Number(el("paddingInput").value) / 100 : 0;
+  const padding = session.selection.source === "ocr" ? FIELD_ZONE_PADDING : 0;
   field.poly = padding ? expandPoly(session.selection.poly, padding) : session.selection.poly;
   upsertField(profile, field);
   state.selectedAssignment = { type: "field", key };
@@ -1077,47 +1087,16 @@ function assignField(key) {
   renderProperties();
 }
 
-function assignBatchAndDrum() {
-  const profile = selectedProfile();
-  const session = currentSession(false);
-  if (!profile || !session?.selection?.poly?.length) {
-    return alert("Zuerst die OCR-Box mit der kombinierten Zeile, z. B. D562707978 / 0001, auswählen.");
-  }
-
-  const padding = session.selection.source === "ocr" ? Number(el("paddingInput").value) / 100 : 0;
-  const poly = padding ? expandPoly(session.selection.poly, padding) : session.selection.poly;
-
-  const batch = findField(profile, "batch") || createField("batch");
-  batch.poly = poly.map((point) => [...point]);
-  upsertField(profile, batch);
-
-  const drum = findField(profile, "drum_number") || createField("drum_number");
-  drum.poly = poly.map((point) => [...point]);
-  drum.normalizer = "last_digits";
-  drum.digits = 4;
-  drum.adjacentTo = "batch";
-  upsertField(profile, drum);
-
-  state.selectedAssignment = { type: "field", key: "drum_number" };
-  session.selection = null;
-  markDirty();
-  setMode("edit");
-  renderAssignments();
-  renderProperties();
-  drawOverlay();
-  el("editorHint").textContent = "Die gleiche OCR-Zeile ist Batch und Fassnummer zugeordnet. Der Scanner übernimmt vor dem / die Batchnummer und danach die letzten vier Ziffern als Fassnummer.";
-}
-
 function renderAssignments() {
   const profile = selectedProfile();
   const container = el("assignmentList");
   container.replaceChildren();
   if (!profile) return;
   const entries = [];
-  if ((profile.anchor?.poly || []).length) entries.push({ type: "anchor", key: "anchor", label: "Kunden-/Produktanker", value: profile.anchor });
+  if ((profile.anchor?.poly || []).length) entries.push({ type: "anchor", key: "anchor", label: uiText("anchorButton", state.language), value: profile.anchor });
   for (const field of profile.fields || []) entries.push({ type: "field", key: field.key, label: field.label, value: field });
   if (!entries.length) {
-    container.innerHTML = '<p class="muted">Noch keine Zuordnungen.</p>';
+    container.innerHTML = `<p class="muted">${escapeHtml(msg("Noch keine Zuordnungen.", "No assignments yet."))}</p>`;
     return;
   }
   for (const entry of entries) {
@@ -1128,6 +1107,17 @@ function renderAssignments() {
     button.onclick = () => selectAssignment(entry.type, entry.key);
     container.append(button);
   }
+  renderAssignmentToolbar();
+}
+
+function renderAssignmentToolbar() {
+  document.querySelectorAll("[data-assignment-button]").forEach((button) => {
+    const key = button.dataset.assignmentButton;
+    const selected = state.selectedAssignment?.type === "anchor"
+      ? key === "anchor"
+      : state.selectedAssignment?.type === "field" && key === state.selectedAssignment.key;
+    button.classList.toggle("active-assignment", selected);
+  });
 }
 
 function selectAssignment(type, key) {
@@ -1141,16 +1131,23 @@ function selectAssignment(type, key) {
 
 function renderProperties() {
   const assignment = currentAssignment();
-  el("selectedAssignmentName").textContent = assignment?.label || "keine Zuordnung";
+  el("selectedAssignmentName").textContent = assignment?.label || uiText("noAssignment", state.language);
+  renderAssignmentToolbar();
+
   if (!assignment) {
     el("anchorProperties").classList.remove("hidden");
-    el("anchorProperties").textContent = "Wähle einen Anker oder ein Feld aus.";
+    el("anchorProperties").textContent = uiText("chooseAssignment", state.language);
     el("fieldProperties").classList.add("hidden");
     return;
   }
+
   if (assignment.type === "anchor") {
     el("anchorProperties").classList.remove("hidden");
-    el("anchorProperties").textContent = "Der Anker wird über die Alias-Texte identifiziert. Position und Größe kannst du im Bearbeitungsmodus direkt im Bild ändern; zusätzliche Ankerparameter stehen links in den Profileinstellungen.";
+    el("anchorProperties").textContent = localText(
+      "Der Anker wird über die Alias-Texte identifiziert. Position und Größe kannst du im Bearbeitungsmodus direkt im Bild ändern; die zugehörigen Ankerparameter stehen links.",
+      "The anchor is identified by its aliases. Position and size can be changed directly on the image in edit mode; the related anchor settings are on the left.",
+      state.language
+    );
     el("fieldProperties").classList.add("hidden");
     return;
   }
@@ -1158,17 +1155,31 @@ function renderProperties() {
   const field = assignment.value;
   el("anchorProperties").classList.add("hidden");
   el("fieldProperties").classList.remove("hidden");
+
+  populateFieldNormalizerOptions(field);
+  populateFieldStrategyOptions(field);
+  populateNeighborTargetOptions(field);
+
   el("fieldLabel").value = field.label || "";
   el("fieldRegex").value = field.regex || "";
   el("fieldSourceRegex").value = field.sourceRegex || field.regex || "";
-  el("fieldNormalizer").value = field.normalizer || "text";
+  el("fieldNormalizer").value = field.normalizer || defaultUiNormalizer(field.key);
   el("fieldDigits").value = Number(field.digits || 4);
-  el("fieldAdjacentTo").value = field.adjacentTo || "";
-  el("fieldStrategy").value = field.strategy || "";
   el("fieldSearchRadius").value = field.searchRadius == null ? "" : Number(field.searchRadius);
   el("fieldMinOverlap").value = field.minOverlap == null ? "" : Number(field.minOverlap);
   el("fieldPreferRightmost").checked = field.preferRightmost === true;
   el("fieldPreferUnit").checked = field.preferUnit === true;
+
+  const neighbor = normalizedEditorNeighbor(field);
+  el("fieldNeighborEnabled").checked = Boolean(neighbor);
+  el("fieldNeighborTarget").value = neighbor?.field || "";
+  el("fieldNeighborLeft").checked = neighbor?.directions?.includes("left") === true;
+  el("fieldNeighborRight").checked = neighbor?.directions?.includes("right") === true;
+  el("fieldNeighborAbove").checked = neighbor?.directions?.includes("above") === true;
+  el("fieldNeighborBelow").checked = neighbor?.directions?.includes("below") === true;
+  el("fieldNeighborMaxDistance").value = Number(neighbor?.maxDistance || 6);
+
+  el("fieldStrategy").value = field.strategy || "";
   el("fieldStrategyUnits").value = (field.strategyUnits || []).join(", ");
   el("fieldFallbackStrategy").value = field.fallbackStrategy || "";
   el("fieldPairLeftMinDigits").value = field.pairLeftMinDigits == null ? "" : Number(field.pairLeftMinDigits);
@@ -1189,35 +1200,63 @@ function renderProperties() {
 
   el("fieldRequired").checked = Boolean(field.required);
   el("fieldCompare").checked = Boolean(field.compare);
-  el("digitsRow").classList.toggle("hidden", el("fieldNormalizer").value !== "last_digits");
+
+  refreshFieldConditionalUi(field);
   renderRegexStatus();
+  applyEditorTranslations(document, state.language);
 }
 
 function updateFieldProperties() {
   const assignment = currentAssignment();
   if (!assignment || assignment.type !== "field") return;
   const field = assignment.value;
+
   field.label = el("fieldLabel").value.trim() || field.key;
   field.regex = el("fieldRegex").value.trim();
   field.sourceRegex = el("fieldSourceRegex").value.trim();
-  field.normalizer = el("fieldNormalizer").value;
+  field.normalizer = el("fieldNormalizer").value || defaultUiNormalizer(field.key);
   field.digits = Math.max(1, Number(el("fieldDigits").value || 4));
-  field.adjacentTo = el("fieldAdjacentTo").value || undefined;
-  field.strategy = el("fieldStrategy").value || undefined;
   field.searchRadius = optionalNumber(el("fieldSearchRadius").value);
   field.minOverlap = optionalNumber(el("fieldMinOverlap").value);
   field.preferRightmost = el("fieldPreferRightmost").checked || undefined;
-  field.preferUnit = el("fieldPreferUnit").checked || undefined;
+  field.preferUnit = field.key === "weight" && el("fieldPreferUnit").checked ? true : undefined;
+
+  if (el("fieldNeighborEnabled").checked) {
+    const directions = [
+      ["left", "fieldNeighborLeft"],
+      ["right", "fieldNeighborRight"],
+      ["above", "fieldNeighborAbove"],
+      ["below", "fieldNeighborBelow"]
+    ].filter(([, id]) => el(id).checked).map(([direction]) => direction);
+    const target = el("fieldNeighborTarget").value;
+    if (target && target !== field.key) {
+      field.neighbor = {
+        field: target,
+        directions: directions.length ? directions : ["right"],
+        maxDistance: Math.max(0.5, Number(el("fieldNeighborMaxDistance").value || 6))
+      };
+    } else {
+      field.neighbor = undefined;
+    }
+  } else {
+    field.neighbor = undefined;
+  }
+  delete field.adjacentTo;
+
+  field.strategy = el("fieldStrategy").value || undefined;
   const strategyUnits = String(el("fieldStrategyUnits").value || "")
     .split(/[,;\n]/)
     .map((value) => value.trim().toUpperCase())
     .filter(Boolean);
-  field.strategyUnits = strategyUnits.length ? strategyUnits : undefined;
-  field.fallbackStrategy = el("fieldFallbackStrategy").value || undefined;
-  field.pairLeftMinDigits = optionalInteger(el("fieldPairLeftMinDigits").value);
-  field.pairLeftMaxDigits = optionalInteger(el("fieldPairLeftMaxDigits").value);
-  field.tailDigits = optionalInteger(el("fieldTailDigits").value);
-  field.combinedMinDigits = optionalInteger(el("fieldCombinedMinDigits").value);
+  field.strategyUnits = field.key === "weight" && strategyUnits.length ? strategyUnits : undefined;
+  field.fallbackStrategy = field.key === "weight" ? (el("fieldFallbackStrategy").value || undefined) : undefined;
+
+  if (field.strategy === "numeric_pair") {
+    field.pairLeftMinDigits = optionalInteger(el("fieldPairLeftMinDigits").value);
+    field.pairLeftMaxDigits = optionalInteger(el("fieldPairLeftMaxDigits").value);
+    field.tailDigits = optionalInteger(el("fieldTailDigits").value);
+    field.combinedMinDigits = optionalInteger(el("fieldCombinedMinDigits").value);
+  }
 
   const aliases = readLines(el("fieldLocatorAliases").value);
   if (aliases.length) {
@@ -1229,8 +1268,8 @@ function updateFieldProperties() {
       strict: el("fieldLocatorStrict").checked,
       preferRightmost: el("fieldLocatorPreferRightmost").checked,
       preferLeftmost: el("fieldLocatorPreferLeftmost").checked,
-      preferUnit: el("fieldLocatorPreferUnit").checked,
-      preferBatch: el("fieldLocatorPreferBatch").checked
+      preferUnit: field.key === "weight" && el("fieldLocatorPreferUnit").checked,
+      preferBatch: field.key === "batch" && el("fieldLocatorPreferBatch").checked
     };
   } else {
     field.locator = undefined;
@@ -1238,24 +1277,117 @@ function updateFieldProperties() {
 
   field.required = el("fieldRequired").checked;
   field.compare = el("fieldCompare").checked;
-  el("digitsRow").classList.toggle("hidden", field.normalizer !== "last_digits");
+
   markDirty();
   renderAssignments();
+  refreshFieldConditionalUi(field);
   renderRegexStatus();
+  renderAssignmentToolbar();
   drawOverlay();
 }
 
 function renderRegexStatus() {
-  const finalStatus = validateRegex(el("fieldRegex").value);
-  const sourceStatus = validateRegex(el("fieldSourceRegex").value);
+  const finalValue = String(el("fieldRegex").value || "").trim();
+  const sourceValue = String(el("fieldSourceRegex").value || "").trim();
+  const finalStatus = validateRegex(finalValue);
+  const sourceStatus = validateRegex(sourceValue);
   const status = el("regexStatus");
-  if (finalStatus.valid && sourceStatus.valid) {
-    status.textContent = "Beide regulären Ausdrücke sind gültig.";
-    status.className = "regex-status ok";
-  } else {
-    status.textContent = `Ungültiger RegEx: ${finalStatus.message || sourceStatus.message}`;
-    status.className = "regex-status bad";
+
+  if (!finalValue && !sourceValue) {
+    status.textContent = localText(
+      "Keine regulären Ausdrücke hinterlegt.",
+      "No regular expressions configured.",
+      state.language
+    );
+    status.className = "regex-status warn";
+    return;
   }
+
+  const finalLabel = finalStatus.valid
+    ? localText("✓ Ergebnis-RegEx gültig", "✓ Final regex valid", state.language)
+    : localText("✕ Ergebnis-RegEx ungültig", "✕ Final regex invalid", state.language);
+  const sourceLabel = sourceStatus.valid
+    ? localText("✓ OCR-RegEx gültig", "✓ OCR regex valid", state.language)
+    : localText("✕ OCR-RegEx ungültig", "✕ OCR regex invalid", state.language);
+
+  status.textContent = `${finalLabel} · ${sourceLabel}${(!finalStatus.valid || !sourceStatus.valid) ? ` · ${finalStatus.message || sourceStatus.message || ""}` : ""}`;
+  status.className = `regex-status ${finalStatus.valid && sourceStatus.valid ? "ok" : "bad"}`;
+}
+
+function populateFieldNormalizerOptions(field) {
+  const select = el("fieldNormalizer");
+  const options = [...(FIELD_NORMALIZER_OPTIONS[field.key] || [["text", "normalText"]])];
+  const current = field.normalizer || defaultUiNormalizer(field.key);
+  select.replaceChildren();
+  const values = new Set(options.map(([value]) => value));
+  if (current && !values.has(current)) options.unshift([current, "normalText"]);
+  for (const [value, labelKey] of options) {
+    const option = new Option(uiText(labelKey, state.language), value);
+    select.append(option);
+  }
+}
+
+function populateFieldStrategyOptions(field) {
+  const select = el("fieldStrategy");
+  const options = [...(FIELD_STRATEGY_OPTIONS[field.key] || [["", "strategyStandard"]])];
+  const current = field.strategy || "";
+  if (current && !options.some(([value]) => value === current)) options.push([current, "strategy"]);
+  select.replaceChildren();
+  for (const [value, labelKey] of options) select.append(new Option(uiText(labelKey, state.language), value));
+}
+
+function populateNeighborTargetOptions(field) {
+  const select = el("fieldNeighborTarget");
+  const current = normalizedEditorNeighbor(field)?.field || "";
+  select.replaceChildren();
+  select.append(new Option(localText("Bitte wählen", "Select field", state.language), ""));
+  for (const key of ["batch", "drum_number", "idh", "weight"]) {
+    if (key === field.key) continue;
+    select.append(new Option(uiText(FIELD_UI_LABEL_KEYS[key], state.language), key));
+  }
+  if (current && !Array.from(select.options).some((option) => option.value === current) && current !== field.key) {
+    select.append(new Option(current, current));
+  }
+}
+
+function normalizedEditorNeighbor(field) {
+  if (field?.neighbor?.field) {
+    return {
+      field: String(field.neighbor.field),
+      directions: Array.isArray(field.neighbor.directions) && field.neighbor.directions.length
+        ? field.neighbor.directions
+        : ["right"],
+      maxDistance: Number(field.neighbor.maxDistance || 6)
+    };
+  }
+  if (field?.adjacentTo) {
+    return { field: String(field.adjacentTo), directions: ["right"], maxDistance: 6 };
+  }
+  return null;
+}
+
+function defaultUiNormalizer(key) {
+  return ({ batch: "batch", drum_number: "last_digits", idh: "digits", weight: "weight", delivery_note: "digits" })[key] || "text";
+}
+
+function refreshFieldConditionalUi(field) {
+  const normalizer = el("fieldNormalizer").value;
+  const strategy = el("fieldStrategy").value;
+  const hasLocator = readLines(el("fieldLocatorAliases").value).length > 0;
+  const neighborEnabled = el("fieldNeighborEnabled").checked;
+
+  el("digitsRow").classList.toggle("hidden", normalizer !== "last_digits");
+  el("preferUnitRow").classList.toggle("hidden", field.key !== "weight");
+  el("locatorPreferUnitRow").classList.toggle("hidden", field.key !== "weight");
+  el("locatorPreferBatchRow").classList.toggle("hidden", field.key !== "batch");
+  el("neighborSettings").classList.toggle("hidden", !neighborEnabled);
+  el("locatorDetailSettings").classList.toggle("hidden", !hasLocator);
+
+  const strategies = FIELD_STRATEGY_OPTIONS[field.key] || [["", "strategyStandard"]];
+  el("strategySection").classList.toggle("hidden", strategies.length <= 1 && !field.strategy);
+  el("strategyUnitsRow").classList.toggle("hidden", !(field.key === "weight" && ["unit_required_weight", "quantity_weight"].includes(strategy)));
+  el("fallbackStrategyRow").classList.toggle("hidden", !(field.key === "weight" && hasLocator));
+  el("numericPairSettings").classList.toggle("hidden", strategy !== "numeric_pair");
 }
 
 function deleteSelectedAssignment() {
@@ -1374,13 +1506,13 @@ function renderSelectionInfo() {
   const info = el("selectionInfo");
   const selection = currentSession(false)?.selection || null;
   if (!selection) {
-    info.textContent = "Keine OCR-Box oder freie Zone ausgewählt.";
+    info.textContent = uiText("noSelection", state.language);
     return;
   }
   if (selection.source === "ocr") {
-    info.innerHTML = `<strong>${escapeHtml(selection.text || "(leer)")}</strong><br>OCR-Konfidenz ${(selection.score * 100).toFixed(1)} %`;
+    info.innerHTML = `<strong>${escapeHtml(selection.text || msg("(leer)", "(empty)"))}</strong><br>${escapeHtml(msg("OCR-Konfidenz", "OCR confidence"))} ${(selection.score * 100).toFixed(1)} %`;
   } else {
-    info.textContent = "Freie Zone ausgewählt. Ordne sie jetzt als Anker oder Feld zu.";
+    info.textContent = msg("Freie Zone ausgewählt. Ordne sie jetzt als Anker oder Feld zu.", "Free zone selected. Assign it as an anchor or field now.");
   }
 }
 
@@ -1405,7 +1537,7 @@ function findOcrItem(point) {
 function findAssignmentAt(point) {
   const profile = selectedProfile();
   const entries = [];
-  if ((profile?.anchor?.poly || []).length) entries.push({ type: "anchor", key: "anchor", label: "Kunden-/Produktanker", value: profile.anchor });
+  if ((profile?.anchor?.poly || []).length) entries.push({ type: "anchor", key: "anchor", label: uiText("anchorButton", state.language), value: profile.anchor });
   for (const field of profile?.fields || []) entries.push({ type: "field", key: field.key, label: field.label, value: field });
   return entries.reverse().find((entry) => {
     const rect = polyToRect(entry.value.poly);
@@ -1417,7 +1549,7 @@ function currentAssignment() {
   const profile = selectedProfile();
   if (!profile || !state.selectedAssignment) return null;
   if (state.selectedAssignment.type === "anchor") {
-    return { type: "anchor", key: "anchor", label: "Kunden-/Produktanker", value: profile.anchor };
+    return { type: "anchor", key: "anchor", label: uiText("anchorButton", state.language), value: profile.anchor };
   }
   const field = findField(profile, state.selectedAssignment.key);
   return field ? { type: "field", key: field.key, label: field.label, value: field } : null;
@@ -1446,7 +1578,7 @@ function uniqueId(base, currentId = "") {
 
 function markDirty() {
   state.dirty = true;
-  setConfigStatus(`${state.config.profiles.length} Profile · Änderungen noch nicht exportiert`, "warn");
+  setConfigStatus(msg(`${state.config.profiles.length} Profile · Änderungen noch nicht exportiert`, `${state.config.profiles.length} profiles · changes not exported yet`), "warn");
 }
 
 function setConfigStatus(text, kind = "") {
@@ -1549,16 +1681,4 @@ function scaleOcrResult(result, sourceWidth, sourceHeight, targetWidth, targetHe
       poly: (item.poly || []).map(([x, y]) => [Number(x) * sx, Number(y) * sy])
     }))
   };
-}
-
-function pickOcrResult(payload, role) {
-  if (Array.isArray(payload?.items)) return payload;
-  if (Array.isArray(payload?.result?.items)) return payload.result;
-  const preferred = role === "product" ? payload?.product : payload?.vda;
-  if (Array.isArray(preferred?.result?.items)) return preferred.result;
-  if (Array.isArray(preferred?.items)) return preferred;
-  for (const key of ["product", "vda"]) {
-    if (Array.isArray(payload?.[key]?.result?.items)) return payload[key].result;
-  }
-  return null;
 }

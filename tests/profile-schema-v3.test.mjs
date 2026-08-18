@@ -21,6 +21,7 @@ test("Schema v3 erhält erweiterte OCR-Strategie-, Locator- und Erkennungsparame
         searchRadius: 2.2, minOverlap: 0.03, preferRightmost: true, preferUnit: true,
         pairLeftMinDigits: 7, pairLeftMaxDigits: 10, tailDigits: 7, combinedMinDigits: 14,
         locator: { aliases: ["Quantity"], direction: "below_or_right", maxDistance: 5.5, minAliasScore: .74, strict: true, preferRightmost: true, preferUnit: true },
+        neighbor: { field: "batch", directions: ["left", "below"], maxDistance: 4.5 },
         poly: [[.6,.4],[.8,.4],[.8,.5],[.6,.5]]
       }]
     }]
@@ -44,6 +45,9 @@ test("Schema v3 erhält erweiterte OCR-Strategie-, Locator- und Erkennungsparame
   assert.equal(field.combinedMinDigits, 14);
   assert.equal(field.locator.minAliasScore, 0.74);
   assert.equal(field.locator.strict, true);
+  assert.equal(field.neighbor.field, "batch");
+  assert.deepEqual(field.neighbor.directions, ["left", "below"]);
+  assert.equal(field.neighbor.maxDistance, 4.5);
 });
 
 test("Schema v3 erhält QR-Suchbereiche und frei definierte Parserregeln", () => {

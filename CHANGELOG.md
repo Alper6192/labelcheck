@@ -1,4 +1,16 @@
-# LabelCheck PaddleOCR 0.17.1
+# LabelCheck PaddleOCR 0.17.2
+
+## 0.17.2 – benutzerfreundlicher Profileditor
+- DE/EN-Sprachschalter oben rechts; Editor-Beschriftungen, Hilfetexte und dynamische QR-Regeln sind zweisprachig.
+- Jede konfigurierbare Einstellung erhält ein ?-Hilfesymbol mit Mouseover-/Fokus-Erklärung.
+- Editor logisch in Profil, Anker, Profilerkennung, Labelvalidierung, Wert/Format, Positionssuche, Nachbarfeld, Spezialstrategie und Locator gegliedert; zusammengehörige Bereiche sind gestrichelt getrennt.
+- Entfernt: Repository-Konfiguration-neu-laden-Button, OCR-JSON-Import, Modell-neu-laden-Button, Batch+Fassnummer-Kombibutton und sichtbare Zonenrand-Einstellung.
+- OCR-Zonenrand ist fest auf 10 % gesetzt.
+- Aktiver Arbeitsmodus und ausgewählte Feldzuordnung leuchten grün; Klick auf eine vorhandene Zone wählt die zugehörige Zuordnung.
+- Bereinigungsarten und Spezialstrategien werden nur noch bei passenden Feldern angeboten.
+- RegEx-Status wird bei jeder Eingabe sofort neu geprüft.
+- Nachbarfeld erweitert: Bezugsfeld plus erlaubte Richtungen links/rechts/oben/unten und Maximalabstand; Runtime unterstützt diese Relation generisch aus der JSON.
+- Alternative Anker werden nicht mehr im Editor angeboten; bestehende Fallback-Anker in importierter JSON bleiben unverändert erhalten.
 
 ## 0.17.1 – stabiler PaddleOCR-Lauf im Profileditor
 

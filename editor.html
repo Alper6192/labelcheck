@@ -7,126 +7,143 @@
   <title>LabelCheck – Profileditor</title>
   <link rel="stylesheet" href="./src/styles.css">
 </head>
-<body><div class="henkel-logo-wrap"><img class="henkel-logo" src="./Henkel_Logo_RGB_White.png" alt="Henkel"></div>
+<body class="editor-page">
+<div class="henkel-logo-wrap"><img class="henkel-logo" src="./Henkel_Logo_RGB_White.png" alt="Henkel"></div>
 <header>
-  <div class="header-row">
+  <div class="header-row editor-header-row">
     <div>
-      <h1>LabelCheck Profileditor <small id="version"></small></h1>
-      <p>PaddleOCR-Textboxen als Anker oder Feldzonen übernehmen, verschieben, vergrößern und als JSON exportieren.</p>
+      <h1><span data-i18n="title">LabelCheck Profileditor</span> <small id="version"></small></h1>
+      <p data-i18n="subtitle">Profile, Erkennungsregeln und Feldzonen konfigurieren und als JSON exportieren.</p>
     </div>
-    <a class="nav-link" href="./index.html">Zum Scanner</a>
+    <div class="editor-header-actions">
+      <div class="language-toggle" aria-label="Deutsch / English">
+        <span>DE</span>
+        <label class="language-switch">
+          <input id="languageToggle" type="checkbox" aria-label="Deutsch / English">
+          <span class="language-slider"></span>
+        </label>
+        <span>EN</span>
+      </div>
+      <a class="nav-link" href="./index.html" data-i18n="scannerLink">Zum Scanner</a>
+    </div>
   </div>
-  <div class="privacy">Der Editor läuft lokal im Browser. Das Masterbild wird nicht in die exportierte JSON eingebettet und nicht hochgeladen.</div>
 </header>
 
 <main class="editor-main">
-  <section class="card">
-    <div class="card-head"><h2>Konfiguration</h2><span id="configStatus">wird geladen …</span></div>
+  <section class="card compact-card">
+    <div class="card-head"><h2 data-i18n="configuration">Konfiguration</h2><span id="configStatus">wird geladen …</span></div>
     <div class="card-body editor-toolbar">
       <div class="actions compact-actions">
-        <button id="reloadConfigButton">Repository-Konfiguration neu laden</button>
-        <label class="file-button">JSON importieren<input id="configInput" type="file" accept=".json,application/json"></label>
-        <button id="exportConfigButton" class="good">Alle Profile als JSON exportieren</button>
+        <label class="file-button"><span data-i18n="importJson">JSON importieren</span><input id="configInput" type="file" accept=".json,application/json"></label>
+        <button id="exportConfigButton" class="good" data-i18n="exportJson">Alle Profile als JSON exportieren</button>
       </div>
       <div class="actions compact-actions">
-        <button id="newProfileButton">Neues Profil</button>
-        <button id="duplicateProfileButton">Profil duplizieren</button>
-        <button id="deleteProfileButton" class="danger">Profil löschen</button>
+        <button id="newProfileButton" data-i18n="newProfile">Neues Profil</button>
+        <button id="duplicateProfileButton" data-i18n="duplicateProfile">Profil duplizieren</button>
+        <button id="deleteProfileButton" class="danger" data-i18n="deleteProfile">Profil löschen</button>
       </div>
     </div>
   </section>
 
   <section class="editor-layout">
     <aside class="card editor-sidebar">
-      <div class="card-head"><h2>Profile</h2><span id="profileCount">0</span></div>
+      <div class="card-head"><h2 data-i18n="profiles">Profile</h2><span id="profileCount">0</span></div>
       <div class="card-body">
         <select id="profileSelect" class="profile-list" size="12"></select>
         <div class="form-grid one-column editor-meta">
-          <label>Profil-ID<input id="profileId" type="text"></label>
-          <label>Name<input id="profileName" type="text"></label>
-          <label>Rolle<select id="profileRole"><option value="product">Produktlabel</option><option value="vda">VDA-Label</option></select></label>
-          <label class="checkbox-row"><input id="profileActive" type="checkbox"> Profil aktiv</label>
-          <label>Erkennungsquelle<select id="profileSourceType"><option value="ocr">OCR / Textlayout</option><option value="qr">QR-Code</option></select></label>
+          <section class="settings-section first-section">
+            <h3 data-i18n="profileBasics">Profil</h3>
+            <label data-help-key="profileId"><span data-i18n="profileId">Profil-ID</span><input id="profileId" type="text"></label>
+            <label data-help-key="profileName"><span data-i18n="profileName">Name</span><input id="profileName" type="text"></label>
+            <label data-help-key="profileRole"><span data-i18n="profileRole">Rolle</span><select id="profileRole"><option value="product" data-i18n="productLabel">Produktlabel</option><option value="vda" data-i18n="vdaLabel">VDA-/TA-Label</option></select></label>
+            <label class="checkbox-row" data-help-key="profileActive"><input id="profileActive" type="checkbox"><span data-i18n="profileActive">Profil aktiv</span></label>
+            <label data-help-key="recognitionSource"><span data-i18n="recognitionSource">Erkennungsquelle</span><select id="profileSourceType"><option value="ocr" data-i18n="ocrLayout">OCR / Textlayout</option><option value="qr" data-i18n="qrCode">QR-Code</option></select></label>
+          </section>
 
-          <div id="ocrProfileSettings" class="advanced-settings-block">
-            <strong>OCR-Profil &amp; Anker</strong>
-            <label>Anker-Aliase<textarea id="anchorAliases" rows="5" placeholder="Ein Alias pro Zeile"></textarea></label>
-            <label class="checkbox-row"><input id="anchorLocalizeAlias" type="checkbox"> Alias innerhalb längerer OCR-Zeile lokalisieren</label>
-            <label>Skalierung des Layouts<select id="anchorScaleFrom"><option value="width">über Ankerbreite</option><option value="height">über Ankerhöhe</option></select></label>
-            <label>Ausrichtung<select id="anchorAlignFrom"><option value="center">Ankermitte</option><option value="left">linke Ankerkante</option></select></label>
-            <label>Alternative Anker (JSON)<textarea id="anchorFallbacksJson" rows="4" spellcheck="false" placeholder='[{"aliases":["Alternative"],"poly":[...]}]'></textarea></label>
+          <div id="ocrProfileSettings">
+            <section class="settings-section">
+              <h3 data-i18n="anchorSection">Anker und Layoutausrichtung</h3>
+              <label data-help-key="anchorAliases"><span data-i18n="anchorAliases">Anker-Aliase</span><textarea id="anchorAliases" rows="4" placeholder="Ein Alias pro Zeile"></textarea></label>
+              <label class="checkbox-row" data-help-key="localizeAlias"><input id="anchorLocalizeAlias" type="checkbox"><span data-i18n="localizeAlias">Alias innerhalb längerer OCR-Zeile lokalisieren</span></label>
+              <label data-help-key="scaleLayout"><span data-i18n="scaleLayout">Skalierung des Layouts</span><select id="anchorScaleFrom"><option value="width" data-i18n="scaleWidth">über Ankerbreite</option><option value="height" data-i18n="scaleHeight">über Ankerhöhe</option></select></label>
+              <label data-help-key="alignment"><span data-i18n="alignment">Ausrichtung</span><select id="anchorAlignFrom"><option value="center" data-i18n="anchorCenter">Ankermitte</option><option value="left" data-i18n="anchorLeft">linke Ankerkante</option></select></label>
+            </section>
 
-            <strong>Profilerkennung</strong>
-            <label>Zusätzliche Erkennungsmerkmale<textarea id="detectionEvidenceAliases" rows="3" placeholder="Ein Text pro Zeile"></textarea></label>
-            <label>Mindestens erkannte Merkmale<input id="detectionMinEvidenceMatches" type="number" min="0" max="20" step="1" value="0"></label>
-            <label>Ausschlussmerkmale<textarea id="detectionExcludeAliases" rows="3" placeholder="Wenn einer dieser Texte vorkommt, Profil ausschließen"></textarea></label>
-            <label>Mindest-Ankerquote für Profilauswahl<input id="detectionMinScore" type="number" min="0" max="1" step="0.01" value="0.55"></label>
-
-            <label>Mindest-Ankerquote für gültiges OCR-Label<input id="validationMinAnchorScore" type="number" min="0" max="1" step="0.01" value="0.55"></label>
+            <section class="settings-section">
+              <h3 data-i18n="profileDetection">Profilerkennung</h3>
+              <label data-help-key="evidenceAliases"><span data-i18n="evidenceAliases">Zusätzliche Erkennungsmerkmale</span><textarea id="detectionEvidenceAliases" rows="3" placeholder="Ein Text pro Zeile"></textarea></label>
+              <label data-help-key="minEvidence"><span data-i18n="minEvidence">Mindestens erkannte Merkmale</span><input id="detectionMinEvidenceMatches" type="number" min="0" max="20" step="1" value="0"></label>
+              <label data-help-key="excludeAliases"><span data-i18n="excludeAliases">Ausschlussmerkmale</span><textarea id="detectionExcludeAliases" rows="3" placeholder="Ein Text pro Zeile"></textarea></label>
+              <label data-help-key="detectionMinScore"><span data-i18n="detectionMinScore">Mindest-Ankerquote für Profilauswahl</span><input id="detectionMinScore" type="number" min="0" max="1" step="0.01" value="0.55"></label>
+              <label data-help-key="validationMinAnchor"><span data-i18n="validationMinAnchor">Mindest-Ankerquote für gültiges OCR-Label</span><input id="validationMinAnchorScore" type="number" min="0" max="1" step="0.01" value="0.55"></label>
+            </section>
           </div>
 
-          <div id="qrProfileSettings" class="advanced-settings-block hidden">
-            <strong>QR-Suchbereiche</strong>
-            <p class="muted">Werte sind relativ zum Bild: 0 = links/oben, 1 = rechts/unten. Ein zweiter Bereich ist optional und dient als Fallback.</p>
-            <div class="qr-region-grid" id="qrRegionInputs"></div>
-            <button id="useSelectionAsQrRegion" type="button">Aktuelle Auswahl als ersten QR-Bereich übernehmen</button>
-            <strong>QR-Feldregeln</strong>
-            <div id="qrRules" class="qr-rules"></div>
-            <button id="testQrButton" type="button">QR-Regeln am Masterbild testen</button>
-            <div id="qrTestResult" class="regex-status"></div>
+          <div id="qrProfileSettings" class="hidden">
+            <section class="settings-section">
+              <h3 data-i18n="qrRegions">QR-Suchbereiche</h3>
+              <p class="muted" data-i18n="qrRegionHint">Werte sind relativ zum Bild: 0 = links/oben, 1 = rechts/unten. Ein zweiter Bereich ist optional.</p>
+              <div class="qr-region-grid" id="qrRegionInputs"></div>
+              <button id="useSelectionAsQrRegion" type="button" data-i18n="useSelectionQr">Aktuelle Auswahl als ersten QR-Bereich übernehmen</button>
+            </section>
+            <section class="settings-section">
+              <h3 data-i18n="qrFieldRules">QR-Feldregeln</h3>
+              <div id="qrRules" class="qr-rules"></div>
+              <button id="testQrButton" type="button" data-i18n="testQr">QR-Regeln am Masterbild testen</button>
+              <div id="qrTestResult" class="regex-status"></div>
+            </section>
           </div>
 
-          <div id="profileValidationSettings" class="advanced-settings-block">
-            <strong>Labelvalidierung</strong>
-            <fieldset class="compact-fieldset"><legend>Diese Felder müssen für ein gültiges Label vorhanden sein</legend>
-              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="batch"> Batch</label>
-              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="idh"> IDH</label>
-              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="weight"> Gewicht</label>
-              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="delivery_note"> Lieferscheinnummer</label>
-              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="drum_number"> Fassnummer</label>
+          <section id="profileValidationSettings" class="settings-section">
+            <h3 data-i18n="validation">Labelvalidierung</h3>
+            <fieldset class="compact-fieldset" data-help-key="validFields"><legend data-i18n="validFields">Diese Felder müssen für ein gültiges Label vorhanden sein</legend>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="batch"><span data-i18n="batch">Batch</span></label>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="idh"><span data-i18n="idh">IDH</span></label>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="weight"><span data-i18n="weight">Gewicht</span></label>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="delivery_note"><span data-i18n="deliveryNote">Lieferscheinnummer</span></label>
+              <label class="checkbox-row"><input type="checkbox" data-required-valid-field="drum_number"><span data-i18n="drum">Fassnummer</span></label>
             </fieldset>
-            <label>Fehlermeldung bei ungültigem Label<textarea id="validationErrorMessage" rows="3"></textarea></label>
-          </div>
+            <label data-help-key="errorMessage"><span data-i18n="errorMessage">Fehlermeldung bei ungültigem Label</span><textarea id="validationErrorMessage" rows="3"></textarea></label>
+          </section>
         </div>
       </div>
     </aside>
 
     <div class="editor-workspace">
       <section class="card">
-        <div class="card-head"><h2>Masterbild und PaddleOCR</h2><span id="editorEngineBadge" class="engine-badge wait">PaddleOCR wird vorbereitet …</span></div>
+        <div class="card-head"><h2 data-i18n="masterOcr">Masterbild und PaddleOCR</h2><span id="editorEngineBadge" class="engine-badge wait" data-i18n="ocrPreparing">PaddleOCR wird vorbereitet …</span></div>
         <div class="card-body">
-          <div class="editor-upload-row">
-            <label class="file-button primary">Masterbild laden<input id="masterInput" type="file" accept="image/*"></label>
-            <button id="runOcrButton" disabled>PaddleOCR auf Masterbild</button>
-            <label class="file-button">OCR-JSON importieren<input id="ocrJsonInput" type="file" accept=".json,application/json"></label>
-            <button id="exportOcrJsonButton" disabled>OCR-Ergebnis des aktuellen Profils exportieren</button>
-            <button id="cancelOcrButton" class="danger" disabled>Analyse abbrechen</button>
-            <button id="initializeEditorButton">Modell neu laden</button>
-            <button id="clearOcrButton">OCR-Boxen ausblenden</button>
-            <button id="clearMasterButton">Masterbild entfernen</button>
+          <div class="editor-upload-row primary-editor-actions">
+            <label class="file-button primary"><span data-i18n="loadMaster">Masterbild laden</span><input id="masterInput" type="file" accept="image/*"></label>
+            <button id="runOcrButton" disabled data-i18n="runOcr">PaddleOCR auf Masterbild</button>
+            <button id="cancelOcrButton" class="danger" disabled data-i18n="cancelAnalysis">Analyse abbrechen</button>
           </div>
-          <div id="editorEngineDetails" class="muted">Erster Start lädt PP-OCRv5 mobile.</div>
-          <div class="mode-toolbar">
-            <button id="selectModeButton" class="active-mode">OCR-Box auswählen</button>
-            <button id="drawModeButton">Freie Zone zeichnen</button>
-            <button id="editModeButton">Zuordnung verschieben/ändern</button>
-            <label>Zonenrand beim Übernehmen
-              <input id="paddingInput" type="range" min="0" max="50" step="5" value="20">
-              <span id="paddingValue">20 %</span>
-            </label>
+          <div class="editor-upload-row secondary-editor-actions">
+            <button id="clearOcrButton" data-i18n="hideOcr">OCR-Boxen ausblenden</button>
+            <button id="exportOcrJsonButton" disabled data-i18n="exportOcr">OCR-Ergebnis exportieren</button>
+            <button id="clearMasterButton" data-i18n="removeMaster">Masterbild entfernen</button>
           </div>
-          <div class="assignment-toolbar">
-            <button id="assignAnchorButton" class="anchor-button">Auswahl = Kunden-/Produktanker</button>
-            <button data-field="batch">Batch</button>
-            <button data-field="drum_number">Fassnummer</button>
-            <button id="assignBatchDrumButton" class="good">Batch + Fassnummer</button>
-            <button data-field="idh">IDH</button>
-            <button data-field="weight">Gewicht</button>
-            <button data-field="delivery_note">Lieferscheinnummer</button>
-          </div>
-          <p id="editorHint" class="editor-hint">Masterbild laden. Dann PaddleOCR starten oder direkt eine freie Zone zeichnen.</p>
+          <div id="editorEngineDetails" class="muted" data-i18n="firstStartModel">Erster Start lädt PP-OCRv5 mobile.</div>
+
+          <section class="workspace-section">
+            <div class="mode-toolbar">
+              <button id="selectModeButton" class="active-mode" data-i18n="selectOcrBox">OCR-Box auswählen</button>
+              <button id="drawModeButton" data-i18n="drawFreeZone">Freie Zone zeichnen</button>
+              <button id="editModeButton" data-i18n="editAssignment">Zuordnung verschieben/ändern</button>
+            </div>
+            <div class="assignment-toolbar">
+              <button id="assignAnchorButton" class="anchor-button" data-assignment-button="anchor" data-i18n="anchorButton">Kunden-/Produktanker</button>
+              <button data-field="batch" data-assignment-button="batch" data-i18n="batch">Batch</button>
+              <button data-field="drum_number" data-assignment-button="drum_number" data-i18n="drum">Fassnummer</button>
+              <button data-field="idh" data-assignment-button="idh" data-i18n="idh">IDH</button>
+              <button data-field="weight" data-assignment-button="weight" data-i18n="weight">Gewicht</button>
+              <button data-field="delivery_note" data-assignment-button="delivery_note" data-i18n="deliveryNote">Lieferscheinnummer</button>
+            </div>
+          </section>
+
+          <p id="editorHint" class="editor-hint" data-i18n="masterHint">Masterbild laden. Dann PaddleOCR starten oder direkt eine freie Zone zeichnen.</p>
           <div id="editorStage" class="editor-stage empty">
-            <div id="editorPlaceholder" class="placeholder">Noch kein Masterbild</div>
+            <div id="editorPlaceholder" class="placeholder" data-i18n="noMaster">Noch kein Masterbild</div>
             <canvas id="editorImageCanvas"></canvas>
             <canvas id="editorOverlayCanvas"></canvas>
           </div>
@@ -135,69 +152,86 @@
 
       <section class="editor-bottom-grid">
         <article class="card">
-          <div class="card-head"><h2>Aktuelle Auswahl</h2></div>
+          <div class="card-head"><h2 data-i18n="currentSelection">Aktuelle Auswahl</h2></div>
           <div class="card-body">
-            <div id="selectionInfo" class="selection-info">Keine OCR-Box oder freie Zone ausgewählt.</div>
+            <div id="selectionInfo" class="selection-info" data-i18n="noSelection">Keine OCR-Box oder freie Zone ausgewählt.</div>
             <div id="assignmentList" class="assignment-list"></div>
           </div>
         </article>
 
-        <article class="card">
-          <div class="card-head"><h2>Eigenschaften</h2><span id="selectedAssignmentName">keine Zuordnung</span></div>
+        <article class="card properties-card">
+          <div class="card-head"><h2 data-i18n="properties">Eigenschaften</h2><span id="selectedAssignmentName" data-i18n="noAssignment">keine Zuordnung</span></div>
           <div class="card-body">
-            <div id="anchorProperties" class="property-empty">Wähle einen Anker oder ein Feld aus.</div>
+            <div id="anchorProperties" class="property-empty" data-i18n="chooseAssignment">Wähle einen Anker oder ein Feld aus.</div>
             <div id="fieldProperties" class="form-grid one-column hidden">
-              <label>Bezeichnung<input id="fieldLabel" type="text"></label>
-              <label>Regex für den fertigen Wert<input id="fieldRegex" type="text" spellcheck="false"></label>
-              <label>Regex für den OCR-Rohtext<input id="fieldSourceRegex" type="text" spellcheck="false"></label>
-              <div id="regexStatus" class="regex-status"></div>
-              <label>Bereinigung<select id="fieldNormalizer">
-                <option value="text">Text unverändert</option>
-                <option value="digits">Nur Ziffern</option>
-                <option value="batch">Batch vor / übernehmen</option>
-                <option value="weight">Gewicht normalisieren</option>
-                <option value="net_weight">Netto-Gewicht (rechter Wert)</option>
-                <option value="leading_delivery_digits">Lieferscheinnummer aus Kombizeile</option>
-                <option value="last_digits">Letzte Ziffern übernehmen</option>
-              </select></label>
-              <label id="digitsRow">Anzahl der letzten Ziffern<input id="fieldDigits" type="number" min="1" max="12" value="4"></label>
-              <label>Nachbarfeld<select id="fieldAdjacentTo"><option value="">kein Nachbarfeld</option><option value="batch">rechts neben Batch suchen</option></select></label>
+              <section class="settings-section first-section">
+                <h3 data-i18n="valueRules">Wert und Format</h3>
+                <label data-help-key="fieldLabel"><span data-i18n="fieldLabel">Bezeichnung</span><input id="fieldLabel" type="text"></label>
+                <label data-help-key="finalRegex"><span data-i18n="finalRegex">Regex für den fertigen Wert</span><input id="fieldRegex" type="text" spellcheck="false"></label>
+                <label data-help-key="sourceRegex"><span data-i18n="sourceRegex">Regex für den OCR-Rohtext</span><input id="fieldSourceRegex" type="text" spellcheck="false"></label>
+                <div id="regexStatus" class="regex-status"></div>
+                <label data-help-key="cleanup"><span data-i18n="cleanup">Bereinigung</span><select id="fieldNormalizer"></select></label>
+                <label id="digitsRow" data-help-key="lastDigitsCount"><span data-i18n="lastDigitsCount">Anzahl der letzten Ziffern</span><input id="fieldDigits" type="number" min="1" max="20" value="4"></label>
+              </section>
 
-              <strong>Erkennungsstrategie</strong>
-              <label>Strategie<select id="fieldStrategy">
-                <option value="">Standard: Zone / Nähe</option>
-                <option value="unit_required_weight">Gewicht nur mit Einheit</option>
-                <option value="net_pair_weight">Netto aus Zahlenpaar / rechter Wert</option>
-                <option value="numeric_pair">Große Zahlen-Kombizeile</option>
-                <option value="quantity_weight">Quantity-Gewicht mit bevorzugter Einheit</option>
-              </select></label>
-              <label>Suchradius-Faktor<input id="fieldSearchRadius" type="number" min="0.1" max="20" step="0.05" placeholder="Standard 1.8"></label>
-              <label>Mindest-Überlappung<input id="fieldMinOverlap" type="number" min="0" max="1" step="0.01" placeholder="Standard 0"></label>
-              <label class="checkbox-row"><input id="fieldPreferRightmost" type="checkbox"> rechten Kandidaten bevorzugen</label>
-              <label class="checkbox-row"><input id="fieldPreferUnit" type="checkbox"> Kandidaten mit Einheit bevorzugen</label>
-              <label>Strategie-Einheiten<input id="fieldStrategyUnits" type="text" placeholder="z. B. KGM, LTR"></label>
-              <label>Fallback-Strategie<select id="fieldFallbackStrategy"><option value="">keine</option><option value="net_pair">Zahlenpaar Gross/Net</option></select></label>
-              <div class="strategy-number-grid">
-                <label>Linke Zahl min. Stellen<input id="fieldPairLeftMinDigits" type="number" min="1" max="20" placeholder="7"></label>
-                <label>Linke Zahl max. Stellen<input id="fieldPairLeftMaxDigits" type="number" min="1" max="20" placeholder="10"></label>
-                <label>Rechter Anteil / Tail<input id="fieldTailDigits" type="number" min="1" max="20" placeholder="7"></label>
-                <label>Kombizeile min. Stellen<input id="fieldCombinedMinDigits" type="number" min="1" max="40" placeholder="14"></label>
-              </div>
+              <section class="settings-section">
+                <h3 data-i18n="positionSearch">Positionssuche</h3>
+                <label data-help-key="searchRadius"><span data-i18n="searchRadius">Suchradius-Faktor</span><input id="fieldSearchRadius" type="number" min="0.1" max="20" step="0.05" placeholder="Standard 1.8"></label>
+                <label data-help-key="minOverlap"><span data-i18n="minOverlap">Mindest-Überlappung</span><input id="fieldMinOverlap" type="number" min="0" max="1" step="0.01" placeholder="Standard 0"></label>
+                <label id="preferRightmostRow" class="checkbox-row" data-help-key="preferRightmost"><input id="fieldPreferRightmost" type="checkbox"><span data-i18n="preferRightmost">rechten Kandidaten bevorzugen</span></label>
+                <label id="preferUnitRow" class="checkbox-row" data-help-key="preferUnit"><input id="fieldPreferUnit" type="checkbox"><span data-i18n="preferUnit">Kandidaten mit Einheit bevorzugen</span></label>
+              </section>
 
-              <strong>Locator – Wert relativ zu einer Feldbeschriftung</strong>
-              <label>Locator-Aliase<textarea id="fieldLocatorAliases" rows="3" placeholder="Ein Text pro Zeile; leer = Locator aus"></textarea></label>
-              <label>Richtung<select id="fieldLocatorDirection"><option value="below_or_right">unterhalb oder rechts</option><option value="below">unterhalb</option><option value="right">rechts</option></select></label>
-              <label>Max. Abstand<input id="fieldLocatorMaxDistance" type="number" min="0.1" max="30" step="0.1" value="7"></label>
-              <label>Mindest-Aliasquote<input id="fieldLocatorMinAliasScore" type="number" min="0" max="1" step="0.01" value="0.72"></label>
-              <label class="checkbox-row"><input id="fieldLocatorStrict" type="checkbox"> nur Locator-Treffer zulassen</label>
-              <label class="checkbox-row"><input id="fieldLocatorPreferRightmost" type="checkbox"> rechten Locator-Wert bevorzugen</label>
-              <label class="checkbox-row"><input id="fieldLocatorPreferLeftmost" type="checkbox"> linken Locator-Wert bevorzugen</label>
-              <label class="checkbox-row"><input id="fieldLocatorPreferUnit" type="checkbox"> Locator-Wert mit Einheit bevorzugen</label>
-              <label class="checkbox-row"><input id="fieldLocatorPreferBatch" type="checkbox"> Batchformat bevorzugen</label>
+              <section class="settings-section">
+                <h3 data-i18n="neighborSection">Nachbarfeld</h3>
+                <label class="checkbox-row" data-help-key="useNeighbor"><input id="fieldNeighborEnabled" type="checkbox"><span data-i18n="useNeighbor">Nachbarfeld zur Erkennung verwenden</span></label>
+                <div id="neighborSettings" class="sub-settings hidden">
+                  <label data-help-key="neighborTarget"><span data-i18n="neighborTarget">Bezugsfeld</span><select id="fieldNeighborTarget"></select></label>
+                  <fieldset class="compact-fieldset direction-fieldset" data-help-key="neighborDirections"><legend data-i18n="neighborDirections">Erlaubte Position des aktuellen Feldes</legend>
+                    <label class="checkbox-row"><input id="fieldNeighborLeft" type="checkbox"><span data-i18n="neighborLeft">links</span></label>
+                    <label class="checkbox-row"><input id="fieldNeighborRight" type="checkbox"><span data-i18n="neighborRight">rechts</span></label>
+                    <label class="checkbox-row"><input id="fieldNeighborAbove" type="checkbox"><span data-i18n="neighborAbove">oben</span></label>
+                    <label class="checkbox-row"><input id="fieldNeighborBelow" type="checkbox"><span data-i18n="neighborBelow">unten</span></label>
+                  </fieldset>
+                  <label data-help-key="neighborMaxDistance"><span data-i18n="neighborMaxDistance">Max. Abstand</span><input id="fieldNeighborMaxDistance" type="number" min="0.5" max="30" step="0.5" value="6"></label>
+                </div>
+              </section>
 
-              <label class="checkbox-row"><input id="fieldRequired" type="checkbox"> Pflichtfeld</label>
-              <label class="checkbox-row"><input id="fieldCompare" type="checkbox"> Produkt und VDA vergleichen</label>
-              <button id="deleteAssignmentButton" class="danger">Diese Zuordnung löschen</button>
+              <section id="strategySection" class="settings-section">
+                <h3 data-i18n="strategySection">Spezielle Erkennungsstrategie</h3>
+                <label data-help-key="strategy"><span data-i18n="strategy">Strategie</span><select id="fieldStrategy"></select></label>
+                <label id="strategyUnitsRow" class="hidden" data-help-key="strategyUnits"><span data-i18n="strategyUnits">Strategie-Einheiten</span><input id="fieldStrategyUnits" type="text" placeholder="z. B. KGM, LTR"></label>
+                <label id="fallbackStrategyRow" class="hidden" data-help-key="fallbackStrategy"><span data-i18n="fallbackStrategy">Fallback-Strategie</span><select id="fieldFallbackStrategy"><option value="" data-i18n="noFallback">keine</option><option value="net_pair" data-i18n="fallbackNetPair">Zahlenpaar Gross/Net</option></select></label>
+                <div id="numericPairSettings" class="strategy-number-grid hidden">
+                  <label data-help-key="pairLeftMin"><span data-i18n="pairLeftMin">Linke Zahl min. Stellen</span><input id="fieldPairLeftMinDigits" type="number" min="1" max="20" placeholder="7"></label>
+                  <label data-help-key="pairLeftMax"><span data-i18n="pairLeftMax">Linke Zahl max. Stellen</span><input id="fieldPairLeftMaxDigits" type="number" min="1" max="20" placeholder="10"></label>
+                  <label data-help-key="tailDigits"><span data-i18n="tailDigits">Rechter Anteil / Tail</span><input id="fieldTailDigits" type="number" min="1" max="20" placeholder="7"></label>
+                  <label data-help-key="combinedMin"><span data-i18n="combinedMin">Kombizeile min. Stellen</span><input id="fieldCombinedMinDigits" type="number" min="1" max="40" placeholder="14"></label>
+                </div>
+              </section>
+
+              <section class="settings-section">
+                <h3 data-i18n="locatorSection">Locator – Wert relativ zu einer Feldbeschriftung</h3>
+                <label data-help-key="locatorAliases"><span data-i18n="locatorAliases">Locator-Aliase</span><textarea id="fieldLocatorAliases" rows="3" placeholder="Ein Text pro Zeile; leer = Locator aus"></textarea></label>
+                <div id="locatorDetailSettings" class="sub-settings hidden">
+                  <label data-help-key="locatorDirection"><span data-i18n="locatorDirection">Richtung</span><select id="fieldLocatorDirection"><option value="below_or_right" data-i18n="belowOrRight">unterhalb oder rechts</option><option value="below" data-i18n="below">unterhalb</option><option value="right" data-i18n="right">rechts</option></select></label>
+                  <label data-help-key="locatorMaxDistance"><span data-i18n="locatorMaxDistance">Max. Abstand</span><input id="fieldLocatorMaxDistance" type="number" min="0.1" max="30" step="0.1" value="7"></label>
+                  <label data-help-key="minAliasScore"><span data-i18n="minAliasScore">Mindest-Aliasquote</span><input id="fieldLocatorMinAliasScore" type="number" min="0" max="1" step="0.01" value="0.72"></label>
+                  <label class="checkbox-row" data-help-key="locatorStrict"><input id="fieldLocatorStrict" type="checkbox"><span data-i18n="locatorStrict">nur Locator-Treffer zulassen</span></label>
+                  <label class="checkbox-row" data-help-key="locatorPreferRight"><input id="fieldLocatorPreferRightmost" type="checkbox"><span data-i18n="locatorPreferRight">rechten Locator-Wert bevorzugen</span></label>
+                  <label class="checkbox-row" data-help-key="locatorPreferLeft"><input id="fieldLocatorPreferLeftmost" type="checkbox"><span data-i18n="locatorPreferLeft">linken Locator-Wert bevorzugen</span></label>
+                  <label id="locatorPreferUnitRow" class="checkbox-row" data-help-key="locatorPreferUnit"><input id="fieldLocatorPreferUnit" type="checkbox"><span data-i18n="locatorPreferUnit">Locator-Wert mit Einheit bevorzugen</span></label>
+                  <label id="locatorPreferBatchRow" class="checkbox-row" data-help-key="locatorPreferBatch"><input id="fieldLocatorPreferBatch" type="checkbox"><span data-i18n="locatorPreferBatch">Batchformat bevorzugen</span></label>
+                </div>
+              </section>
+
+              <section class="settings-section">
+                <h3 data-i18n="fieldValidation">Feldverhalten</h3>
+                <label class="checkbox-row" data-help-key="requiredField"><input id="fieldRequired" type="checkbox"><span data-i18n="requiredField">Pflichtfeld</span></label>
+                <label class="checkbox-row" data-help-key="compareField"><input id="fieldCompare" type="checkbox"><span data-i18n="compareField">Produkt und VDA vergleichen</span></label>
+              </section>
+
+              <button id="deleteAssignmentButton" class="danger" data-i18n="deleteAssignment">Diese Zuordnung löschen</button>
             </div>
           </div>
         </article>
