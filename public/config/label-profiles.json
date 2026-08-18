@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.0",
-  "exportedAt": "2026-08-18T13:21:39.013Z",
+  "exportedAt": "2026-08-18T13:25:57.687Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1778,11 +1778,11 @@
             ]
           ],
           "digits": 4,
-          "searchRadius": 0.55,
-          "minOverlap": 0.03,
+          "searchRadius": 1.8,
+          "minOverlap": 0,
           "locator": {
             "aliases": [
-              "Netto"
+              "NETTO"
             ],
             "direction": "below",
             "maxDistance": 3,
