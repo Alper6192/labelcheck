@@ -1679,3 +1679,51 @@ main > .card:first-child .engine-badge {
     flex: 0 0 auto !important;
   }
 }
+
+
+/* ==============================================================
+   Profileditor 0.17.5 – vertikale Auswahl und einheitlich runde Boxen
+   ============================================================== */
+/* Die Karten bleiben für Hilfetexte overflow:visible, erhalten aber wieder
+   einheitlich abgerundete rote Außenkanten. */
+.editor-page .card {
+  border-radius: 16px !important;
+}
+.editor-page .card-head {
+  border-radius: 12px 12px 0 0;
+}
+.editor-page .card-body {
+  border-radius: 0 0 12px 12px;
+}
+
+/* "Aktuelle Auswahl" ist eine vertikale, vollbreite Feldliste statt einer
+   horizontal scrollenden Buttonleiste. */
+.editor-page .assignment-list {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  overflow: visible !important;
+  white-space: normal;
+}
+.editor-page .assignment-list > .assignment-chip {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  justify-self: stretch;
+  text-align: left;
+  flex: none !important;
+}
+
+/* Auch die häufigsten inneren Editor-Boxen verwenden denselben runden Stil. */
+.editor-page .editor-stage,
+.editor-page .selection-info,
+.editor-page .profile-list,
+.editor-page .mode-toolbar,
+.editor-page .sub-settings,
+.editor-page .advanced-settings-block,
+.editor-page .compact-fieldset,
+.editor-page .strategy-number-grid,
+.editor-page .qr-region-card,
+.editor-page .qr-rule-card {
+  border-radius: 12px !important;
+}

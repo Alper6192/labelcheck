@@ -1,4 +1,10 @@
-# LabelCheck 0.17.4
+# LabelCheck 0.17.5
+
+## 0.17.5 – Editor-Feinschliff
+- "Aktuelle Auswahl" als vertikale Liste mit gleich breiten Feldbuttons.
+- Editor-Karten und Einstellungsboxen wieder einheitlich abgerundet.
+- Englische Übersetzung von TA auf TO (Transport Order) korrigiert.
+- Erkennungslogik und Profilparameter unverändert.
 
 ## 0.17.4 – Editor-Layout und Übersetzungen
 

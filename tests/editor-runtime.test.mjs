@@ -129,11 +129,19 @@ test("Editor-Hilfetexte dürfen Karten verlassen und Aktionsleisten sind gemeins
 });
 
 
-test("Editor verwendet einzeilige Werkzeugleisten, eckige Karten und lokalisierte Zuordnungsnamen", () => {
-  assert.match(styles, /Profileditor 0\.17\.4/);
+test("Editor verwendet einzeilige Werkzeugleisten, runde Karten und eine vertikale aktuelle Auswahl", () => {
+  assert.match(styles, /Profileditor 0\.17\.5/);
   assert.match(styles, /flex-wrap:\s*nowrap\s*!important/);
-  assert.match(styles, /border-radius:\s*0\s*!important/);
+  assert.match(styles, /\.editor-page \.card \{[\s\S]{0,100}border-radius:\s*16px\s*!important/);
+  assert.match(styles, /\.editor-page \.assignment-list \{[\s\S]{0,160}display:\s*grid\s*!important/);
+  assert.match(styles, /assignment-list > \.assignment-chip[\s\S]{0,140}width:\s*100%/);
   assert.match(styles, /editor-sidebar[\s\S]{0,120}z-index:\s*50/);
   assert.match(editorSource, /localizedAssignmentLabel/);
   assert.doesNotMatch(editorHtml, /Analyse abbrechen|Cancel analysis/);
+});
+
+test("Englische Transportauftrag-Übersetzung verwendet TO statt TA", () => {
+  assert.match(editorI18n, /VDA\/TO label/);
+  assert.match(editorI18n, /Transport Order/);
+  assert.doesNotMatch(editorI18n, /VDA\/TA label/);
 });
