@@ -55,7 +55,6 @@ const TEXT = {
   loadMaster: ["Masterbild laden", "Load master image"],
   runOcr: ["Masterbild analysieren", "Analyze master image"],
   exportOcr: ["Analyseergebnis exportieren", "Export analysis result"],
-  cancelAnalysis: ["Analyse abbrechen", "Cancel analysis"],
   hideOcr: ["Erkennungsbereiche ausblenden", "Hide recognition areas"],
   removeMaster: ["Masterbild entfernen", "Remove master image"],
   firstStartModel: ["Die Erkennung wird beim ersten Start vorbereitet.", "Recognition is prepared on first use."],

@@ -1610,3 +1610,72 @@ main > .card:first-child .engine-badge {
     flex: 1 1 160px;
   }
 }
+
+
+/* ==============================================================
+   Profileditor 0.17.4 – klare Ebenen, einzeilige Werkzeugleisten
+   ============================================================== */
+/* Äußere Editor-Karten mit durchgehenden roten Ecken statt Rundungen. */
+.editor-page .card {
+  border-radius: 0 !important;
+  border-color: #E1000F !important;
+}
+
+/* Werkzeugleisten und Zuordnungs-Tabs bleiben in genau einer Zeile.
+   Auf schmalen Ansichten kann horizontal gescrollt werden, statt umzubrechen. */
+.editor-page .editor-action-line,
+.editor-page .mode-toolbar,
+.editor-page .assignment-toolbar,
+.editor-page .assignment-list {
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.editor-page .editor-action-line > *,
+.editor-page .mode-toolbar > *,
+.editor-page .assignment-toolbar > *,
+.editor-page .assignment-list > * {
+  flex: 0 0 auto !important;
+}
+.editor-page .primary-editor-actions {
+  white-space: nowrap;
+}
+
+/* Technischer Laufzeitstatus bleibt vollständig unsichtbar. */
+.editor-page #editorEngineBadge,
+.editor-page #editorEngineDetails,
+.editor-page [hidden] {
+  display: none !important;
+}
+
+/* Sidebar liegt über dem Masterbild, damit Hilfetexte niemals dahinter verschwinden. */
+.editor-page .editor-layout {
+  overflow: visible;
+}
+.editor-page .editor-sidebar {
+  z-index: 50;
+  overflow: visible !important;
+}
+.editor-page .editor-workspace {
+  position: relative;
+  z-index: 1;
+}
+.editor-page .help-icon,
+.editor-page .field-title {
+  z-index: 60;
+}
+.editor-page .help-icon::after,
+.editor-page .help-icon::before {
+  z-index: 10000 !important;
+}
+
+@media (max-width: 760px) {
+  .editor-page .editor-action-line > *,
+  .editor-page .mode-toolbar > *,
+  .editor-page .assignment-toolbar > *,
+  .editor-page .assignment-list > * {
+    flex: 0 0 auto !important;
+  }
+}

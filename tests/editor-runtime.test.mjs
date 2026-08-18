@@ -33,11 +33,9 @@ test("Keine künstliche predict-Zeitüberschreitung startet konkurrierende Insta
   assert.match(engineSource, /await ocr\.predict\(image, params\)/);
 });
 
-test("Profileditor zeigt Laufzeit und echte Providerdaten an", () => {
-  assert.match(editorSource, /startElapsedDisplay/);
-  assert.match(editorSource, /formatRuntimeDetails/);
-  assert.match(editorSource, /metrics\.detMs/);
-  assert.match(editorSource, /metrics\.recMs/);
+test("Profileditor zeigt keine technische Laufzeitstatusanzeige an", () => {
+  assert.doesNotMatch(editorHtml, /id="cancelOcrButton"/);
+  assert.doesNotMatch(editorHtml, /editorEngineBadge|editorEngineDetails/);
 });
 
 test("Profileditor blendet technische Alt-Funktionen aus und verwendet festen 10-Prozent-Zonenrand", () => {
@@ -128,4 +126,14 @@ test("Editor-Hilfetexte dürfen Karten verlassen und Aktionsleisten sind gemeins
   assert.match(editorHtml, /editor-action-line/);
   assert.match(editorHtml, /Masterbild analysieren/);
   assert.match(editorHtml, /Erkannten Bereich auswählen/);
+});
+
+
+test("Editor verwendet einzeilige Werkzeugleisten, eckige Karten und lokalisierte Zuordnungsnamen", () => {
+  assert.match(styles, /Profileditor 0\.17\.4/);
+  assert.match(styles, /flex-wrap:\s*nowrap\s*!important/);
+  assert.match(styles, /border-radius:\s*0\s*!important/);
+  assert.match(styles, /editor-sidebar[\s\S]{0,120}z-index:\s*50/);
+  assert.match(editorSource, /localizedAssignmentLabel/);
+  assert.doesNotMatch(editorHtml, /Analyse abbrechen|Cancel analysis/);
 });

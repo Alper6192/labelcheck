@@ -1,4 +1,13 @@
-# LabelCheck 0.17.3
+# LabelCheck 0.17.4
+
+## 0.17.4 – Editor-Layout und Übersetzungen
+
+- Technische Bereitschafts-/Backendanzeige vollständig aus der sichtbaren Editoroberfläche entfernt.
+- Analyse-abbrechen-Schaltfläche entfernt; interne sichere Abbruchlogik bei Bild-/Profilwechsel bleibt erhalten.
+- Konfigurations-, Masterbild-, Modus-, Feld- und Auswahlleisten bleiben einzeilig und scrollen bei Platzmangel horizontal.
+- Editor-Karten verwenden eckige, durchgehende rote Außenrahmen.
+- Hilfetexte der Profil-Seitenleiste liegen zuverlässig über dem Masterbild.
+- Feldnamen in „Aktuelle Auswahl“ und in der Eigenschaftsüberschrift werden auch auf Englisch lokalisiert.
 
 ## 0.17.3 – neutraler und kompakter Profileditor
 

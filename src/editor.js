@@ -1,10 +1,10 @@
 import "./styles.css";
 import { APP_VERSION, QUALITY_PRESETS } from "./config.js";
-import { PaddleOcrEngine, formatRuntimeDetails } from "./ocr-engine.js";
+import { PaddleOcrEngine } from "./ocr-engine.js";
 import { detectRuntimePolicy } from "./runtime-policy.js";
 import { prepareImage } from "./image-tools.js";
 import { detectQrProfile } from "./qr-engine.js";
-import { boundsFromPoly, formatMilliseconds, safeError } from "./utils.js";
+import { boundsFromPoly, safeError } from "./utils.js";
 import {
   FIELD_ORDER,
   PROFILE_SCHEMA_VERSION,
@@ -127,7 +127,6 @@ function setupEvents() {
   el("masterInput").addEventListener("change", loadMasterImage);
   el("exportOcrJsonButton").onclick = exportOcrJson;
   el("runOcrButton").onclick = runOcr;
-  el("cancelOcrButton").onclick = () => cancelOcrAnalysis(false);
   el("clearOcrButton").onclick = () => {
     const session = currentSession(false);
     if (!session) return;
@@ -698,19 +697,11 @@ async function initializeEngine(force = false) {
 }
 
 async function initializeEngineInternal(force) {
-  setEditorEngine(msg("Erkennung wird vorbereitet …", "Preparing recognition …"), "wait");
   try {
-    const info = await engine.initialize(
-      "standard",
-      (message) => setEditorEngine(message, "wait"),
-      force
-    );
-    setEditorEngine(msg(`Erkennung bereit · ${info.mode}`, `Recognition ready · ${info.mode}`), "ok");
-    el("editorEngineDetails").textContent = msg(`Stabiler Analysemodus · Initialisierung ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`, `Stable analysis mode · initialization ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`);
+    await engine.initialize("standard", () => {}, force);
     return true;
   } catch (error) {
-    setEditorEngine(msg(`Erkennung nicht bereit: ${safeError(error)}`, `Recognition not ready: ${safeError(error)}`), "bad");
-    el("editorEngineDetails").textContent = msg("Der Editor verwendet einen stabilen Analysemodus, damit große Masterbilder den Browser nicht neu starten. Die Scanner-Performance bleibt davon unberührt.", "The editor uses a stable analysis mode so large master images do not restart the browser. Scanner performance is unaffected.");
+    console.warn("LabelCheck editor recognition initialization failed", error);
     return false;
   }
 }
@@ -802,25 +793,15 @@ async function runOcr() {
     await persistSession(run.profileId, targetSession);
     if (state.selectedProfileId === run.profileId) {
       const result = targetSession.ocrResult;
-      const metrics = result.metrics || {};
       setEditorEngine(msg(`Analyse abgeschlossen · ${result.items?.length || 0} Textzeilen`, `Analysis complete · ${result.items?.length || 0} text lines`), "ok");
-      el("editorEngineDetails").textContent = [
-        msg(`Gesamt ${formatMilliseconds(output.wallMs)}`, `Total ${formatMilliseconds(output.wallMs)}`),
-        Number.isFinite(metrics.detMs) ? msg(`Detektion ${formatMilliseconds(metrics.detMs)}`, `Detection ${formatMilliseconds(metrics.detMs)}`) : "",
-        Number.isFinite(metrics.recMs) ? msg(`Erkennung ${formatMilliseconds(metrics.recMs)}`, `Recognition ${formatMilliseconds(metrics.recMs)}`) : "",
-        formatRuntimeDetails(engine.summary, output.runtime, editorRuntimePolicy),
-        msg(`Analysebild ${ocrInput.width} × ${ocrInput.height} px`, `Analysis image ${ocrInput.width} × ${ocrInput.height} px`)
-      ].filter(Boolean).join(" · ");
       drawOverlay();
       renderSelectionInfo();
     }
   } catch (error) {
     if (run.cancelled) {
       setEditorEngine(msg("Analyse verworfen", "Analysis discarded"), "warn");
-      el("editorEngineDetails").textContent = msg("Das Ergebnis wird nicht übernommen.", "The result will not be applied.");
     } else {
       setEditorEngine(msg(`Analyse fehlgeschlagen: ${safeError(error)}`, `Analysis failed: ${safeError(error)}`), "bad");
-      el("editorEngineDetails").textContent = localText("Die Erkennung wurde beendet. Beim nächsten Start wird sie automatisch neu initialisiert.", "Recognition was stopped. It will be initialized automatically on the next run.", state.language);
     }
   } finally {
     stopElapsedDisplay();
@@ -842,29 +823,19 @@ async function cancelOcrAnalysis(silent = false) {
   refreshMasterControls();
   if (!silent) {
     setEditorEngine(msg("Analyse wird beendet …", "Stopping analysis …"), "warn");
-    el("editorEngineDetails").textContent = localText("Der laufende Worker wird vollständig beendet.", "The running worker is being stopped completely.", state.language);
   }
   try {
     await engine.abortCurrent();
     if (!silent) {
       setEditorEngine(localText("Analyse abgebrochen", "Analysis cancelled", state.language), "warn");
-      el("editorEngineDetails").textContent = localText("Die Erkennung ist beendet. Beim nächsten Analysestart wird sie automatisch neu initialisiert.", "Recognition has stopped. It will be initialized automatically on the next analysis run.", state.language);
     }
   } catch (error) {
     if (!silent) setEditorEngine(msg(`Worker konnte nicht sauber beendet werden: ${safeError(error)}`, `Worker could not be stopped cleanly: ${safeError(error)}`), "bad");
   }
 }
 
-function startElapsedDisplay(run, session) {
-  stopElapsedDisplay();
-  const startedAt = performance.now();
-  const update = () => {
-    if (!isRunActive(run)) return;
-    const seconds = Math.max(0, Math.round((performance.now() - startedAt) / 1000));
-    el("editorEngineDetails").textContent = msg(`Bild ${session.prepared.width} × ${session.prepared.height} px · automatisches Backend läuft seit ${seconds} s.`, `Image ${session.prepared.width} × ${session.prepared.height} px · automatic backend running for ${seconds} s.`);
-  };
-  update();
-  state.elapsedTimer = setInterval(update, 1000);
+function startElapsedDisplay() {
+  // Keine technische Laufzeitstatusanzeige in der Benutzeroberfläche.
 }
 
 function stopElapsedDisplay() {
@@ -943,7 +914,6 @@ function refreshMasterControls() {
   const initializing = Boolean(state.engineInitPromise);
   el("runOcrButton").disabled = running || initializing || !session?.prepared;
   el("exportOcrJsonButton").disabled = running || !session?.ocrResult;
-  el("cancelOcrButton").disabled = !running;
   el("clearMasterButton").disabled = running || !session?.prepared;
 
   if (!session?.prepared) {
@@ -1087,6 +1057,11 @@ function assignField(key) {
   renderProperties();
 }
 
+function localizedAssignmentLabel(key, fallback = "") {
+  const labelKey = FIELD_UI_LABEL_KEYS[key];
+  return labelKey ? uiText(labelKey, state.language) : (fallback || key);
+}
+
 function renderAssignments() {
   const profile = selectedProfile();
   const container = el("assignmentList");
@@ -1094,7 +1069,7 @@ function renderAssignments() {
   if (!profile) return;
   const entries = [];
   if ((profile.anchor?.poly || []).length) entries.push({ type: "anchor", key: "anchor", label: uiText("anchorButton", state.language), value: profile.anchor });
-  for (const field of profile.fields || []) entries.push({ type: "field", key: field.key, label: field.label, value: field });
+  for (const field of profile.fields || []) entries.push({ type: "field", key: field.key, label: localizedAssignmentLabel(field.key, field.label), value: field });
   if (!entries.length) {
     container.innerHTML = `<p class="muted">${escapeHtml(msg("Noch keine Zuordnungen.", "No assignments yet."))}</p>`;
     return;
@@ -1536,7 +1511,7 @@ function findAssignmentAt(point) {
   const profile = selectedProfile();
   const entries = [];
   if ((profile?.anchor?.poly || []).length) entries.push({ type: "anchor", key: "anchor", label: uiText("anchorButton", state.language), value: profile.anchor });
-  for (const field of profile?.fields || []) entries.push({ type: "field", key: field.key, label: field.label, value: field });
+  for (const field of profile?.fields || []) entries.push({ type: "field", key: field.key, label: localizedAssignmentLabel(field.key, field.label), value: field });
   return entries.reverse().find((entry) => {
     const rect = polyToRect(entry.value.poly);
     return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
@@ -1550,7 +1525,7 @@ function currentAssignment() {
     return { type: "anchor", key: "anchor", label: uiText("anchorButton", state.language), value: profile.anchor };
   }
   const field = findField(profile, state.selectedAssignment.key);
-  return field ? { type: "field", key: field.key, label: field.label, value: field } : null;
+  return field ? { type: "field", key: field.key, label: localizedAssignmentLabel(field.key, field.label), value: field } : null;
 }
 
 function isSelected(type, key) {
@@ -1584,9 +1559,8 @@ function setConfigStatus(text, kind = "") {
   el("configStatus").className = kind;
 }
 
-function setEditorEngine(text, kind) {
-  el("editorEngineBadge").textContent = text;
-  el("editorEngineBadge").className = `engine-badge ${kind}`;
+function setEditorEngine() {
+  // Technische Engine-Zustände werden absichtlich nicht in der Benutzeroberfläche angezeigt.
 }
 
 function download(content, name, type) {
