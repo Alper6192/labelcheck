@@ -1717,3 +1717,7 @@ main > .card:first-child .engine-badge {
 .editor-page .qr-rule-card {
   border-radius: 12px !important;
 }
+
+/* v1.0.0 – finaler Protokollblock: Statuszeile entfernt */
+.labelcheck-app .log-actions { margin-bottom: 0; }
+.labelcheck-app .log-actions + .table-wrap { margin-top: 10px; }

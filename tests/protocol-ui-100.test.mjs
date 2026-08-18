@@ -31,8 +31,12 @@ test("Exportblock zeigt Zähler und Bereinigung unter den beiden Sendeaktionen",
   assert.match(styles, /\.log-actions > button[^{]*\{[^}]*width:\s*100%/s);
 });
 
-test("Redundanter Hinweis auf noch nicht gesendete neue Teile ist entfernt", () => {
-  assert.doesNotMatch(main, /neue Teile sind noch nicht gesendet/);
+test("Unter Gesendete leeren folgt direkt die Tabelle ohne Exportstatus", () => {
+  assert.doesNotMatch(html, /id="excelExportStatus"/);
+  const clearIndex = html.indexOf('id="clearSentButton"');
+  const tableIndex = html.indexOf('<div class="table-wrap">', clearIndex);
+  assert.ok(clearIndex >= 0 && tableIndex > clearIndex);
+  assert.doesNotMatch(html.slice(clearIndex, tableIndex), /export-status|excelExportStatus/);
 });
 
 test("Nach erfolgreichem Speichern werden beide Foto-Slots zurückgesetzt", () => {
