@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "0.17.5",
-  "exportedAt": "2026-08-18T09:54:48.605Z",
+  "exportedAt": "2026-08-18T09:58:34.290Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -2501,7 +2501,9 @@
       },
       "anchor": {
         "aliases": [
-          "SEIFERT AUTOMOTIVE LOGISTICS FRANC"
+          "SEIFERT AUTOMOTIVE LOGISTICS FRANC",
+          "SEIFERT",
+          "Seifert"
         ],
         "poly": [
           [
