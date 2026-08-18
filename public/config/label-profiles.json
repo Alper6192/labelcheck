@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "0.17.5",
-  "exportedAt": "2026-08-18T07:35:04.759Z",
+  "exportedAt": "2026-08-18T09:54:48.605Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -2475,6 +2475,136 @@
             [
               0.20643939393939395,
               0.41492923127761994
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SEIFERT",
+      "name": "Seifert",
+      "role": "vda",
+      "active": true,
+      "source": {
+        "type": "ocr"
+      },
+      "detection": {
+        "evidenceAliases": [],
+        "minEvidenceMatches": 0,
+        "excludeAliases": [],
+        "minScore": 0.55
+      },
+      "validation": {
+        "minAnchorScore": 0.55,
+        "requiredValidFields": [],
+        "errorMessage": ""
+      },
+      "anchor": {
+        "aliases": [
+          "SEIFERT AUTOMOTIVE LOGISTICS FRANC"
+        ],
+        "poly": [
+          [
+            0.35600000000000004,
+            0.17866666666666667
+          ],
+          [
+            0.646,
+            0.17200000000000001
+          ],
+          [
+            0.646,
+            0.19866666666666666
+          ],
+          [
+            0.35600000000000004,
+            0.20400000000000001
+          ]
+        ],
+        "localizeAlias": false,
+        "scaleFrom": "width",
+        "alignFrom": "center",
+        "fallbacks": []
+      },
+      "fields": [
+        {
+          "key": "batch",
+          "label": "Batch",
+          "required": true,
+          "compare": true,
+          "regex": "^D\\d{8,10}$",
+          "sourceRegex": "^D\\d{8,10}(?:\\s*[/|I1]\\s*\\d{4})?$",
+          "normalizer": "batch",
+          "poly": [
+            [
+              0.6825639363893281,
+              0.6124
+            ],
+            [
+              0.8091286918618575,
+              0.6124
+            ],
+            [
+              0.8091286918618575,
+              0.6416437163704874
+            ],
+            [
+              0.6825639363893281,
+              0.6416437163704874
+            ]
+          ]
+        },
+        {
+          "key": "weight",
+          "label": "Gewicht",
+          "required": true,
+          "compare": true,
+          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "normalizer": "weight",
+          "poly": [
+            [
+              0.7024000000000001,
+              0.37466666666666665
+            ],
+            [
+              0.7816000000000001,
+              0.37466666666666665
+            ],
+            [
+              0.7816000000000001,
+              0.4226666666666667
+            ],
+            [
+              0.7024000000000001,
+              0.4226666666666667
+            ]
+          ]
+        },
+        {
+          "key": "delivery_note",
+          "label": "Lieferscheinnummer",
+          "required": false,
+          "compare": false,
+          "regex": "^\\d{7,12}$",
+          "sourceRegex": "^\\d{7,12}$",
+          "normalizer": "digits",
+          "poly": [
+            [
+              0.21456885088853764,
+              0.3394666666666667
+            ],
+            [
+              0.348636063610672,
+              0.3394666666666667
+            ],
+            [
+              0.348636063610672,
+              0.3778666666666667
+            ],
+            [
+              0.21456885088853764,
+              0.3778666666666667
             ]
           ]
         }
