@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "0.17.5",
-  "exportedAt": "2026-08-18T10:48:05.027Z",
+  "exportedAt": "2026-08-18T10:50:59.329Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1078,8 +1078,8 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "regex": "^(?:[1-9]|[1-9]\\d)$",
+          "sourceRegex": "^(?:[1-9]|[1-9]\\d)$",
           "normalizer": "weight",
           "poly": [
             [
