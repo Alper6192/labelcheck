@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.0",
-  "exportedAt": "2026-08-18T12:48:20.353Z",
+  "exportedAt": "2026-08-18T13:15:43.981Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1777,7 +1777,20 @@
               0.43088888888888893
             ]
           ],
-          "digits": 4
+          "digits": 4,
+          "locator": {
+            "aliases": [
+              "Netto"
+            ],
+            "direction": "below",
+            "maxDistance": 3,
+            "minAliasScore": 0.3,
+            "strict": false,
+            "preferRightmost": false,
+            "preferLeftmost": false,
+            "preferUnit": false,
+            "preferBatch": false
+          }
         },
         {
           "key": "delivery_note",
