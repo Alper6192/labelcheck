@@ -1,4 +1,14 @@
-# LabelCheck PaddleOCR 0.17.2
+# LabelCheck 0.17.3
+
+## 0.17.3 – neutraler und kompakter Profileditor
+
+- Hilfetexte werden im Editor nicht mehr durch Kartenränder abgeschnitten.
+- Konfigurations- und Masterbild-Aktionen stehen soweit der verfügbare Platz reicht in einer gemeinsamen Reihe.
+- Sichtbare Hinweise auf die zugrunde liegende Texterkennungs-Engine wurden aus Editor und Scanner entfernt.
+- Der technische Bereitschaftsstatus im Editor ist nicht mehr sichtbar.
+- Benutzertexte verwenden neutrale Begriffe wie „Bildanalyse“, „Erkennungsbereich“ und „Erkennungsquote“.
+- Das editierbare Feld „Bezeichnung“ wurde aus den Feldeigenschaften entfernt; die festen Feldnamen bleiben unverändert.
+- Erkennungslogik und Profilkonfigurationen bleiben unverändert.
 
 ## 0.17.2 – benutzerfreundlicher Profileditor
 - DE/EN-Sprachschalter oben rechts; Editor-Beschriftungen, Hilfetexte und dynamische QR-Regeln sind zweisprachig.

@@ -1547,3 +1547,66 @@ main > .card:first-child .engine-badge {
   .editor-page .direction-fieldset { grid-template-columns:1fr; }
   .editor-page .assignment-toolbar button { min-width:0; }
 }
+
+
+/* ==============================================================
+   Profileditor 0.17.3 – kompaktere Bedienung und sichere Hilfetexte
+   ============================================================== */
+.editor-page .card {
+  overflow: visible;
+}
+.editor-page .editor-main > .card:first-child .card-body.editor-toolbar {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+}
+.editor-page .editor-action-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.editor-page .editor-action-line > * {
+  flex: 0 1 auto;
+}
+.editor-page .primary-editor-actions {
+  margin-top: 0;
+}
+.editor-page .secondary-editor-actions {
+  margin-top: 0;
+}
+.editor-page .help-icon::after {
+  top: calc(100% + 9px);
+  bottom: auto;
+  right: 0;
+  width: min(340px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  transform: translateY(-4px);
+}
+.editor-page .help-icon::before {
+  top: calc(100% + 3px);
+  bottom: auto;
+  right: 6px;
+  border-top-color: transparent;
+  border-bottom-color: #111;
+}
+.editor-page .help-icon:hover::after,
+.editor-page .help-icon:focus::after,
+.editor-page .help-icon:hover::before,
+.editor-page .help-icon:focus::before {
+  transform: translateY(0);
+}
+.editor-page .editor-sidebar .help-icon::after {
+  left: 0;
+  right: auto;
+}
+.editor-page .editor-sidebar .help-icon::before {
+  left: 6px;
+  right: auto;
+}
+@media (max-width: 760px) {
+  .editor-page .editor-action-line > * {
+    flex: 1 1 160px;
+  }
+}

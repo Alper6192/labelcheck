@@ -7,6 +7,8 @@ const scannerSource = await readFile(new URL("../src/main.js", import.meta.url),
 const engineSource = await readFile(new URL("../src/ocr-engine.js", import.meta.url), "utf8");
 const editorHtml = await readFile(new URL("../editor.html", import.meta.url), "utf8");
 const policySource = await readFile(new URL("../src/runtime-policy.js", import.meta.url), "utf8");
+const editorI18n = await readFile(new URL("../src/editor-i18n.js", import.meta.url), "utf8");
+const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 
 test("Scanner und Profileditor verwenden dieselbe OCR-Engine", () => {
   assert.match(scannerSource, /PaddleOcrEngine/);
@@ -110,4 +112,20 @@ test("Ausgewählte Bearbeitungsart und Feldzuordnung werden visuell markiert", (
   assert.match(editorHtml, /data-assignment-button="anchor"/);
   assert.match(editorSource, /renderAssignmentToolbar/);
   assert.match(editorSource, /active-assignment/);
+});
+
+
+test("Editor zeigt keine technischen Engine-Begriffe und kein editierbares Bezeichnungsfeld", () => {
+  assert.doesNotMatch(editorHtml, /Paddle|OCR|Bezeichnung/);
+  assert.doesNotMatch(editorI18n, /Paddle|OCR/);
+  assert.doesNotMatch(editorHtml, /id=["']fieldLabel["']/);
+  assert.doesNotMatch(editorSource, /el\(["']fieldLabel["']\)/);
+  assert.doesNotMatch(editorHtml, /class=["'][^"']*engine-badge/);
+});
+
+test("Editor-Hilfetexte dürfen Karten verlassen und Aktionsleisten sind gemeinsam angeordnet", () => {
+  assert.match(styles, /\.editor-page \.card\s*\{\s*overflow:\s*visible;/);
+  assert.match(editorHtml, /editor-action-line/);
+  assert.match(editorHtml, /Masterbild analysieren/);
+  assert.match(editorHtml, /Erkannten Bereich auswählen/);
 });

@@ -154,7 +154,7 @@ function setupEvents() {
   overlay.addEventListener("pointercancel", pointerUp);
 
   for (const id of [
-    "fieldLabel", "fieldRegex", "fieldSourceRegex", "fieldNormalizer", "fieldDigits",
+    "fieldRegex", "fieldSourceRegex", "fieldNormalizer", "fieldDigits",
     "fieldSearchRadius", "fieldMinOverlap", "fieldPreferRightmost", "fieldPreferUnit",
     "fieldNeighborEnabled", "fieldNeighborTarget", "fieldNeighborLeft", "fieldNeighborRight",
     "fieldNeighborAbove", "fieldNeighborBelow", "fieldNeighborMaxDistance",
@@ -280,7 +280,7 @@ function validateConfig(config) {
       const finalRegex = validateRegex(field.regex);
       const sourceRegex = validateRegex(field.sourceRegex);
       if (!finalRegex.valid) warnings.push(`${profile.name}/${field.label}: ungültiger Ergebnis-RegEx.`);
-      if (!sourceRegex.valid) warnings.push(`${profile.name}/${field.label}: ungültiger OCR-RegEx.`);
+      if (!sourceRegex.valid) warnings.push(`${profile.name}/${field.label}: ungültiger Rohtext-RegEx.`);
       if (!qrProfile && (field.poly || []).length < 4) warnings.push(`${profile.name}/${field.label}: keine Feldzone.`);
     }
   }
@@ -625,7 +625,7 @@ function useSelectionAsQrRegion() {
   const session = currentSession(false);
   if (!profile || profile.source?.type !== "qr") return;
   if (!session?.selection?.poly?.length) {
-    alert(msg("Zuerst im Masterbild eine OCR-Box auswählen oder im Modus „Freie Zone zeichnen“ einen QR-Suchbereich markieren.", "First select an OCR box in the master image or mark a QR search region in Draw free zone mode."));
+    alert(msg("Zuerst im Masterbild einen erkannten Bereich auswählen oder im Modus „Freie Zone zeichnen“ einen QR-Suchbereich markieren.", "First select a recognized area in the master image or mark a QR search region in Draw free zone mode."));
     return;
   }
   const source = ensureQrSource(profile);
@@ -698,19 +698,19 @@ async function initializeEngine(force = false) {
 }
 
 async function initializeEngineInternal(force) {
-  setEditorEngine(msg("PaddleOCR wird vorbereitet …", "Preparing PaddleOCR …"), "wait");
+  setEditorEngine(msg("Erkennung wird vorbereitet …", "Preparing recognition …"), "wait");
   try {
     const info = await engine.initialize(
       "standard",
       (message) => setEditorEngine(message, "wait"),
       force
     );
-    setEditorEngine(msg(`PaddleOCR bereit · ${info.mode}`, `PaddleOCR ready · ${info.mode}`), "ok");
-    el("editorEngineDetails").textContent = msg(`Editor-Stabilmodus · Initialisierung ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`, `Editor stability mode · initialization ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`);
+    setEditorEngine(msg(`Erkennung bereit · ${info.mode}`, `Recognition ready · ${info.mode}`), "ok");
+    el("editorEngineDetails").textContent = msg(`Stabiler Analysemodus · Initialisierung ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`, `Stable analysis mode · initialization ${formatMilliseconds(info.initMs)} · ${formatRuntimeDetails(info.summary, null, editorRuntimePolicy)}`);
     return true;
   } catch (error) {
-    setEditorEngine(msg(`PaddleOCR nicht bereit: ${safeError(error)}`, `PaddleOCR not ready: ${safeError(error)}`), "bad");
-    el("editorEngineDetails").textContent = msg("Der Editor verwendet bewusst WASM mit einem Thread im Web Worker, damit große Masterbilder den Browser nicht neu starten. Die Scanner-Performance bleibt davon unberührt.", "The editor intentionally uses WASM with one thread in a web worker so large master images do not restart the browser. Scanner performance is unaffected.");
+    setEditorEngine(msg(`Erkennung nicht bereit: ${safeError(error)}`, `Recognition not ready: ${safeError(error)}`), "bad");
+    el("editorEngineDetails").textContent = msg("Der Editor verwendet einen stabilen Analysemodus, damit große Masterbilder den Browser nicht neu starten. Die Scanner-Performance bleibt davon unberührt.", "The editor uses a stable analysis mode so large master images do not restart the browser. Scanner performance is unaffected.");
     return false;
   }
 }
@@ -738,7 +738,7 @@ async function loadMasterImage(event) {
     drawOverlay();
     renderSelectionInfo();
     refreshMasterControls();
-    el("editorHint").textContent = msg(`Masterbild „${file.name}“ ist nur diesem Profil zugeordnet. PaddleOCR starten oder freie Zonen zeichnen.`, `Master image “${file.name}” is assigned only to this profile. Run PaddleOCR or draw free zones.`);
+    el("editorHint").textContent = msg(`Masterbild „${file.name}“ ist nur diesem Profil zugeordnet. Bildanalyse starten oder freie Zonen zeichnen.`, `Master image “${file.name}” is assigned only to this profile. Start image analysis or draw free zones.`);
   } catch (error) {
     el("editorHint").textContent = msg(`Masterbild konnte nicht geladen werden: ${safeError(error)}`, `Master image could not be loaded: ${safeError(error)}`);
   }
@@ -750,7 +750,7 @@ function exportOcrJson() {
   if (!profile || !session?.ocrResult) return;
   const filename = `ocr-${safeProfileId(profile.id || profile.role || "label").toLowerCase()}.json`;
   download(JSON.stringify(session.ocrResult, null, 2), filename, "application/json");
-  setEditorEngine(`OCR-JSON exportiert · ${session.ocrResult.items?.length || 0} Textzeilen`, "ok");
+  setEditorEngine(`Analyseergebnis exportiert · ${session.ocrResult.items?.length || 0} Textzeilen`, "ok");
 }
 
 async function runOcr() {
@@ -765,7 +765,7 @@ async function runOcr() {
   };
   state.ocrRun = run;
   refreshMasterControls();
-  setEditorEngine(msg("PaddleOCR analysiert das Masterbild im Web Worker …", "PaddleOCR is analyzing the master image in the web worker …"), "wait");
+  setEditorEngine(msg("Masterbild wird analysiert …", "Master image is being analyzed …"), "wait");
   startElapsedDisplay(run, session);
 
   try {
@@ -803,24 +803,24 @@ async function runOcr() {
     if (state.selectedProfileId === run.profileId) {
       const result = targetSession.ocrResult;
       const metrics = result.metrics || {};
-      setEditorEngine(msg(`PaddleOCR bereit · ${output.mode} · ${result.items?.length || 0} Textzeilen`, `PaddleOCR ready · ${output.mode} · ${result.items?.length || 0} text lines`), "ok");
+      setEditorEngine(msg(`Analyse abgeschlossen · ${result.items?.length || 0} Textzeilen`, `Analysis complete · ${result.items?.length || 0} text lines`), "ok");
       el("editorEngineDetails").textContent = [
         msg(`Gesamt ${formatMilliseconds(output.wallMs)}`, `Total ${formatMilliseconds(output.wallMs)}`),
         Number.isFinite(metrics.detMs) ? msg(`Detektion ${formatMilliseconds(metrics.detMs)}`, `Detection ${formatMilliseconds(metrics.detMs)}`) : "",
         Number.isFinite(metrics.recMs) ? msg(`Erkennung ${formatMilliseconds(metrics.recMs)}`, `Recognition ${formatMilliseconds(metrics.recMs)}`) : "",
         formatRuntimeDetails(engine.summary, output.runtime, editorRuntimePolicy),
-        msg(`OCR-Bild ${ocrInput.width} × ${ocrInput.height} px`, `OCR image ${ocrInput.width} × ${ocrInput.height} px`)
+        msg(`Analysebild ${ocrInput.width} × ${ocrInput.height} px`, `Analysis image ${ocrInput.width} × ${ocrInput.height} px`)
       ].filter(Boolean).join(" · ");
       drawOverlay();
       renderSelectionInfo();
     }
   } catch (error) {
     if (run.cancelled) {
-      setEditorEngine(msg("OCR-Analyse verworfen", "OCR analysis discarded"), "warn");
+      setEditorEngine(msg("Analyse verworfen", "Analysis discarded"), "warn");
       el("editorEngineDetails").textContent = msg("Das Ergebnis wird nicht übernommen.", "The result will not be applied.");
     } else {
-      setEditorEngine(msg(`OCR fehlgeschlagen: ${safeError(error)}`, `OCR failed: ${safeError(error)}`), "bad");
-      el("editorEngineDetails").textContent = localText("Der OCR-Worker wurde beendet. Beim nächsten Start wird er automatisch neu initialisiert.", "The OCR worker was stopped. It will be initialized automatically on the next run.", state.language);
+      setEditorEngine(msg(`Analyse fehlgeschlagen: ${safeError(error)}`, `Analysis failed: ${safeError(error)}`), "bad");
+      el("editorEngineDetails").textContent = localText("Die Erkennung wurde beendet. Beim nächsten Start wird sie automatisch neu initialisiert.", "Recognition was stopped. It will be initialized automatically on the next run.", state.language);
     }
   } finally {
     stopElapsedDisplay();
@@ -841,14 +841,14 @@ async function cancelOcrAnalysis(silent = false) {
   state.ocrRun = null;
   refreshMasterControls();
   if (!silent) {
-    setEditorEngine(msg("PaddleOCR-Worker wird beendet …", "Stopping PaddleOCR worker …"), "warn");
+    setEditorEngine(msg("Analyse wird beendet …", "Stopping analysis …"), "warn");
     el("editorEngineDetails").textContent = localText("Der laufende Worker wird vollständig beendet.", "The running worker is being stopped completely.", state.language);
   }
   try {
     await engine.abortCurrent();
     if (!silent) {
-      setEditorEngine(localText("OCR abgebrochen", "OCR cancelled", state.language), "warn");
-      el("editorEngineDetails").textContent = localText("Der Worker ist beendet. Beim nächsten OCR-Start wird er automatisch neu initialisiert.", "The worker has stopped. It will be initialized automatically on the next OCR run.", state.language);
+      setEditorEngine(localText("Analyse abgebrochen", "Analysis cancelled", state.language), "warn");
+      el("editorEngineDetails").textContent = localText("Die Erkennung ist beendet. Beim nächsten Analysestart wird sie automatisch neu initialisiert.", "Recognition has stopped. It will be initialized automatically on the next analysis run.", state.language);
     }
   } catch (error) {
     if (!silent) setEditorEngine(msg(`Worker konnte nicht sauber beendet werden: ${safeError(error)}`, `Worker could not be stopped cleanly: ${safeError(error)}`), "bad");
@@ -915,7 +915,7 @@ async function restorePersistedMaster(profileId) {
       drawOverlay();
       renderSelectionInfo();
       refreshMasterControls();
-      el("editorHint").textContent = msg(`Masterbild „${session.masterFileName}“ lokal aus dem Browser wiederhergestellt${session.ocrResult ? " · OCR-Boxen ebenfalls geladen" : ""}.`, `Master image “${session.masterFileName}” restored locally from the browser${session.ocrResult ? " · OCR boxes restored too" : ""}.`);
+      el("editorHint").textContent = msg(`Masterbild „${session.masterFileName}“ lokal aus dem Browser wiederhergestellt${session.ocrResult ? " · erkannte Bereiche ebenfalls geladen" : ""}.`, `Master image “${session.masterFileName}” restored locally from the browser${session.ocrResult ? " · recognized areas restored too" : ""}.`);
     }
   } catch {
     // Der Editor bleibt auch ohne IndexedDB vollständig benutzbar.
@@ -948,13 +948,13 @@ function refreshMasterControls() {
 
   if (!session?.prepared) {
     el("editorHint").textContent = localText(
-      "Für dieses Profil ein eigenes Masterbild laden. Danach PaddleOCR starten oder direkt eine freie Zone zeichnen.",
-      "Load a master image for this profile. Then run PaddleOCR or draw a free zone directly.",
+      "Für dieses Profil ein eigenes Masterbild laden. Danach die Bildanalyse starten oder direkt eine freie Zone zeichnen.",
+      "Load a master image for this profile. Then start image analysis or draw a free zone directly.",
       state.language
     );
   } else if (!running) {
     const suffix = session.ocrResult
-      ? localText(` · ${session.ocrResult.items?.length || 0} OCR-Textzeilen vorhanden`, ` · ${session.ocrResult.items?.length || 0} OCR text lines available`, state.language)
+      ? localText(` · ${session.ocrResult.items?.length || 0} erkannte Textzeilen vorhanden`, ` · ${session.ocrResult.items?.length || 0} recognized text lines available`, state.language)
       : "";
     el("editorHint").textContent = localText(
       `Masterbild „${session.masterFileName || "ohne Dateiname"}“ gehört nur zu diesem Profil${suffix}.`,
@@ -971,7 +971,7 @@ function setMode(mode) {
     el(buttonId).classList.toggle("active-mode", value === mode);
   }
   el("editorHint").textContent = {
-    select: localText("Klicke auf eine OCR-Box und ordne sie anschließend als Anker oder Feld zu.", "Click an OCR box and then assign it as an anchor or field.", state.language),
+    select: localText("Klicke auf einen erkannten Bereich und ordne ihn anschließend als Anker oder Feld zu.", "Click a recognized area and then assign it as an anchor or field.", state.language),
     draw: localText("Ziehe mit gedrückter Maustaste eine Zone um den gewünschten Wert.", "Drag a zone around the desired value.", state.language),
     edit: localText("Wähle eine bestehende Zuordnung. Innen ziehen verschiebt sie; Eckpunkte ändern die Größe.", "Select an existing assignment. Drag inside to move it; use corners to resize it.", state.language)
   }[mode];
@@ -1056,7 +1056,7 @@ function pointerUp(event) {
 function assignAnchor() {
   const profile = selectedProfile();
   const session = currentSession(false);
-  if (!profile || !session?.selection?.poly?.length) return alert(msg("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.", "First select an OCR box or draw a free zone."));
+  if (!profile || !session?.selection?.poly?.length) return alert(msg("Zuerst einen erkannten Bereich auswählen oder eine freie Zone zeichnen.", "First select a recognized area or draw a free zone."));
   profile.anchor.poly = session.selection.poly;
   if (!profile.anchor.aliases.length && session.selection.text) {
     profile.anchor.aliases = [session.selection.text.trim()];
@@ -1073,7 +1073,7 @@ function assignAnchor() {
 function assignField(key) {
   const profile = selectedProfile();
   const session = currentSession(false);
-  if (!profile || !session?.selection?.poly?.length) return alert(msg("Zuerst eine OCR-Box auswählen oder eine freie Zone zeichnen.", "First select an OCR box or draw a free zone."));
+  if (!profile || !session?.selection?.poly?.length) return alert(msg("Zuerst einen erkannten Bereich auswählen oder eine freie Zone zeichnen.", "First select a recognized area or draw a free zone."));
   const existing = findField(profile, key);
   const field = existing || createField(key);
   const padding = session.selection.source === "ocr" ? FIELD_ZONE_PADDING : 0;
@@ -1160,7 +1160,6 @@ function renderProperties() {
   populateFieldStrategyOptions(field);
   populateNeighborTargetOptions(field);
 
-  el("fieldLabel").value = field.label || "";
   el("fieldRegex").value = field.regex || "";
   el("fieldSourceRegex").value = field.sourceRegex || field.regex || "";
   el("fieldNormalizer").value = field.normalizer || defaultUiNormalizer(field.key);
@@ -1211,7 +1210,6 @@ function updateFieldProperties() {
   if (!assignment || assignment.type !== "field") return;
   const field = assignment.value;
 
-  field.label = el("fieldLabel").value.trim() || field.key;
   field.regex = el("fieldRegex").value.trim();
   field.sourceRegex = el("fieldSourceRegex").value.trim();
   field.normalizer = el("fieldNormalizer").value || defaultUiNormalizer(field.key);
@@ -1307,8 +1305,8 @@ function renderRegexStatus() {
     ? localText("✓ Ergebnis-RegEx gültig", "✓ Final regex valid", state.language)
     : localText("✕ Ergebnis-RegEx ungültig", "✕ Final regex invalid", state.language);
   const sourceLabel = sourceStatus.valid
-    ? localText("✓ OCR-RegEx gültig", "✓ OCR regex valid", state.language)
-    : localText("✕ OCR-RegEx ungültig", "✕ OCR regex invalid", state.language);
+    ? localText("✓ Rohtext-RegEx gültig", "✓ Raw-text regex valid", state.language)
+    : localText("✕ Rohtext-RegEx ungültig", "✕ Raw-text regex invalid", state.language);
 
   status.textContent = `${finalLabel} · ${sourceLabel}${(!finalStatus.valid || !sourceStatus.valid) ? ` · ${finalStatus.message || sourceStatus.message || ""}` : ""}`;
   status.className = `regex-status ${finalStatus.valid && sourceStatus.valid ? "ok" : "bad"}`;
@@ -1510,7 +1508,7 @@ function renderSelectionInfo() {
     return;
   }
   if (selection.source === "ocr") {
-    info.innerHTML = `<strong>${escapeHtml(selection.text || msg("(leer)", "(empty)"))}</strong><br>${escapeHtml(msg("OCR-Konfidenz", "OCR confidence"))} ${(selection.score * 100).toFixed(1)} %`;
+    info.innerHTML = `<strong>${escapeHtml(selection.text || msg("(leer)", "(empty)"))}</strong><br>${escapeHtml(msg("Erkennungsquote", "Recognition confidence"))} ${(selection.score * 100).toFixed(1)} %`;
   } else {
     info.textContent = msg("Freie Zone ausgewählt. Ordne sie jetzt als Anker oder Feld zu.", "Free zone selected. Assign it as an anchor or field now.");
   }

@@ -123,8 +123,8 @@ function setupCompatibilityMode() {
     setCompatibilityMode(enabled, "manual");
     await engine.dispose();
     setEngineStatus(enabled
-      ? "Kompatibilitätsmodus aktiviert · PaddleOCR wird neu geladen …"
-      : "Normalmodus aktiviert · PaddleOCR wird neu geladen …", "wait");
+      ? "Kompatibilitätsmodus aktiviert · Erkennung wird neu geladen …"
+      : "Normalmodus aktiviert · Erkennung wird neu geladen …", "wait");
     await initializeEngine(true);
     renderAll();
   });
@@ -141,20 +141,20 @@ function populateProfiles() {
 
 async function initializeEngine(force = false) {
   if (!force && engine.ready) return true;
-  setEngineStatus("PaddleOCR wird vorbereitet …", "wait");
+  setEngineStatus("Erkennung wird vorbereitet …", "wait");
   try {
     const info = await engine.initialize("standard", (message) => setEngineStatus(message, "wait"), force);
-    setEngineStatus(`PaddleOCR bereit · ${info.mode}`, "ok");
+    setEngineStatus(`LabelCheck bereit`, "ok");
     const reason = getCompatibilityReason();
     el("engineDetails").textContent = [
       `Initialisierung ${formatMilliseconds(info.initMs)}`,
       formatRuntimeDetails(info.summary),
-      isCompatibilityMode() && reason === "ocr-crash-recovery" ? "Stabiler Modus nach vorherigem OCR-Absturz automatisch aktiviert" : "",
+      isCompatibilityMode() && reason === "ocr-crash-recovery" ? "Stabiler Modus nach vorherigem Analysefehler automatisch aktiviert" : "",
       isCompatibilityMode() && reason === "mobile-default" ? "Mobilgerät · stabiler Modus standardmäßig aktiv" : ""
     ].filter(Boolean).join(" · ");
     return true;
   } catch (error) {
-    setEngineStatus(`PaddleOCR nicht bereit: ${safeError(error)}`, "bad");
+    setEngineStatus(`Erkennung nicht bereit: ${safeError(error)}`, "bad");
     return false;
   }
 }
@@ -329,7 +329,7 @@ async function analyzeSlot(key) {
     slot.result = out.result;
     slot.wallMs = out.wallMs;
     slot.state = "done";
-    setEngineStatus(`PaddleOCR bereit · ${out.mode}`, "ok");
+    setEngineStatus(`LabelCheck bereit`, "ok");
     const metrics = out.result?.metrics || {};
     el("engineDetails").textContent = [
       formatRuntimeDetails(engine.summary, out.runtime),

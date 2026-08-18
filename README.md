@@ -1,13 +1,13 @@
-# LabelCheck PaddleOCR 0.17.2
+# LabelCheck 0.17.3
 
 LabelCheck prüft weiterhin immer **ein Produktlabel** gegen **ein VDA-/TA-Label**. Die Bedienoberfläche, Freigabelogik, Kamera, Bedienerprüfung, Scanprotokoll und CSV-Funktion bleiben wie in 0.16.22. Seit 0.17.0 ist die Profilarchitektur vollständig konfigurationsgesteuert: **alle labelabhängigen Erkennungsregeln liegen in `public/config/label-profiles.json` und können vollständig im erweiterten Profileditor gepflegt werden.**
 
-## Profileditor 0.17.2
-Der erweiterte Profileditor ist jetzt auf Deutsch und Englisch umschaltbar, logisch gruppiert und mit kontextbezogenen ?-Hilfen versehen. Technische Alt-Funktionen wurden aus der Oberfläche entfernt. Feldspezifische Bereinigung und Strategien werden nur dort angeboten, wo sie fachlich sinnvoll sind. Nachbarfelder können generisch relativ zu Batch, Fassnummer, IDH oder Gewicht mit den Richtungen links/rechts/oben/unten konfiguriert werden. OCR-Feldzonen erhalten beim Übernehmen fest 10 % Rand.
+## Profileditor 0.17.3
+Der erweiterte Profileditor ist jetzt auf Deutsch und Englisch umschaltbar, logisch gruppiert und mit kontextbezogenen ?-Hilfen versehen. Technische Alt-Funktionen wurden aus der Oberfläche entfernt. Feldspezifische Bereinigung und Strategien werden nur dort angeboten, wo sie fachlich sinnvoll sind. Nachbarfelder können generisch relativ zu Batch, Fassnummer, IDH oder Gewicht mit den Richtungen links/rechts/oben/unten konfiguriert werden. Feldzonen erhalten beim Übernehmen fest 10 % Rand.
 
 ## Editor-Stabilität 0.17.1
 
-Der Profileditor verwendet für **„PaddleOCR auf Masterbild“** absichtlich einen stabilen WASM-Web-Worker mit einem Thread und einem auf 1000 px begrenzten OCR-Arbeitsbild. Das gespeicherte Masterbild selbst bleibt in voller Editorauflösung erhalten. Diese Editor-Policy verändert die Performance-Einstellungen des eigentlichen Scanners nicht. Der zuletzt ausgewählte Profil-Eintrag wird lokal gemerkt, damit nach einem Browser-Neustart wieder dasselbe Profil samt lokal gespeichertem Masterbild geöffnet wird.
+Der Profileditor verwendet für **„Masterbild analysieren“** absichtlich einen stabilen WASM-Web-Worker mit einem Thread und einem auf 1000 px begrenzten Analyse-Arbeitsbild. Das gespeicherte Masterbild selbst bleibt in voller Editorauflösung erhalten. Diese Editor-Policy verändert die Performance-Einstellungen des eigentlichen Scanners nicht. Der zuletzt ausgewählte Profil-Eintrag wird lokal gemerkt, damit nach einem Browser-Neustart wieder dasselbe Profil samt lokal gespeichertem Masterbild geöffnet wird.
 
 
 ## Architektur
@@ -15,7 +15,7 @@ Der Profileditor verwendet für **„PaddleOCR auf Masterbild“** absichtlich e
 Die Scanner-App ist eine generische Engine. Sie kennt keine einzelnen Kunden-/Labelprofile mehr als Sonderfall im JavaScript. Ein Profil beschreibt in der JSON:
 
 - Rolle: Produktlabel oder VDA-/TA-Label
-- Quelle: OCR/Textlayout oder QR-Code
+- Quelle: Text/Layout oder QR-Code
 - Profilanker und alternative Anker
 - zusätzliche Erkennungs- und Ausschlussmerkmale
 - Mindestquoten für Profilerkennung und Labelvalidierung
@@ -26,7 +26,7 @@ Die Scanner-App ist eine generische Engine. Sie kennt keine einzelnen Kunden-/La
 - QR-Suchbereiche und QR-Parserregeln
 - Pflichtfelder und profilspezifische Fehlermeldung
 
-Damit kann ein neues OCR- oder QR-Label über den Editor angelegt werden, ohne `index.html`, `main.js` oder `profile-engine.js` anzupassen.
+Damit kann ein neues Text- oder QR-Label über den Editor angelegt werden, ohne `index.html`, `main.js` oder `profile-engine.js` anzupassen.
 
 ## Globale Regeln
 
@@ -42,11 +42,11 @@ Regeln, die für alle Standorte und Labels identisch sind, bleiben zentral in de
 
 ## Erweiterter Profileditor
 
-Der Editor ist bewusst als erweiterter Modus ausgelegt. Typischer Ablauf für ein neues OCR-Label:
+Der Editor ist bewusst als erweiterter Modus ausgelegt. Typischer Ablauf für ein neues Text-Label:
 
 1. Neues Profil anlegen und Rolle wählen.
-2. `OCR / Textlayout` als Erkennungsquelle wählen.
-3. Masterbild laden und PaddleOCR ausführen.
+2. `Text / Layout` als Erkennungsquelle wählen.
+3. Masterbild laden und die Bildanalyse ausführen.
 4. Profilanker markieren und Aliase festlegen.
 5. Batch, IDH, Gewicht, Lieferscheinnummer und/oder Fassnummer zuordnen.
 6. Für jedes Feld Regex, Normalizer, Suchbereich und bei Bedarf eine Erkennungsstrategie einstellen.
@@ -59,7 +59,7 @@ Die bisher im Code eingebauten Sonderlogiken wurden in allgemeine, im Editor wä
 
 - **Standard: Zone / Nähe** – normale Feldsuche um die markierte Sollposition
 - **Gewicht nur mit Einheit** – akzeptiert nur Gewichtswerte mit Einheit und verbindet bei Bedarf getrennte Zahl-/Einheitsboxen
-- **Netto aus Zahlenpaar / rechter Wert** – verarbeitet Gross-/Netto-Zeilen und toleriert typische OCR-Fehler der Gewichtseinheit
+- **Netto aus Zahlenpaar / rechter Wert** – verarbeitet Gross-/Netto-Zeilen und toleriert typische Erkennungsfehler der Gewichtseinheit
 - **Große Zahlen-Kombizeile** – teilt kombinierte Zahlenzeilen in linken und rechten Wert
 - **Quantity-Gewicht mit bevorzugter Einheit** – sucht Mengenwerte mit konfigurierbaren Einheiten
 
@@ -92,11 +92,11 @@ Dateiname: `Labelcheck_YYYY-MM-DD_HH-MM-SS.csv`.
 
 Die Spalte `Manuell korrigiert` enthält die konkret bearbeiteten Felder, z. B. `Gewicht Produkt, IDH VDA`.
 
-## Kamera und OCR-Laufzeit
+## Kamera und Erkennungslaufzeit
 
 Die native Kamera-App wird über `capture="environment"` angefordert. Nach der Aufnahme wird die tatsächliche Bildausrichtung einschließlich JPEG-EXIF-Rotation geprüft; Hochkantfotos werden vor der Analyse abgewiesen.
 
-Mobilgeräte verwenden standardmäßig den stabilen OCR-Modus, Desktop/Notebook den schnellen AUTO-Modus. Die PP-OCRv5-Modelle werden beim Build in die Pages-Site kopiert und same-origin geladen.
+Mobilgeräte verwenden standardmäßig den stabilen Erkennungsmodus, Desktop/Notebook den schnellen AUTO-Modus. Die Erkennungsmodelle werden beim Build in die Pages-Site kopiert und same-origin geladen.
 
 ## Deployment
 
