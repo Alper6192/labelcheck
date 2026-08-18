@@ -24,9 +24,9 @@ export async function exportRecords(records, navigatorLike = globalThis.navigato
 
   if (navigatorLike && typeof navigatorLike.share === "function") {
     try {
-      // title wird zusätzlich gesetzt, damit Android-Share-Sheets und Ziel-Apps
-      // den gewünschten Dateinamen auch als sichtbaren Titel erhalten.
-      await navigatorLike.share({ files: [file], title: file.name, text: file.name });
+      // Nur die Datei teilen. Zusätzlicher title/text-Payload kann insbesondere
+      // auf iOS als separates Textelement bzw. zusätzliche Textdatei auftauchen.
+      await navigatorLike.share({ files: [file] });
       return { method: "share-csv", filename: file.name };
     } catch (error) {
       if (error?.name === "AbortError") {
@@ -59,18 +59,18 @@ export function downloadFile(file, documentLike = globalThis.document, urlLike =
 
 function createRows(records) {
   return (records || []).map((record) => ({
-    Zeit: formatLocalTimestamp(record.timestamp),
-    Ergebnis: resultLabel(record),
+    "Zeit": formatLocalTimestamp(record.timestamp),
+    "Ergebnis": resultLabel(record),
+    "Manuell korrigiert": manualCorrectionLabel(record),
+    "Lieferscheinnummer / TA-Nummer": safe(record.vda?.delivery_note),
+    "Fassnummer": safe(record.product?.drum_number || record.vda?.drum_number),
     "Batch Produkt": safe(record.product?.batch),
-    "Batch Lieferschein": safe(record.vda?.batch),
+    "Batch VDA / TA": safe(record.vda?.batch),
     "IDH Produkt": safe(record.product?.idh),
-    "IDH Lieferschein": safe(record.vda?.idh),
+    "IDH VDA / TA": safe(record.vda?.idh),
     "Gewicht Produkt": safe(record.product?.weight),
-    "Gewicht Lieferschein": safe(record.vda?.weight),
-    Lieferscheinnummer: safe(record.vda?.delivery_note),
-    "Fassnummer Produkt": safe(record.product?.drum_number),
-    Lieferscheinprofil: safe(record.vdaProfile),
-    "Manuell korrigiert": manualCorrectionLabel(record)
+    "Gewicht VDA / TA": safe(record.vda?.weight),
+    "Labelprofil - VDA / TA": safe(record.vdaProfile)
   }));
 }
 

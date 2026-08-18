@@ -12,7 +12,7 @@ function config() {
 test("Profilkonfiguration ist die zentrale Quelle der 0.17-Architektur", () => {
   const raw = config();
   assert.equal(raw.schemaVersion, 3);
-  assert.equal(raw.appVersion, "0.17.5");
+  assert.equal(raw.appVersion, "0.17.6");
   assert.ok(raw.profiles.length >= 1);
   for (const profile of raw.profiles) {
     assert.ok(["ocr", "qr"].includes(profile?.source?.type), `${profile.id}: source.type fehlt`);
@@ -42,6 +42,6 @@ test("index.html enthält keine kundenspezifischen VDA-Profilnamen", () => {
 test("Produktive JSON liegt bereits in der vom Editor exportierten Schema-v3-Normalform vor", async () => {
   const { normalizeProfileConfig } = await import("../src/profile-schema.js");
   const raw = config();
-  const normalized = normalizeProfileConfig(raw, "0.17.5");
+  const normalized = normalizeProfileConfig(raw, "0.17.6");
   assert.deepEqual(JSON.parse(JSON.stringify(normalized)), raw);
 });

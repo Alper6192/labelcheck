@@ -102,9 +102,15 @@
       </section>
 
       <section class="log-card">
-        <div class="log-head"><h2>Lokales Scanprotokoll</h2><div class="log-head-meta"><span id="logCount">0 Datensätze</span><button id="clearSentButton" class="log-clear-action" disabled>Gesendete leeren</button></div></div>
-        <div class="log-actions"><button id="newCsvButton" class="solid-action" disabled>Neue Teile senden</button><button id="allCsvButton" class="outline-action" disabled>Gesamtes Protokoll senden</button></div><div id="excelExportStatus" class="export-status" aria-live="polite"></div>
-        <div class="table-wrap"><table><thead><tr><th>Zeit</th><th>IDH Produkt</th><th>IDH VDA/TA</th><th>Batch Produkt</th><th>Batch VDA/TA</th><th>Lieferscheinnummer</th><th>Fassnummer</th><th>Gewicht Produkt</th><th>Gewicht VDA/TA</th><th>Ergebnis</th><th>Export</th></tr></thead><tbody id="logBody"></tbody></table></div>
+        <div class="log-head"><h2>Lokales Scanprotokoll</h2></div>
+        <div class="log-actions">
+          <button id="newCsvButton" class="solid-action" disabled>Neue Teile senden</button>
+          <button id="allCsvButton" class="outline-action" disabled>Gesamtes Protokoll senden</button>
+          <div id="logCount" class="log-count">0 Datensätze · 0 neu · 0 gesendet</div>
+          <button id="clearSentButton" class="outline-action log-clear-action" disabled>Gesendete leeren</button>
+        </div>
+        <div id="excelExportStatus" class="export-status" aria-live="polite"></div>
+        <div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Ergebnis</th><th>Manuell korrigiert</th><th>Lieferscheinnummer / TA-Nummer</th><th>Fassnummer</th><th>Batch Produkt</th><th>Batch VDA / TA</th><th>IDH Produkt</th><th>IDH VDA / TA</th><th>Gewicht Produkt</th><th>Gewicht VDA / TA</th><th>Labelprofil - VDA / TA</th></tr></thead><tbody id="logBody"></tbody></table></div>
       </section>
     </main>
 

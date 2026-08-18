@@ -4,9 +4,17 @@ import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("../src/excel-export.js", import.meta.url), "utf8");
 
-test("CSV enthält die gewünschten Protokollspalten", () => {
-  for (const header of ["Batch Produkt", "Batch Lieferschein", "IDH Produkt", "IDH Lieferschein", "Gewicht Produkt", "Gewicht Lieferschein", "Lieferscheinnummer", "Zeit", "Ergebnis", "Lieferscheinprofil"]) {
-    assert.equal(source.includes(header), true, `${header} fehlt im CSV-Export.`);
+test("CSV enthält die gewünschten Protokollspalten in der neuen Benennung", () => {
+  const headers = [
+    "Zeit", "Ergebnis", "Manuell korrigiert", "Lieferscheinnummer / TA-Nummer",
+    "Fassnummer", "Batch Produkt", "Batch VDA / TA", "IDH Produkt",
+    "IDH VDA / TA", "Gewicht Produkt", "Gewicht VDA / TA", "Labelprofil - VDA / TA"
+  ];
+  let previous = -1;
+  for (const header of headers) {
+    const index = source.indexOf(`\"${header}\"`);
+    assert.ok(index > previous, `${header} fehlt oder steht in der falschen Reihenfolge.`);
+    previous = index;
   }
 });
 
@@ -19,8 +27,9 @@ test("CSV-Dateiname ist exakt Labelcheck_YYYY-MM-DD_HH-MM-SS.csv", () => {
   assert.match(source, /Labelcheck_\$\{date\.getFullYear\(\)\}/);
   assert.match(source, /getSeconds\(\)/);
   assert.match(source, /\.csv`/);
-  assert.match(source, /title:\s*file\.name/);
-  assert.match(source, /text:\s*file\.name/);
+  assert.match(source, /navigatorLike\.share\(\{ files: \[file\] \}\)/);
+  assert.doesNotMatch(source, /title:\s*file\.name/);
+  assert.doesNotMatch(source, /text:\s*file\.name/);
 });
 
 test("Export verwendet nur CSV und keine XLSX-Datei", () => {

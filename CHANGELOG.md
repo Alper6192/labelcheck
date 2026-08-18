@@ -1,4 +1,13 @@
-# LabelCheck 0.17.5
+# LabelCheck 0.17.6
+
+## 0.17.6 – Protokoll- und Export-Feinschliff
+
+- iOS teilt nur noch die CSV-Datei; zusätzlicher Text-Payload wurde entfernt.
+- CSV- und App-Protokollspalten entsprechen der neuen Reihenfolge und Benennung.
+- Nach erfolgreicher Datensatzübernahme werden beide Fotos und Analysezustände zurückgesetzt.
+- Exportzähler steht unter „Gesamtes Protokoll senden“; der redundante Hinweis zu offenen neuen Teilen entfällt.
+- „Gesendete leeren“ steht im selben Exportblock; alle drei Aktionen sind gleich breit.
+- Produktive Profilkonfiguration auf die vom Nutzer bereitgestellte aktuelle Konfiguration übernommen.
 
 ## 0.17.5 – Editor-Feinschliff
 - "Aktuelle Auswahl" als vertikale Liste mit gleich breiten Feldbuttons.

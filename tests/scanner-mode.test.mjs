@@ -44,10 +44,12 @@ test("Bildqualität wird nur als Hinweis dargestellt", () => {
   assert.match(source, /slot\.prepared\?\.quality\?\.rating/);
 });
 
-test("Speichern wird nach einer erfolgreichen Übernahme gesperrt", () => {
-  assert.match(source, /currentSaved\s*=\s*true/);
+test("Nach einer erfolgreichen Übernahme startet ein neuer Scanzyklus", () => {
+  assert.match(source, /function resetScanCycleAfterSave\(\)/);
+  assert.match(source, /releasePreparedImage\(slot\.prepared\)/);
+  assert.match(source, /Object\.assign\(slot, createSlot\(key\)\)/);
+  assert.match(source, /records = await saveRecord\(record\);\s*resetScanCycleAfterSave\(\);/s);
   assert.match(source, /saveButton\.disabled\s*=\s*!comparison \|\| \(reviewRequired && !reviewConfirmed\) \|\| currentSaved \|\| saveInProgress/);
-  assert.match(source, /Datensatz übernommen/);
 });
 
 

@@ -1088,9 +1088,20 @@ main > .card:first-child .engine-badge {
 .labelcheck-app .log-head span { color: #666; font-size: .9rem; }
 .labelcheck-app .log-actions {
   padding: 8px 16px 0;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(260px, 380px);
+  gap: 8px;
+  justify-content: start;
+}
+.labelcheck-app .log-actions > button {
+  width: 100%;
+  min-height: 42px;
+}
+.labelcheck-app .log-count {
+  width: 100%;
+  padding: 0 2px 2px;
+  color: #666;
+  font-size: .9rem;
 }
 .labelcheck-app .table-wrap {
   margin: 12px 16px 0;
@@ -1384,7 +1395,7 @@ main > .card:first-child .engine-badge {
   -webkit-overflow-scrolling: touch;
 }
 .labelcheck-app .log-card table {
-  min-width: 1280px;
+  min-width: 1560px;
 }
 .labelcheck-app .log-card th,
 .labelcheck-app .log-card td {
@@ -1423,42 +1434,21 @@ main > .card:first-child .engine-badge {
 .labelcheck-app .log-row-sent {
   opacity: .62;
 }
-.labelcheck-app .log-row-sent td:last-child {
-  font-weight: 700;
-  white-space: nowrap;
-}
 .labelcheck-app .slot-status.warn {
   border-color: #d6a200;
 }
 
 
-/* v0.16.19 – robuster Exportstatus mit klarer OneDrive-Bestätigung */
-.labelcheck-app .log-head-meta {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
+/* v0.17.6 – kompakter Exportblock unter dem Scanprotokoll */
 .labelcheck-app .log-clear-action {
-  min-height: 30px;
-  padding: 5px 9px;
-  border: 1px solid #c9c9c9;
-  border-radius: 6px;
-  background: #fff;
-  color: #555;
-  font: inherit;
-  font-size: .82rem;
-  font-weight: 700;
-  cursor: pointer;
+  width: 100%;
 }
 .labelcheck-app .log-clear-action:disabled {
   opacity: .45;
   cursor: default;
 }
 @media (max-width: 640px) {
-  .labelcheck-app .log-head { align-items: flex-start; }
-  .labelcheck-app .log-head-meta { max-width: 58%; }
+  .labelcheck-app .log-actions { grid-template-columns: 1fr; }
 }
 
 /* Erweiterter Profileditor 0.17 */

@@ -16,7 +16,7 @@ import { detectQrProfile } from "./qr-engine.js";
 import { applyManualValue, autoSelectProfile, extractProfileFields, extractQrProfileFields, loadProfiles } from "./profile-engine.js";
 import { compareExtractions } from "./comparison.js";
 import { clearExportedRecords, clearPendingExport, loadPendingExport, loadRecords, markRecordsExported, savePendingExport, saveRecord } from "./storage.js";
-import { exportRecords } from "./excel-export.js";
+import { exportRecords, manualCorrectionLabel } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
 
 const crashRecovery = recoverCompatibilityMode();
@@ -570,7 +570,6 @@ function renderAll() {
   const sentCount = records.length - unsentCount;
   const pendingRows = getPendingRows();
   const pendingConfirmRows = getPendingConfirmationRows();
-  const waitingCount = getWaitingNewRows().length;
   const newCsvButton = el("newCsvButton");
   const allCsvButton = el("allCsvButton");
   const clearSentButton = el("clearSentButton");
@@ -605,15 +604,9 @@ function renderAll() {
 
   const exportStatus = el("excelExportStatus");
   if (exportStatus) {
-    if (pendingConfirmRows.length) {
-      exportStatus.textContent = waitingCount
-        ? `${pendingConfirmRows.length} Teile warten auf Bestätigung · ${waitingCount} neue Teile warten auf den nächsten Export.`
-        : `${pendingConfirmRows.length} Teile warten auf Bestätigung. Nach dem Speichern in OneDrive bitte bestätigen.`;
-    } else {
-      exportStatus.textContent = unsentCount
-        ? `${unsentCount} neue Teile sind noch nicht gesendet.`
-        : sentCount ? "Alle vorhandenen Teile sind als gesendet bestätigt." : "";
-    }
+    exportStatus.textContent = pendingConfirmRows.length
+      ? `${pendingConfirmRows.length} Teile warten auf Bestätigung. Nach dem Speichern in OneDrive bitte bestätigen.`
+      : "";
   }
 }
 
@@ -646,6 +639,23 @@ function renderSlot(key) {
   renderFieldEditor(el(`${key}Fields`), slot.extraction, (field, value) => editField(key, field, value));
 }
 
+function resetScanCycleAfterSave() {
+  for (const key of ["product", "vda"]) {
+    const slot = slots[key];
+    releasePreparedImage(slot.prepared);
+    Object.assign(slot, createSlot(key));
+    const profileSelect = el(`${key}Profile`);
+    if (profileSelect) profileSelect.value = "";
+    const galleryInput = el(`${key}Input`);
+    const cameraInput = el(`${key}CameraInput`);
+    if (galleryInput) galleryInput.value = "";
+    if (cameraInput) cameraInput.value = "";
+  }
+  comparison = null;
+  currentSaved = false;
+  resetOperatorReview();
+}
+
 async function storeCurrent() {
   if (!comparison || (comparison.status === "review" && !reviewConfirmed) || currentSaved || saveInProgress) return;
   saveInProgress = true;
@@ -670,7 +680,7 @@ async function storeCurrent() {
   };
   try {
     records = await saveRecord(record);
-    currentSaved = true;
+    resetScanCycleAfterSave();
   } catch (error) {
     currentSaved = false;
     alert(`Datensatz konnte nicht gespeichert werden: ${safeError(error)}`);
@@ -790,16 +800,17 @@ function renderLog() {
     const drumNumber = record.product?.drum_number || record.vda?.drum_number || "–";
     const cells = [
       new Date(record.timestamp).toLocaleString(),
-      record.product?.idh || "–",
-      record.vda?.idh || "–",
-      record.product?.batch || "–",
-      record.vda?.batch || "–",
+      record.result || "–",
+      manualCorrectionLabel(record) || "–",
       record.vda?.delivery_note || "–",
       drumNumber,
+      record.product?.batch || "–",
+      record.vda?.batch || "–",
+      record.product?.idh || "–",
+      record.vda?.idh || "–",
       record.product?.weight || "–",
       record.vda?.weight || "–",
-      record.result || "–",
-      record.exportedAt ? "✓ gesendet" : "neu"
+      record.vdaProfile || "–"
     ];
     cells.forEach((value) => {
       const cell = document.createElement("td");
