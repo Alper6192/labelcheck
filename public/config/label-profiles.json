@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.2",
-  "exportedAt": "2026-08-19T09:15:43.646580Z",
+  "exportedAt": "2026-08-19T09:31:14.390Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -402,8 +402,8 @@
           "label": "Fassnummer",
           "required": true,
           "compare": false,
-          "regex": "^\\d{4}$",
-          "sourceRegex": "^(?:[/|I1]?\\s*)?\\d{4}$",
+          "regex": "^\\d{3,4}$",
+          "sourceRegex": "^(?:[/|I1]?\\s*)?\\d{3,4}$",
           "normalizer": "last_digits",
           "digits": 4,
           "neighbor": {
@@ -413,7 +413,6 @@
             ],
             "maxDistance": 6
           },
-          "adjacentTo": "batch",
           "poly": [
             [
               0.6889848484848484,
