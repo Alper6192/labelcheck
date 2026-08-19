@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.0",
-  "exportedAt": "2026-08-19T07:10:38.188Z",
+  "exportedAt": "2026-08-19T07:13:02.203Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1761,19 +1761,19 @@
           "normalizer": "weight",
           "poly": [
             [
-              0.7053346984720026,
+              0.6754453465536235,
               0.389240440037681
             ],
             [
-              0.7676707620826746,
+              0.7377814101642955,
               0.389240440037681
             ],
             [
-              0.7676707620826746,
+              0.7377814101642955,
               0.4237358815921828
             ],
             [
-              0.7053346984720026,
+              0.6754453465536235,
               0.4237358815921828
             ]
           ],
@@ -1788,7 +1788,7 @@
             "direction": "below",
             "maxDistance": 4.1,
             "minAliasScore": 0.65,
-            "strict": true,
+            "strict": false,
             "preferRightmost": false,
             "preferLeftmost": true,
             "preferUnit": false,
