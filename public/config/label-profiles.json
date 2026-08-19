@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.2",
-  "exportedAt": "2026-08-19T09:31:14.390Z",
+  "exportedAt": "2026-08-19T09:38:23.939Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -411,7 +411,7 @@
             "directions": [
               "right"
             ],
-            "maxDistance": 6
+            "maxDistance": 2
           },
           "poly": [
             [
@@ -430,7 +430,20 @@
               0.6889848484848484,
               0.4956566273082387
             ]
-          ]
+          ],
+          "locator": {
+            "aliases": [
+              "Batch No.:"
+            ],
+            "direction": "right",
+            "maxDistance": 7,
+            "minAliasScore": 0.72,
+            "strict": false,
+            "preferRightmost": false,
+            "preferLeftmost": false,
+            "preferUnit": false,
+            "preferBatch": false
+          }
         },
         {
           "key": "idh",
