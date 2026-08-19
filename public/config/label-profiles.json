@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.2",
-  "exportedAt": "2026-08-19T09:41:19.211Z",
+  "exportedAt": "2026-08-19T09:45:29.986Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -403,7 +403,7 @@
           "required": true,
           "compare": false,
           "regex": "^\\d{3,4}$",
-          "sourceRegex": "^(?:[/|I1]?\\s*)?\\d{3,4}$",
+          "sourceRegex": "^[/|I1]\\s*\\d{3,4}$",
           "normalizer": "last_digits",
           "digits": 4,
           "neighbor": {
@@ -430,20 +430,7 @@
               0.6889848484848484,
               0.4956566273082387
             ]
-          ],
-          "locator": {
-            "aliases": [
-              "/"
-            ],
-            "direction": "right",
-            "maxDistance": 1,
-            "minAliasScore": 0.72,
-            "strict": true,
-            "preferRightmost": false,
-            "preferLeftmost": true,
-            "preferUnit": false,
-            "preferBatch": false
-          }
+          ]
         },
         {
           "key": "idh",
