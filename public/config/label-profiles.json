@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.2",
-  "exportedAt": "2026-08-19T09:38:23.939Z",
+  "exportedAt": "2026-08-19T09:41:19.211Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -433,14 +433,14 @@
           ],
           "locator": {
             "aliases": [
-              "Batch No.:"
+              "/"
             ],
             "direction": "right",
-            "maxDistance": 7,
+            "maxDistance": 1,
             "minAliasScore": 0.72,
-            "strict": false,
+            "strict": true,
             "preferRightmost": false,
-            "preferLeftmost": false,
+            "preferLeftmost": true,
             "preferUnit": false,
             "preferBatch": false
           }
