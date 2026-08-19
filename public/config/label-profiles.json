@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.0",
-  "exportedAt": "2026-08-19T07:13:02.203Z",
+  "exportedAt": "2026-08-19T08:37:36.908Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -488,7 +488,14 @@
           ],
           "digits": 4,
           "strategy": "unit_required_weight",
-          "searchRadius": 2.4
+          "searchRadius": 2.4,
+          "neighbor": {
+            "field": "idh",
+            "directions": [
+              "below"
+            ],
+            "maxDistance": 3
+          }
         }
       ]
     },
@@ -1930,9 +1937,9 @@
           "label": "Gewicht",
           "required": true,
           "compare": true,
-          "regex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "sourceRegex": "^\\d+(?:[.,]\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
-          "normalizer": "weight",
+          "regex": "^(?:\\d+|\\d{1,3}(?:\\.\\d{3})+)(?:,\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "sourceRegex": "^(?:\\d+|\\d{1,3}(?:\\.\\d{3})+)(?:,\\d+)?(?:\\s*(?:KG|KGM|G|L|LTR))?$",
+          "normalizer": "text",
           "poly": [
             [
               0.5813333333333333,
@@ -2370,34 +2377,6 @@
               0.6925858585858585
             ]
           ]
-        },
-        {
-          "key": "idh",
-          "label": "IDH",
-          "required": true,
-          "compare": true,
-          "regex": "^\\d{5,8}$",
-          "sourceRegex": "^\\d{5,8}$",
-          "normalizer": "digits",
-          "poly": [
-            [
-              0.2279999537612453,
-              0.41723232323232323
-            ],
-            [
-              0.30571207497336644,
-              0.41723232323232323
-            ],
-            [
-              0.30571207497336644,
-              0.4573131313131313
-            ],
-            [
-              0.2279999537612453,
-              0.4573131313131313
-            ]
-          ],
-          "minOverlap": 0.05
         },
         {
           "key": "weight",
