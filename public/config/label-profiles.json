@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.0",
-  "exportedAt": "2026-08-18T13:25:57.687Z",
+  "exportedAt": "2026-08-19T07:06:52.439Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1761,32 +1761,32 @@
           "normalizer": "weight",
           "poly": [
             [
-              0.7091666666666666,
-              0.378
+              0.7053346984720026,
+              0.389240440037681
             ],
             [
-              0.7791666666666667,
-              0.378
+              0.7676707620826746,
+              0.389240440037681
             ],
             [
-              0.7791666666666667,
-              0.43088888888888893
+              0.7676707620826746,
+              0.4237358815921828
             ],
             [
-              0.7091666666666666,
-              0.43088888888888893
+              0.7053346984720026,
+              0.4237358815921828
             ]
           ],
           "digits": 4,
-          "searchRadius": 1.8,
+          "searchRadius": 1,
           "minOverlap": 0,
           "locator": {
             "aliases": [
-              "NETTO"
+              "NETTO KG"
             ],
             "direction": "below",
             "maxDistance": 3,
-            "minAliasScore": 0.4,
+            "minAliasScore": 0.65,
             "strict": false,
             "preferRightmost": false,
             "preferLeftmost": false,
