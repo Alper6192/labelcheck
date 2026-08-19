@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.0",
-  "exportedAt": "2026-08-19T07:06:52.439Z",
+  "exportedAt": "2026-08-19T07:10:38.188Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -1782,14 +1782,15 @@
           "minOverlap": 0,
           "locator": {
             "aliases": [
-              "NETTO KG"
+              "NETTO KG",
+              "NETTO"
             ],
             "direction": "below",
-            "maxDistance": 3,
+            "maxDistance": 4.1,
             "minAliasScore": 0.65,
-            "strict": false,
+            "strict": true,
             "preferRightmost": false,
-            "preferLeftmost": false,
+            "preferLeftmost": true,
             "preferUnit": false,
             "preferBatch": false
           }
