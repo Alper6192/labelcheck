@@ -78,7 +78,7 @@ export function createProfile(role = "vda", index = 1) {
     },
     validation: {
       minAnchorScore: 0.55,
-      requiredValidFields: product ? ["batch"] : [],
+      requiredValidFields: [],
       errorMessage: product
         ? "Kein gültiges Produktlabel erkannt. Bitte das Produktlabel vollständig und gut lesbar fotografieren."
         : ""
@@ -126,7 +126,10 @@ export function normalizeProfileConfig(raw, appVersion = "") {
 export function normalizeProfile(profile, index = 0) {
   const role = profile?.role === "product" ? "product" : "vda";
   const fallback = createProfile(role, index + 1);
-  const fields = Array.isArray(profile?.fields) ? profile.fields : [];
+  const fields = (Array.isArray(profile?.fields) ? profile.fields : [])
+    .filter((field) => FIELD_PRESETS[field?.key])
+    .map((field) => normalizeField(field));
+  const fieldKeys = new Set(fields.map((field) => field.key));
   const source = normalizeProfileSource(profile?.source);
   return {
     id: String(profile?.id || fallback.id),
@@ -135,11 +138,9 @@ export function normalizeProfile(profile, index = 0) {
     active: profile?.active !== false,
     source,
     detection: normalizeProfileDetection(profile?.detection),
-    validation: normalizeProfileValidation(profile?.validation, role),
+    validation: normalizeProfileValidation(profile?.validation, role, fieldKeys),
     anchor: normalizeAnchor(profile?.anchor),
-    fields: fields
-      .filter((field) => FIELD_PRESETS[field?.key])
-      .map((field) => normalizeField(field))
+    fields: fields.map((field) => normalizeFieldReferences(field, fieldKeys))
   };
 }
 
@@ -288,6 +289,17 @@ function normalizeAnchor(anchor) {
   };
 }
 
+function normalizeFieldReferences(field, fieldKeys) {
+  const normalized = { ...field };
+  if (normalized.neighbor?.field && !fieldKeys.has(normalized.neighbor.field)) {
+    normalized.neighbor = undefined;
+  }
+  if (normalized.adjacentTo && !fieldKeys.has(normalized.adjacentTo)) {
+    normalized.adjacentTo = undefined;
+  }
+  return normalized;
+}
+
 function normalizeProfileDetection(detection) {
   const value = detection && typeof detection === "object" ? detection : {};
   const minScore = Number(value.minScore);
@@ -299,12 +311,12 @@ function normalizeProfileDetection(detection) {
   };
 }
 
-function normalizeProfileValidation(validation, role) {
+function normalizeProfileValidation(validation, role, fieldKeys = new Set()) {
   const value = validation && typeof validation === "object" ? validation : {};
   const minAnchorScore = Number(value.minAnchorScore);
   const requiredValidFields = Array.isArray(value.requiredValidFields)
-    ? value.requiredValidFields.filter((key) => FIELD_PRESETS[key])
-    : role === "product" ? ["batch"] : [];
+    ? value.requiredValidFields.filter((key) => FIELD_PRESETS[key] && fieldKeys.has(key))
+    : [];
   return {
     minAnchorScore: Number.isFinite(minAnchorScore) ? clamp(minAnchorScore, 0, 1) : 0.55,
     requiredValidFields,
@@ -350,7 +362,7 @@ function normalizeQrParser(parser) {
   }
   return {
     requiredFields: Array.isArray(value.requiredFields)
-      ? value.requiredFields.filter((key) => FIELD_PRESETS[key])
+      ? value.requiredFields.filter((key) => FIELD_PRESETS[key] && fields[key])
       : [],
     fields
   };

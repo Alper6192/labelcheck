@@ -382,9 +382,12 @@ function renderProfileMeta() {
   el("detectionMinScore").value = Number(profile?.detection?.minScore ?? 0.55);
   el("validationMinAnchorScore").value = Number(profile?.validation?.minAnchorScore ?? 0.55);
   el("validationErrorMessage").value = profile?.validation?.errorMessage || "";
-  const required = new Set(profile?.validation?.requiredValidFields || []);
+  const assignedFieldKeys = new Set((profile?.fields || []).map((field) => field.key));
+  const required = new Set((profile?.validation?.requiredValidFields || []).filter((key) => assignedFieldKeys.has(key)));
   document.querySelectorAll("[data-required-valid-field]").forEach((node) => {
-    node.checked = required.has(node.dataset.requiredValidField);
+    const exists = assignedFieldKeys.has(node.dataset.requiredValidField);
+    node.checked = exists && required.has(node.dataset.requiredValidField);
+    node.disabled = disabled || !exists;
   });
 
   const qr = profile?.source?.type === "qr";
@@ -428,8 +431,10 @@ function updateProfileMeta() {
 
   profile.validation = profile.validation || {};
   profile.validation.minAnchorScore = clamp01Number(el("validationMinAnchorScore").value, 0.55);
+  const assignedFieldKeys = new Set((profile.fields || []).map((field) => field.key));
   profile.validation.requiredValidFields = Array.from(document.querySelectorAll("[data-required-valid-field]:checked"))
-    .map((node) => node.dataset.requiredValidField);
+    .map((node) => node.dataset.requiredValidField)
+    .filter((key) => assignedFieldKeys.has(key));
   profile.validation.errorMessage = el("validationErrorMessage").value.trim();
 
   if (profile.id !== previousId) {
@@ -598,6 +603,8 @@ function updateQrRulesFromDom() {
     const requiredChecked = card.querySelector("[data-qr-required]")?.checked === true;
     if (!enabled) {
       profile.fields = (profile.fields || []).filter((field) => field.key !== key);
+      profile.validation = profile.validation || { minAnchorScore: 0.55, requiredValidFields: [], errorMessage: "" };
+      profile.validation.requiredValidFields = (profile.validation.requiredValidFields || []).filter((fieldKey) => fieldKey !== key);
       continue;
     }
     if (!findField(profile, key)) upsertField(profile, createField(key));
@@ -1053,6 +1060,7 @@ function assignField(key) {
   session.selection = null;
   markDirty();
   setMode("edit");
+  renderProfileMeta();
   renderAssignments();
   renderProperties();
 }
@@ -1370,6 +1378,12 @@ function deleteSelectedAssignment() {
   if (assignment.type === "anchor") profile.anchor.poly = [];
   else {
     profile.fields = profile.fields.filter((field) => field.key !== assignment.key);
+    profile.validation = profile.validation || { minAnchorScore: 0.55, requiredValidFields: [], errorMessage: "" };
+    profile.validation.requiredValidFields = (profile.validation.requiredValidFields || []).filter((key) => key !== assignment.key);
+    for (const field of profile.fields) {
+      if (field.neighbor?.field === assignment.key) field.neighbor = undefined;
+      if (field.adjacentTo === assignment.key) field.adjacentTo = undefined;
+    }
     if (profile.source?.type === "qr") {
       const source = ensureQrSource(profile);
       delete source.parser.fields[assignment.key];
@@ -1379,6 +1393,7 @@ function deleteSelectedAssignment() {
   }
   state.selectedAssignment = null;
   markDirty();
+  renderProfileMeta();
   renderAssignments();
   renderProperties();
   drawOverlay();

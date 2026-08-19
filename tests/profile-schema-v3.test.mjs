@@ -15,6 +15,10 @@ test("Schema v3 erhält erweiterte OCR-Strategie-, Locator- und Erkennungsparame
         fallbacks: [{ aliases: ["ALT"], localizeAlias: true, scaleFrom: "width", alignFrom: "center", poly: [[.2,.2],[.3,.2],[.3,.3],[.2,.3]] }]
       },
       fields: [{
+        key: "batch", label: "Batch", required: true, compare: true,
+        regex: "^D\\d+$", sourceRegex: "^D\\d+$", normalizer: "batch",
+        poly: [[.2,.3],[.3,.3],[.3,.35],[.2,.35]]
+      }, {
         key: "weight", label: "Gewicht", required: true, compare: true,
         regex: "^\\d+ KG$", sourceRegex: "^\\d+ KG$", normalizer: "weight",
         strategy: "quantity_weight", fallbackStrategy: "net_pair", strategyUnits: ["KGM", "LTR"],
@@ -35,7 +39,7 @@ test("Schema v3 erhält erweiterte OCR-Strategie-, Locator- und Erkennungsparame
   assert.equal(profile.anchor.scaleFrom, "height");
   assert.equal(profile.anchor.alignFrom, "left");
   assert.equal(profile.anchor.fallbacks.length, 1);
-  const field = profile.fields[0];
+  const field = profile.fields.find((entry) => entry.key === "weight");
   assert.equal(field.strategy, "quantity_weight");
   assert.equal(field.fallbackStrategy, "net_pair");
   assert.deepEqual(field.strategyUnits, ["KGM", "LTR"]);
@@ -77,4 +81,26 @@ test("Schema v3 erhält QR-Suchbereiche und frei definierte Parserregeln", () =>
   assert.deepEqual(source.parser.requiredFields, ["batch", "weight"]);
   assert.equal(source.parser.fields.weight.secondaryDefault, "KG");
   assert.deepEqual(source.parser.fields.weight.replacements, [{ from: "KGM", to: "KG" }]);
+});
+
+
+test("Schema entfernt Pflichtreferenzen auf nicht angelegte Felder", () => {
+  const normalized = normalizeProfileConfig({ profiles: [{
+    id: "OPTIONAL", name: "Optional", role: "vda", active: true,
+    source: { type: "ocr" }, detection: {},
+    validation: { requiredValidFields: ["batch", "idh", "weight"] },
+    anchor: { aliases: ["A"], poly: [[0,0],[.1,0],[.1,.1],[0,.1]] },
+    fields: [{ key: "batch", label: "Batch", required: true, compare: true, regex: "^D\\d+$", sourceRegex: "^D\\d+$", normalizer: "batch", poly: [[.1,.1],[.2,.1],[.2,.2],[.1,.2]] }]
+  }] }, "1.0.1");
+  assert.deepEqual(normalized.profiles[0].validation.requiredValidFields, ["batch"]);
+});
+
+test("Schema entfernt QR-Pflichtfelder ohne Parserregel", () => {
+  const normalized = normalizeProfileConfig({ profiles: [{
+    id: "QR_OPTIONAL", name: "QR Optional", role: "vda", active: true,
+    source: { type: "qr", parser: { requiredFields: ["batch", "idh"], fields: { batch: { primaryRegex: "B:(D\\d+)", primaryGroup: 1 } } } },
+    detection: {}, validation: { requiredValidFields: [] }, anchor: { aliases: [], poly: [] },
+    fields: [{ key: "batch", label: "Batch", required: true, compare: true, regex: "^D\\d+$", sourceRegex: "^D\\d+$", normalizer: "batch", poly: [] }]
+  }] }, "1.0.1");
+  assert.deepEqual(normalized.profiles[0].source.parser.requiredFields, ["batch"]);
 });

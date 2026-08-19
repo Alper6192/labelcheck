@@ -1,4 +1,10 @@
-# LabelCheck 1.0.0
+# LabelCheck 1.0.1
+
+## 1.0.1 – Editor-Konfiguration optionaler Felder
+- Nicht angelegte Felder werden beim Export automatisch aus Labelvalidierung und QR-Pflichtfeldern entfernt.
+- Beim Löschen eines Feldes werden veraltete Pflicht- und Nachbarfeld-Referenzen ebenfalls entfernt.
+- Neue Profile starten ohne implizite Pflichtfelder.
+- Produktive Konfigurationstests erzwingen keine profilspezifischen optionalen Felder mehr.
 
 ## 1.0.0 – Produktivversion
 - Versionssprung auf 1.0.0.

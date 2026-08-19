@@ -145,3 +145,10 @@ test("Englische Transportauftrag-Übersetzung verwendet TO statt TA", () => {
   assert.match(editorI18n, /Transport Order/);
   assert.doesNotMatch(editorI18n, /VDA\/TA label/);
 });
+
+
+test("Editor macht nur angelegte Felder zu Validierungs-Pflichtfeldern", () => {
+  assert.match(editorSource, /assignedFieldKeys\.has\(node\.dataset\.requiredValidField\)/);
+  assert.match(editorSource, /filter\(\(key\) => assignedFieldKeys\.has\(key\)\)/);
+  assert.match(editorSource, /requiredValidFields = \(profile\.validation\.requiredValidFields \|\| \[\]\)\.filter/);
+});
