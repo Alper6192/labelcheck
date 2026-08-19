@@ -91,7 +91,7 @@ test("Schema entfernt Pflichtreferenzen auf nicht angelegte Felder", () => {
     validation: { requiredValidFields: ["batch", "idh", "weight"] },
     anchor: { aliases: ["A"], poly: [[0,0],[.1,0],[.1,.1],[0,.1]] },
     fields: [{ key: "batch", label: "Batch", required: true, compare: true, regex: "^D\\d+$", sourceRegex: "^D\\d+$", normalizer: "batch", poly: [[.1,.1],[.2,.1],[.2,.2],[.1,.2]] }]
-  }] }, "1.0.1");
+  }] }, "1.0.2");
   assert.deepEqual(normalized.profiles[0].validation.requiredValidFields, ["batch"]);
 });
 
@@ -101,6 +101,6 @@ test("Schema entfernt QR-Pflichtfelder ohne Parserregel", () => {
     source: { type: "qr", parser: { requiredFields: ["batch", "idh"], fields: { batch: { primaryRegex: "B:(D\\d+)", primaryGroup: 1 } } } },
     detection: {}, validation: { requiredValidFields: [] }, anchor: { aliases: [], poly: [] },
     fields: [{ key: "batch", label: "Batch", required: true, compare: true, regex: "^D\\d+$", sourceRegex: "^D\\d+$", normalizer: "batch", poly: [] }]
-  }] }, "1.0.1");
+  }] }, "1.0.2");
   assert.deepEqual(normalized.profiles[0].source.parser.requiredFields, ["batch"]);
 });

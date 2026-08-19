@@ -773,10 +773,10 @@ test("Fehlende IDH und fehlendes Gewicht blockieren die Batch-Freigabe nicht", (
 });
 
 
-test("Erkennungsquote unter 60 Prozent erzwingt Bedienerprüfung", () => {
+test("Erkennungsquote unter 80 Prozent erzwingt Bedienerprüfung", () => {
   const left = { fields: {
     batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" },
-    weight: { value: "25 KG", valid: true, confidence: 0.59, source: "ocr" }
+    weight: { value: "25 KG", valid: true, confidence: 0.79, source: "ocr" }
   }};
   const right = { fields: {
     batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" }
@@ -785,12 +785,12 @@ test("Erkennungsquote unter 60 Prozent erzwingt Bedienerprüfung", () => {
   assert.equal(comparison.status, "review");
   assert.match(comparison.message, /ÜBERPRÜFEN/);
   assert.match(comparison.message, /Gewicht Produkt/);
-  assert.match(comparison.message, /59 %/);
+  assert.match(comparison.message, /79 %/);
 });
 
 test("Batch-Abweichung wird auch bei zusätzlichem Prüfgrund als echte Abweichung markiert", () => {
   const left = { fields: {
-    batch: { value: "D562808695", valid: true, confidence: 0.59, source: "ocr" }
+    batch: { value: "D562808695", valid: true, confidence: 0.79, source: "ocr" }
   }};
   const right = { fields: {
     batch: { value: "D562808696", valid: true, confidence: 0.99, source: "ocr" }
@@ -801,10 +801,10 @@ test("Batch-Abweichung wird auch bei zusätzlichem Prüfgrund als echte Abweichu
   assert.equal(comparison.rows[0].status, "mismatch");
 });
 
-test("60 Prozent Erkennungsquote löst noch keine zusätzliche Prüfung aus", () => {
+test("80 Prozent Erkennungsquote löst noch keine zusätzliche Prüfung aus", () => {
   const left = { fields: {
     batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" },
-    weight: { value: "25 KG", valid: true, confidence: 0.60, source: "ocr" }
+    weight: { value: "25 KG", valid: true, confidence: 0.80, source: "ocr" }
   }};
   const right = { fields: {
     batch: { value: "D562808695", valid: true, confidence: 0.99, source: "ocr" }
@@ -813,6 +813,51 @@ test("60 Prozent Erkennungsquote löst noch keine zusätzliche Prüfung aus", ()
   assert.equal(comparison.status, "released");
 });
 
+
+
+test("automatisch erkannter Feldwert unter 80 Prozent bleibt leer und verlangt manuelle Eingabe", () => {
+  const profile = {
+    id: "LOWCONF", name: "Low confidence", role: "vda", active: true,
+    anchor: { aliases: ["ANKER"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.2],[0.1,0.2]] },
+    fields: [
+      { key: "weight", label: "Gewicht", regex: "^\\d{1,4}$", sourceRegex: "^\\d{1,4}$", normalizer: "text", poly: [[0.5,0.4],[0.6,0.4],[0.6,0.5],[0.5,0.5]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("ANKER", .99, [[100,100],[300,100],[300,200],[100,200]]),
+    item("350", .79, [[500,400],[600,400],[600,500],[500,500]])
+  ], profile, { width: 1000, height: 1000 });
+  assert.equal(result.fields.weight.value, "");
+  assert.equal(result.fields.weight.recognizedValue, "350");
+  assert.equal(result.fields.weight.requiresManualInput, true);
+  assert.equal(result.fields.weight.confidence, .79);
+});
+
+test("automatisch erkannter Feldwert ab 80 Prozent wird übernommen", () => {
+  const profile = {
+    id: "OKCONF", name: "OK confidence", role: "vda", active: true,
+    anchor: { aliases: ["ANKER"], poly: [[0.1,0.1],[0.3,0.1],[0.3,0.2],[0.1,0.2]] },
+    fields: [
+      { key: "weight", label: "Gewicht", regex: "^\\d{1,4}$", sourceRegex: "^\\d{1,4}$", normalizer: "text", poly: [[0.5,0.4],[0.6,0.4],[0.6,0.5],[0.5,0.5]] }
+    ]
+  };
+  const result = extractProfileFields([
+    item("ANKER", .99, [[100,100],[300,100],[300,200],[100,200]]),
+    item("350", .80, [[500,400],[600,400],[600,500],[500,500]])
+  ], profile, { width: 1000, height: 1000 });
+  assert.equal(result.fields.weight.value, "350");
+  assert.equal(result.fields.weight.requiresManualInput, false);
+});
+
+test("nicht erkanntes konfiguriertes Feld verlangt manuelle Eingabe", () => {
+  const comparison = compareExtractions(
+    { fields: { batch: { value: "D562808695", valid: true, confidence: .99, source: "ocr" }, weight: { value: "", valid: false, confidence: 0, source: "missing", requiresManualInput: true } } },
+    { fields: { batch: { value: "D562808695", valid: true, confidence: .99, source: "ocr" } } }
+  );
+  assert.equal(comparison.status, "review");
+  assert.equal(comparison.manualInputRequiredFields.length, 1);
+  assert.match(comparison.message, /orange Felder manuell ausfüllen/);
+});
 
 test("manuelle Eingabe erzwingt vor der endgültigen Batchentscheidung eine Bedienerprüfung", () => {
   const left = { fields: {

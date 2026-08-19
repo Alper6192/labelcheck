@@ -1,4 +1,13 @@
-# LabelCheck 1.0.1
+# LabelCheck 1.0.2
+
+## 1.0.2 – Feldfreigabe erst ab 80 % Erkennungsquote
+
+- Automatisch erkannte Feldwerte unter 80 % werden nicht mehr übernommen.
+- Unsichere oder nicht erkannte, aber konfigurierte Felder bleiben leer und werden orange markiert.
+- Der Bediener muss orange Felder manuell mit einem gültigen Wert ausfüllen.
+- Erst danach kann die Bedienerprüfung bestätigt und der Datensatz übernommen werden.
+- Exakt 80 % werden weiterhin automatisch akzeptiert.
+
 
 ## 1.0.1 – Editor-Konfiguration optionaler Felder
 - Nicht angelegte Felder werden beim Export automatisch aus Labelvalidierung und QR-Pflichtfeldern entfernt.

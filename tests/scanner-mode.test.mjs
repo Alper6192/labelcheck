@@ -49,15 +49,22 @@ test("Nach einer erfolgreichen Übernahme startet ein neuer Scanzyklus", () => {
   assert.match(source, /releasePreparedImage\(slot\.prepared\)/);
   assert.match(source, /Object\.assign\(slot, createSlot\(key\)\)/);
   assert.match(source, /records = await saveRecord\(record\);\s*resetScanCycleAfterSave\(\);/s);
-  assert.match(source, /saveButton\.disabled\s*=\s*!comparison \|\| \(reviewRequired && !reviewConfirmed\) \|\| currentSaved \|\| saveInProgress/);
+  assert.match(source, /saveButton\.disabled\s*=\s*!comparison \|\| manualInputRequired \|\| \(reviewRequired && !reviewConfirmed\) \|\| currentSaved \|\| saveInProgress/);
 });
 
+
+test("Felder unter 80 Prozent oder ohne Erkennung müssen manuell ausgefüllt werden", () => {
+  assert.match(source, /manualInputRequiredFields/);
+  assert.match(source, /Orange Felder ausfüllen/);
+  assert.match(source, /manualInputRequired/);
+});
 
 test("Produktfoto wird ausschließlich über die Profilvalidierung aus JSON geprüft", () => {
   assert.match(source, /isVerifiedConfiguredLabel/);
   assert.match(source, /profile\.validation/);
   assert.match(source, /validation\.requiredValidFields/);
   assert.match(source, /validation\.minAnchorScore/);
+  assert.match(source, /field\.requiresManualInput/);
   assert.doesNotMatch(source, /HENKEL|isVerifiedProductLabel/);
 });
 

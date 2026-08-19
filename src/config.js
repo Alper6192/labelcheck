@@ -1,4 +1,8 @@
-export const APP_VERSION = "1.0.1";
+export const APP_VERSION = "1.0.2";
+
+// Automatisch erkannte Feldwerte werden erst ab 80 % übernommen.
+// Darunter bleibt das Feld leer und muss vom Bediener manuell bestätigt/eingetragen werden.
+export const FIELD_RECOGNITION_THRESHOLD = 0.80;
 
 export const MODEL_OPTIONS = {
   standard: {

@@ -1,5 +1,6 @@
 import { boundsFromPoly, normalizePoly } from "./utils.js";
 import { normalizeProfileConfig } from "./profile-schema.js";
+import { FIELD_RECOGNITION_THRESHOLD } from "./config.js";
 
 export async function loadProfileConfig() {
   const response = await fetch(new URL(`./config/label-profiles.json?t=${Date.now()}`, window.location.href), { cache: "no-store" });
@@ -86,6 +87,10 @@ export function extractProfileFields(items, profile, imageSize) {
     const raw = candidate?.text || "";
     let value = normalizeFieldValue(field.key, raw, field);
     let rejectedReason = "";
+    const confidence = Number(candidate?.score || 0);
+    let autoDetectedValid = Boolean(value && validateField(value, field.regex));
+    const recognizedValue = value;
+
     if (field.key === "weight" && value && !isWeightWithinGlobalLimit(value)) {
       // Globale Plausibilitätsgrenze für alle Profile: Vor dem Dezimaltrennzeichen
       // sind höchstens fünf Ziffern zulässig. So kann z. B. eine lange
@@ -93,20 +98,35 @@ export function extractProfileFields(items, profile, imageSize) {
       value = "";
       source = "weight-blocked";
       rejectedReason = "Gewicht mit mehr als 5 Ziffern verworfen";
+      autoDetectedValid = false;
     }
+
+    // Unter 80 % wird ein automatisch erkannter Wert bewusst nicht in das
+    // Eingabefeld übernommen. Der Rohwert und seine Quote bleiben als Hinweis
+    // erhalten, damit der Bediener weiß, warum eine manuelle Eingabe nötig ist.
+    const lowConfidence = Boolean(candidate && source !== "qr" && confidence < FIELD_RECOGNITION_THRESHOLD);
+    if (lowConfidence && value) {
+      value = "";
+      rejectedReason = `Erkennungsquote ${(confidence * 100).toFixed(1)} % – manuelle Eingabe erforderlich`;
+    }
+
     const valid = Boolean(value && validateField(value, field.regex));
+    const requiresManualInput = !value || lowConfidence || source === "weight-blocked" || source === "duplicate-blocked";
     fields[field.key] = {
       key: field.key,
       label: field.label || field.key,
       value,
       raw,
-      confidence: Number(candidate?.score || 0),
+      recognizedValue,
+      autoDetectedValid,
+      confidence,
       selectionScore: Number(candidate?.selectionScore ?? candidate?.score ?? 0),
       valid,
       required: Boolean(field.required),
       compare: Boolean(field.compare),
       source,
       rejectedReason,
+      requiresManualInput,
       poly: candidate?.poly || expected
     };
     overlays.push({ key: field.key, label: field.label || field.key, poly: candidate?.poly || expected, item: candidate || null });
@@ -129,18 +149,22 @@ export function extractQrProfileFields(profile, qrMatch) {
       source = "weight-blocked";
       rejectedReason = "Gewicht mit mehr als 5 Ziffern verworfen";
     }
+    const valid = Boolean(value && validateField(value, field.regex));
     fields[field.key] = {
       key: field.key,
       label: field.label || field.key,
       value,
       raw,
+      recognizedValue: value,
+      autoDetectedValid: valid,
       confidence: raw ? 1 : 0,
       selectionScore: raw ? 1 : 0,
-      valid: Boolean(value && validateField(value, field.regex)),
+      valid,
       required: Boolean(field.required),
       compare: Boolean(field.compare),
       source,
       rejectedReason,
+      requiresManualInput: !value || source === "weight-blocked",
       poly: qrMatch.poly || []
     };
   }
@@ -179,6 +203,7 @@ export function applyManualValue(extraction, key, value) {
   field.rejectedReason = "";
   field.blockedDuplicateOf = "";
   field.valid = Boolean(field.value && validateField(field.value, configField.regex));
+  field.requiresManualInput = !field.valid;
   extraction.validationIssues = collectValidationIssues(extraction.fields);
   return { ok: true };
 }
@@ -278,6 +303,7 @@ function enforceUniqueFieldValues(fields) {
       field.source = "duplicate-blocked";
       field.blockedDuplicateOf = winner.key;
       field.rejectedReason = `Doppelbelegung mit ${winner.label || winner.key} verhindert`;
+      field.requiresManualInput = true;
     }
   }
 

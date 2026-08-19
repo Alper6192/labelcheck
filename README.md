@@ -1,8 +1,8 @@
-# LabelCheck 1.0.1
+# LabelCheck 1.0.2
 
 LabelCheck prüft weiterhin immer **ein Produktlabel** gegen **ein VDA-/TA-Label**. Die Bedienoberfläche, Freigabelogik, Kamera, Bedienerprüfung, Scanprotokoll und CSV-Funktion bleiben wie in 0.16.22. Seit 0.17.0 ist die Profilarchitektur vollständig konfigurationsgesteuert: **alle labelabhängigen Erkennungsregeln liegen in `public/config/label-profiles.json` und können vollständig im erweiterten Profileditor gepflegt werden.**
 
-## Profileditor 1.0.1
+## Profileditor 1.0.2
 Der erweiterte Profileditor ist jetzt auf Deutsch und Englisch umschaltbar, logisch gruppiert und mit kontextbezogenen ?-Hilfen versehen. Technische Alt-Funktionen wurden aus der Oberfläche entfernt. Feldspezifische Bereinigung und Strategien werden nur dort angeboten, wo sie fachlich sinnvoll sind. Nachbarfelder können generisch relativ zu Batch, Fassnummer, IDH oder Gewicht mit den Richtungen links/rechts/oben/unten konfiguriert werden. Feldzonen erhalten beim Übernehmen fest 10 % Rand.
 
 ## Editor-Stabilität 0.17.1
@@ -107,3 +107,7 @@ npm run build
 ```
 
 GitHub Pages veröffentlicht anschließend den erzeugten `dist`-Ordner über den enthaltenen GitHub-Actions-Workflow.
+
+## Feldsicherheit ab 1.0.2
+
+Automatisch erkannte Feldwerte werden erst ab einer Erkennungsquote von 80 % übernommen. Unterhalb dieser Grenze oder bei fehlender Erkennung bleibt das konfigurierte Feld leer und wird orange markiert. Der Bediener muss einen gültigen Wert manuell eintragen; erst danach kann eine erforderliche Bedienerprüfung bestätigt und der Datensatz übernommen werden. Nicht angelegte Felder sind davon nicht betroffen.

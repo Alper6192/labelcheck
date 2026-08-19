@@ -1721,3 +1721,17 @@ main > .card:first-child .engine-badge {
 /* v1.0.0 – finaler Protokollblock: Statuszeile entfernt */
 .labelcheck-app .log-actions { margin-bottom: 0; }
 .labelcheck-app .log-actions + .table-wrap { margin-top: 10px; }
+
+/* v1.0.2 – unsichere / fehlende Felder verlangen eine manuelle Eingabe */
+.labelcheck-app .field-card.manual-required {
+  border: 3px solid #f59e0b !important;
+  background: #fff7e6 !important;
+}
+.labelcheck-app .field-card.manual-required input {
+  border: 2px solid #f59e0b !important;
+  background: #fffdf7 !important;
+}
+.labelcheck-app .field-card.manual-required small {
+  color: #a65300 !important;
+  font-weight: 700;
+}

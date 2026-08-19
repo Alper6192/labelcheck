@@ -22,3 +22,9 @@ test("Status unter dem Bild nennt keine OCR-Engine", () => {
   assert.match(main, /Bild wird analysiert …/);
   assert.doesNotMatch(main, /status\.textContent = `PaddleOCR analysiert/);
 });
+
+
+test("Unsichere und fehlende Felder werden orange markiert", () => {
+  assert.match(render, /manual-required/);
+  assert.match(render, /bitte manuell eintragen/i);
+});

@@ -1,9 +1,7 @@
-const REVIEW_CONFIDENCE_THRESHOLD = 0.60;
+import { FIELD_RECOGNITION_THRESHOLD } from "./config.js";
 
 export function compareExtractions(product, vda) {
   // Freigaberelevant bleibt ausschließlich die Batchnummer.
-  // IDH und Gewicht bleiben sichtbar/gespeichert, beeinflussen die Freigabe
-  // aber nur dann indirekt, wenn ihre Erkennung eine Bedienerprüfung erfordert.
   const keys = ["batch"];
   const rows = keys
     .filter((key) => shouldCompareBatch(product?.fields?.[key], vda?.fields?.[key]))
@@ -17,6 +15,10 @@ export function compareExtractions(product, vda) {
     ...collectLowConfidenceFields(product, "Produkt"),
     ...collectLowConfidenceFields(vda, "VDA")
   ];
+  const manualInputRequiredFields = [
+    ...collectManualInputRequiredFields(product, "Produkt"),
+    ...collectManualInputRequiredFields(vda, "VDA")
+  ];
   const validationIssues = [
     ...collectValidationIssues(product, "Produkt"),
     ...collectValidationIssues(vda, "VDA")
@@ -25,10 +27,11 @@ export function compareExtractions(product, vda) {
     ...collectManualFields(product, "Produkt"),
     ...collectManualFields(vda, "VDA")
   ];
-  // Jede manuelle Eingabe verlangt eine ausdrückliche Bedienerbestätigung.
-  // Dadurch wird eine eventuell daraus entstehende Batch-Abweichung erst nach
-  // Klick auf „Überprüft“ als endgültiges Ergebnis angezeigt.
-  const needsReview = extractionIssue || batchIssue || rowIssue || lowConfidenceFields.length > 0 || validationIssues.length > 0 || manualFields.length > 0;
+  // Jede manuelle Eingabe verlangt weiterhin eine ausdrückliche Bedienerbestätigung.
+  // Solange orange markierte Felder noch leer/ungültig sind, kann diese Bestätigung
+  // noch nicht durchgeführt werden.
+  const needsReview = extractionIssue || batchIssue || rowIssue || lowConfidenceFields.length > 0
+    || manualInputRequiredFields.length > 0 || validationIssues.length > 0 || manualFields.length > 0;
 
   return {
     released: !needsReview && !mismatch,
@@ -36,11 +39,12 @@ export function compareExtractions(product, vda) {
     status: needsReview ? "review" : mismatch ? "rejected" : "released",
     rows,
     lowConfidenceFields,
+    manualInputRequiredFields,
     validationIssues,
     manualFields,
     reviewRequired: needsReview,
     message: needsReview
-      ? reviewMessage({ extractionIssue, batchIssue: batchIssue || rowIssue, lowConfidenceFields, validationIssues, manualFields })
+      ? reviewMessage({ extractionIssue, batchIssue: batchIssue || rowIssue, lowConfidenceFields, manualInputRequiredFields, validationIssues, manualFields })
       : mismatch
         ? "NICHT FREIGEGEBEN – Batchnummern weichen ab."
         : "FREIGEGEBEN – Batchnummer stimmt überein."
@@ -53,8 +57,6 @@ function hasExtractionIssue(extraction) {
 }
 
 function shouldCompareBatch(left, right) {
-  // Auch wenn eine ältere JSON compare-Flags für IDH/Gewicht enthält,
-  // entscheidet die Freigabe ausschließlich über Batch.
   return Boolean(left && right);
 }
 
@@ -63,7 +65,7 @@ function hasBatchIssue(extraction) {
   return !batch?.value || !batch?.valid;
 }
 
-function collectLowConfidenceFields(extraction, sideLabel) {
+function fieldLabel(key, field, sideLabel) {
   const labels = {
     batch: "Batch",
     idh: "IDH",
@@ -71,17 +73,40 @@ function collectLowConfidenceFields(extraction, sideLabel) {
     delivery_note: "Lieferscheinnummer",
     drum_number: "Fassnummer"
   };
+  return `${labels[key] || field?.label || key} ${sideLabel}`;
+}
+
+function collectLowConfidenceFields(extraction, sideLabel) {
   const output = [];
   for (const [key, field] of Object.entries(extraction?.fields || {})) {
-    if (!field?.value) continue;
-    if (field.source === "manual" || field.source === "qr") continue;
-    const confidence = Number(field.confidence);
-    if (!Number.isFinite(confidence) || confidence >= REVIEW_CONFIDENCE_THRESHOLD) continue;
+    if (field?.source === "manual" || field?.source === "qr") continue;
+    const confidence = Number(field?.confidence);
+    if (!Number.isFinite(confidence) || confidence >= FIELD_RECOGNITION_THRESHOLD || !String(field?.raw || field?.recognizedValue || field?.value || "").trim()) continue;
     output.push({
       key,
       side: sideLabel,
-      label: `${labels[key] || field.label || key} ${sideLabel}`,
+      label: fieldLabel(key, field, sideLabel),
       confidence
+    });
+  }
+  return output;
+}
+
+function collectManualInputRequiredFields(extraction, sideLabel) {
+  const output = [];
+  for (const [key, field] of Object.entries(extraction?.fields || {})) {
+    const confidence = Number(field?.confidence);
+    const automaticLowConfidence = field?.source !== "manual" && field?.source !== "qr"
+      && Number.isFinite(confidence) && confidence < FIELD_RECOGNITION_THRESHOLD
+      && Boolean(String(field?.raw || field?.recognizedValue || field?.value || "").trim());
+    const missingAutomaticValue = field?.source === "missing" || (!field?.value && field?.source !== "manual" && field?.source !== "qr" && !String(field?.raw || "").trim());
+    if (!field?.requiresManualInput && !automaticLowConfidence && !missingAutomaticValue) continue;
+    output.push({
+      key,
+      side: sideLabel,
+      label: fieldLabel(key, field, sideLabel),
+      confidence: Number(field?.confidence || 0),
+      reason: field?.rejectedReason || (field?.source === "missing" ? "nicht erkannt" : "manuelle Eingabe erforderlich")
     });
   }
   return output;
@@ -92,32 +117,27 @@ function collectValidationIssues(extraction, sideLabel) {
 }
 
 function collectManualFields(extraction, sideLabel) {
-  const labels = {
-    batch: "Batch",
-    idh: "IDH",
-    weight: "Gewicht",
-    delivery_note: "Lieferscheinnummer",
-    drum_number: "Fassnummer"
-  };
   return Object.entries(extraction?.fields || {})
-    .filter(([, field]) => field?.source === "manual")
+    .filter(([, field]) => field?.source === "manual" && field?.valid)
     .map(([key, field]) => ({
       key,
       side: sideLabel,
-      label: `${labels[key] || field.label || key} ${sideLabel}`
+      label: fieldLabel(key, field, sideLabel)
     }));
 }
 
-function reviewMessage({ extractionIssue, batchIssue, lowConfidenceFields, validationIssues, manualFields }) {
+function reviewMessage({ extractionIssue, batchIssue, lowConfidenceFields, manualInputRequiredFields, validationIssues, manualFields }) {
   const reasons = [];
-  if (batchIssue) reasons.push("Batchnummer fehlt bzw. ist unsicher");
+  if (manualInputRequiredFields.length) {
+    reasons.push(`bitte orange Felder manuell ausfüllen: ${manualInputRequiredFields.map((field) => field.label).join(", ")}`);
+  } else if (batchIssue) reasons.push("Batchnummer fehlt bzw. ist unsicher");
   else if (extractionIssue) reasons.push("Erkennung ist unvollständig oder unsicher");
 
   if (lowConfidenceFields.length) {
     const fields = lowConfidenceFields
       .map((field) => `${field.label} (${(field.confidence * 100).toFixed(0)} %)`)
       .join(", ");
-    reasons.push(`Erkennungsquote unter 60 %: ${fields}`);
+    reasons.push(`Erkennungsquote unter 80 %: ${fields}`);
   }
 
   if (validationIssues.length) {
@@ -127,7 +147,7 @@ function reviewMessage({ extractionIssue, batchIssue, lowConfidenceFields, valid
     if (weightCount) reasons.push("unplausibles Gewicht wurde verworfen");
   }
 
-  if (manualFields.length) {
+  if (!manualInputRequiredFields.length && manualFields.length) {
     reasons.push(`manuell eingegeben: ${manualFields.map((field) => field.label).join(", ")}`);
   }
 

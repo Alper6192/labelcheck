@@ -45,7 +45,7 @@ test("Nur angelegte Felder werden validiert und ihre regulären Ausdrücke sind 
 });
 
 test("Nicht angelegte Felder sind niemals Validierungs-Pflichtfelder", () => {
-  const normalized = normalizeProfileConfig(readConfig(), "1.0.1");
+  const normalized = normalizeProfileConfig(readConfig(), "1.0.2");
   for (const profile of normalized.profiles) {
     const fieldKeys = new Set((profile.fields || []).map((field) => field.key));
     for (const key of profile.validation?.requiredValidFields || []) {
@@ -60,7 +60,7 @@ test("Nicht angelegte Felder sind niemals Validierungs-Pflichtfelder", () => {
 });
 
 test("QR-Pflichtfelder existieren als Parserregeln und QR-RegEx sind gültig", () => {
-  const normalized = normalizeProfileConfig(readConfig(), "1.0.1");
+  const normalized = normalizeProfileConfig(readConfig(), "1.0.2");
   for (const profile of normalized.profiles.filter((entry) => entry.source?.type === "qr")) {
     const parserFields = new Set(Object.keys(profile.source.parser?.fields || {}));
     for (const key of profile.source.parser?.requiredFields || []) {

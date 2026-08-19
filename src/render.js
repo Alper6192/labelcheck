@@ -51,10 +51,50 @@ export function renderPreview(container, prepared, overlays = [], maxPreviewSide
 
 export function renderFieldEditor(container, extraction, onChange) {
   container.replaceChildren();
-  const keys=["batch","idh","weight","delivery_note","drum_number"];
-  const labels={batch:"Batch",idh:"IDH",weight:"Gewicht",delivery_note:"Lieferscheinnummer",drum_number:"Fassnummer"};
-  for(const key of keys){const field=extraction?.fields?.[key];if(!field)continue;const card=document.createElement("label");card.className=`field-card ${field.valid?"valid":"invalid"}`;card.innerHTML=`<span>${labels[key]}</span><input type="text"><small></small>`;const input=card.querySelector("input");input.value=field.value||"";card.querySelector("small").textContent=field.source==="manual"?"manuell korrigiert":field.source==="duplicate-blocked"?(field.rejectedReason||"Doppelbelegung verhindert"):field.source==="weight-blocked"?(field.rejectedReason||"unplausibles Gewicht verworfen"):String(field.source||"").startsWith("ocr")?`Erkennungsquote: ${(field.confidence*100).toFixed(1)} %${Number(field.confidence)<0.60?" · überprüfen":""}`:field.source==="batch-suffix"?`aus Batch · Erkennungsquote: ${(field.confidence*100).toFixed(1)} %${Number(field.confidence)<0.60?" · überprüfen":""}`:field.source==="qr"?"QR-Code":"nicht erkannt";input.addEventListener("change",()=>onChange(key,input.value));container.append(card);}
-  if(!container.children.length){const p=document.createElement("p");p.className="muted";p.textContent="Noch keine Felder zugeordnet.";container.append(p);}
+  const keys = ["batch", "idh", "weight", "delivery_note", "drum_number"];
+  const labels = { batch: "Batch", idh: "IDH", weight: "Gewicht", delivery_note: "Lieferscheinnummer", drum_number: "Fassnummer" };
+
+  for (const key of keys) {
+    const field = extraction?.fields?.[key];
+    if (!field) continue;
+
+    const card = document.createElement("label");
+    const requiresInput = Boolean(field.requiresManualInput);
+    card.className = `field-card ${requiresInput ? "manual-required" : field.valid ? "valid" : "invalid"}`;
+    card.innerHTML = `<span>${labels[key]}</span><input type="text"><small></small>`;
+
+    const input = card.querySelector("input");
+    input.value = field.value || "";
+    if (requiresInput) input.placeholder = "Bitte manuell eintragen";
+
+    const confidence = Number(field.confidence);
+    let statusText = "";
+    if (field.source === "manual") {
+      statusText = field.valid ? "manuell korrigiert" : "Manuelle Eingabe ungültig · bitte korrigieren";
+    } else if (requiresInput && Number.isFinite(confidence) && confidence > 0 && String(field.raw || field.recognizedValue || "").trim()) {
+      statusText = `Erkennungsquote: ${(confidence * 100).toFixed(1)} % · bitte manuell eintragen`;
+    } else if (requiresInput) {
+      statusText = `${field.rejectedReason || "Nicht erkannt"} · bitte manuell eintragen`;
+    } else if (field.source === "batch-suffix") {
+      statusText = `aus Batch · Erkennungsquote: ${(confidence * 100).toFixed(1)} %`;
+    } else if (field.source === "qr") {
+      statusText = "QR-Code";
+    } else if (String(field.source || "").startsWith("ocr")) {
+      statusText = `Erkennungsquote: ${(confidence * 100).toFixed(1)} %`;
+    } else {
+      statusText = "nicht erkannt";
+    }
+    card.querySelector("small").textContent = statusText;
+    input.addEventListener("change", () => onChange(key, input.value));
+    container.append(card);
+  }
+
+  if (!container.children.length) {
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = "Noch keine Felder zugeordnet.";
+    container.append(p);
+  }
 }
 
 export function renderComparison(container, comparison) {

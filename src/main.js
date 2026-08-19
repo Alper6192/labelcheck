@@ -405,7 +405,11 @@ function isVerifiedConfiguredLabel(slot) {
     : [];
   return requiredKeys.every((key) => {
     const field = extraction?.fields?.[key];
-    return Boolean(field?.value && field?.valid);
+    // Eine Erkennung unter 80 % darf im Eingabefeld bewusst leer bleiben,
+    // kann aber trotzdem belegen, dass das erwartete Feld auf dem richtigen
+    // Label erkannt wurde. Für die Bedienung muss der Wert anschließend
+    // manuell eingetragen werden.
+    return Boolean(field && ((field.value && field.valid) || field.autoDetectedValid || field.requiresManualInput));
   });
 }
 
@@ -557,12 +561,15 @@ function renderAll() {
   const saveButton = el("saveButton");
   const reviewButton = el("reviewButton");
   const reviewRequired = comparison?.status === "review";
+  const manualInputRequired = Number(comparison?.manualInputRequiredFields?.length || 0) > 0;
   if (reviewButton) {
     reviewButton.hidden = !reviewRequired;
-    reviewButton.disabled = !reviewRequired || reviewConfirmed;
-    reviewButton.textContent = reviewConfirmed ? "✓ Überprüft" : "Überprüft";
+    reviewButton.disabled = !reviewRequired || manualInputRequired || reviewConfirmed;
+    reviewButton.textContent = reviewConfirmed
+      ? "✓ Überprüft"
+      : manualInputRequired ? "Orange Felder ausfüllen" : "Überprüft";
   }
-  saveButton.disabled = !comparison || (reviewRequired && !reviewConfirmed) || currentSaved || saveInProgress;
+  saveButton.disabled = !comparison || manualInputRequired || (reviewRequired && !reviewConfirmed) || currentSaved || saveInProgress;
   saveButton.textContent = saveInProgress
     ? "Wird gespeichert …"
     : currentSaved ? "Datensatz übernommen" : "Datensatz übernehmen";
