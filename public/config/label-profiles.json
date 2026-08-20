@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.2",
-  "exportedAt": "2026-08-19T09:45:29.986Z",
+  "exportedAt": "2026-08-20T08:17:47.193Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -403,7 +403,7 @@
           "required": true,
           "compare": false,
           "regex": "^\\d{3,4}$",
-          "sourceRegex": "^[/|I1]\\s*\\d{3,4}$",
+          "sourceRegex": "^(?:[/|I1]\\s*)?\\d{3,4}$",
           "normalizer": "last_digits",
           "digits": 4,
           "neighbor": {
