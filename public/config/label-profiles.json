@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
   "appVersion": "1.0.2",
-  "exportedAt": "2026-08-20T08:17:47.193Z",
+  "exportedAt": "2026-08-20T08:27:15.908Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -407,11 +407,11 @@
           "normalizer": "last_digits",
           "digits": 4,
           "neighbor": {
-            "field": "batch",
+            "field": "weight",
             "directions": [
-              "right"
+              "below"
             ],
-            "maxDistance": 2
+            "maxDistance": 4
           },
           "poly": [
             [
