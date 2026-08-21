@@ -90,3 +90,9 @@ test("nach Bedienerprüfung wird bei gleicher Batch endgültig freigegeben", () 
   assert.match(source, /status:\s*"released"/);
   assert.match(source, /FREIGEGEBEN – Batchnummer stimmt überein\. · ✓ Vom Bediener überprüft\./);
 });
+
+test("Nicht freigegeben färbt die gesamte Ergebnisbox rot und fragt vor dem Speichern nach", () => {
+  assert.match(html, /id="resultCard" class="result-card"/);
+  assert.match(source, /classList\.toggle\("rejected-state", visibleComparison\?\.status === "rejected"\)/);
+  assert.match(source, /window\.confirm\("Achtung: Die Batchnummern stimmen nicht überein\. Der Datensatz ist NICHT FREIGEGEBEN\. Möchtest du ihn trotzdem übernehmen\?"\)/);
+});

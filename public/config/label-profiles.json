@@ -1,7 +1,7 @@
 {
   "schemaVersion": 3,
-  "appVersion": "1.0.2",
-  "exportedAt": "2026-08-20T08:54:22.925Z",
+  "appVersion": "1.0.3",
+  "exportedAt": "2026-08-21T12:12:00.000Z",
   "profiles": [
     {
       "id": "STELLANTIS",
@@ -402,17 +402,18 @@
           "label": "Fassnummer",
           "required": true,
           "compare": false,
-          "regex": "^\\d{3,4}$",
-          "sourceRegex": "^(?:[/|I1]\\s*)?\\d{3,4}$",
+          "regex": "^\\d{4}$",
+          "sourceRegex": "^(?:[/|I1]?\\s*)?\\d{4}$",
           "normalizer": "last_digits",
           "digits": 4,
           "neighbor": {
-            "field": "weight",
+            "field": "batch",
             "directions": [
-              "below"
+              "right"
             ],
-            "maxDistance": 4
+            "maxDistance": 6
           },
+          "adjacentTo": "batch",
           "poly": [
             [
               0.6889848484848484,
@@ -2065,7 +2066,7 @@
           "label": "Batch",
           "required": true,
           "compare": true,
-          "regex": "^D\\d{7,10}$",
+          "regex": "^D\\d{8,10}$",
           "sourceRegex": "^D\\d{6,10}(?:\\s*[/|I1]\\s*\\d{4})?$",
           "normalizer": "batch",
           "poly": [
@@ -2085,8 +2086,7 @@
               0.4011363636363636,
               0.2953333333333333
             ]
-          ],
-          "digits": 4
+          ]
         },
         {
           "key": "idh",

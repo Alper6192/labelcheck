@@ -1,4 +1,4 @@
-# Start – LabelCheck 1.0.2
+# Start – LabelCheck 1.0.3
 
 1. Projektinhalt in das GitHub-Repository kopieren.
 2. `public/config/label-profiles.json` ist die vollständige produktive Profilkonfiguration.

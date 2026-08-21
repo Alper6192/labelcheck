@@ -1,4 +1,15 @@
-# LabelCheck 1.0.2
+# LabelCheck 1.0.3
+
+## 1.0.3 – Geführter Zwei-Foto-Kameramodus
+
+- Neuer zentraler Button „Labelprüfung starten“ unter der Kurzanleitung.
+- Eigener Vollbild-Kameramodus mit Rückkamera und eingeblendeter Aufnahmeaufforderung.
+- Aufnahmefolge: Produktlabel -> direkt VDA-/TA-Label, ohne Bestätigung zwischen den Fotos.
+- Auslöser ist im Hochformat gesperrt; die Kamera fordert sichtbar zum Querhalten auf.
+- Einzelne Foto-Neuaufnahmen werden erst nach abgeschlossenem Zwei-Foto-Vorgang freigeschaltet.
+- Nach Datensatzübernahme wird der Fotovorgang wieder vollständig zurückgesetzt.
+- Bei „NICHT FREIGEGEBEN“ ist die komplette Ergebnisbox rot mit weißer Schrift.
+- Vor Übernahme eines Datensatzes mit abweichender Batch erfolgt eine zusätzliche Sicherheitsabfrage.
 
 ## 1.0.2 – Feldfreigabe erst ab 80 % Erkennungsquote
 

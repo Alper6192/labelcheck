@@ -18,6 +18,7 @@ import { compareExtractions } from "./comparison.js";
 import { clearExportedRecords, clearPendingExport, loadPendingExport, loadRecords, markRecordsExported, savePendingExport, saveRecord } from "./storage.js";
 import { exportRecords, manualCorrectionLabel } from "./excel-export.js";
 import { formatMilliseconds, safeError, serializableResult } from "./utils.js";
+import { captureVideoFrame, isLandscapeViewport, openRearCameraStream, stopCameraStream } from "./camera.js";
 
 const crashRecovery = recoverCompatibilityMode();
 const engine = new PaddleOcrEngine();
@@ -29,6 +30,8 @@ let currentSaved = false;
 let saveInProgress = false;
 let reviewConfirmed = false;
 let reviewConfirmedAt = "";
+let photoFlowCompleted = false;
+let cameraSession = createCameraSession();
 const slots = { product: createSlot("product"), vda: createSlot("vda") };
 const el = (id) => document.getElementById(id);
 
@@ -72,28 +75,23 @@ function setupOptions() {
 
 function setupSlot(key) {
   const galleryInput = el(`${key}Input`);
-  const cameraInput = el(`${key}CameraInput`);
-
-  // Galerie und native Kamera bleiben getrennt. Die Kamera darf unabhängig
-  // von der aktuellen Gerätehaltung immer öffnen. Erst das tatsächlich
-  // aufgenommene Bild wird anschließend auf Hoch-/Querformat geprüft.
   galleryInput.removeAttribute("capture");
-  cameraInput?.setAttribute("capture", "environment");
-  cameraInput?.addEventListener("click", () => {
-    cameraInput.setAttribute("capture", "environment");
-    // Derselbe Kameradateiname muss bei einer Wiederholungsaufnahme erneut ein
-    // change-Ereignis auslösen können.
-    cameraInput.value = "";
-  });
-
-  const handleFile = async (event) => {
+  galleryInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (file) await loadFile(key, file);
-  };
-  galleryInput.addEventListener("change", handleFile);
-  cameraInput?.addEventListener("change", handleFile);
+  });
   el(`${key}Profile`).addEventListener("change", async () => selectProfile(key, el(`${key}Profile`).value));
+}
+
+function createCameraSession() {
+  return {
+    active: false,
+    mode: "pair",
+    step: "product",
+    stream: null,
+    captures: { product: null, vda: null }
+  };
 }
 
 function setupActions() {
@@ -104,9 +102,135 @@ function setupActions() {
   el("allCsvButton").onclick = () => pendingExport ? resendPendingExport() : shareProtocolExport("all");
   el("clearSentButton").onclick = clearSentProtocolRows;
   el("debugButton").onclick = exportDebug;
+
+  el("startCaptureFlowButton").onclick = () => startCameraFlow("pair");
+  el("productRetakeButton").onclick = () => startCameraFlow("single", "product");
+  el("productRetakeTopButton").onclick = () => startCameraFlow("single", "product");
+  el("vdaRetakeButton").onclick = () => startCameraFlow("single", "vda");
+  el("vdaRetakeTopButton").onclick = () => startCameraFlow("single", "vda");
+  el("cameraCancelButton").onclick = closeCameraOverlay;
+  el("cameraShutterButton").onclick = captureCameraStep;
+  window.addEventListener("resize", updateCameraOrientationState);
+  window.addEventListener("orientationchange", updateCameraOrientationState);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && cameraSession.active) updateCameraOrientationState();
+  });
 }
 
 
+
+
+async function startCameraFlow(mode = "pair", singleKey = "product") {
+  if (cameraSession.active) return;
+  if (mode === "single" && !photoFlowCompleted) return;
+
+  cameraSession = createCameraSession();
+  cameraSession.active = true;
+  cameraSession.mode = mode;
+  cameraSession.step = mode === "single" ? singleKey : "product";
+  const overlay = el("cameraOverlay");
+  overlay.hidden = false;
+  document.body.classList.add("camera-open");
+  updateCameraOverlayText();
+  updateCameraOrientationState();
+
+  try {
+    cameraSession.stream = await openRearCameraStream();
+    const video = el("cameraVideo");
+    video.srcObject = cameraSession.stream;
+    await video.play();
+    updateCameraOrientationState();
+  } catch (error) {
+    closeCameraOverlay();
+    alert(`Rückkamera konnte nicht geöffnet werden: ${safeError(error)}`);
+  }
+}
+
+function cameraStepLabel(key, retake = false) {
+  if (key === "product") return retake ? "Produktlabel neu fotografieren" : "Produktlabel fotografieren";
+  return retake ? "VDA-/TA-Label neu fotografieren" : "VDA-/TA-Label fotografieren";
+}
+
+function updateCameraOverlayText() {
+  if (!cameraSession.active) return;
+  const single = cameraSession.mode === "single";
+  el("cameraInstruction").textContent = cameraStepLabel(cameraSession.step, single);
+  el("cameraStepBadge").textContent = single
+    ? "Neuaufnahme"
+    : cameraSession.step === "product" ? "1 / 2" : "2 / 2";
+}
+
+function updateCameraOrientationState() {
+  if (!cameraSession.active) return;
+  const landscape = isLandscapeViewport();
+  const hint = el("cameraLandscapeHint");
+  const shutter = el("cameraShutterButton");
+  hint.hidden = landscape;
+  shutter.disabled = !landscape;
+  el("cameraOverlay").classList.toggle("portrait-warning", !landscape);
+}
+
+async function captureCameraStep() {
+  if (!cameraSession.active || !isLandscapeViewport()) return;
+  const shutter = el("cameraShutterButton");
+  shutter.disabled = true;
+  try {
+    const key = cameraSession.step;
+    const file = await captureVideoFrame(el("cameraVideo"), {
+      fileName: `LabelCheck_${key}_${Date.now()}.jpg`
+    });
+
+    if (cameraSession.mode === "pair" && key === "product") {
+      cameraSession.captures.product = file;
+      cameraSession.step = "vda";
+      updateCameraOverlayText();
+      flashCameraStep();
+      updateCameraOrientationState();
+      return;
+    }
+
+    if (cameraSession.mode === "pair") {
+      cameraSession.captures.vda = file;
+      const productFile = cameraSession.captures.product;
+      const vdaFile = cameraSession.captures.vda;
+      closeCameraOverlay();
+      photoFlowCompleted = true;
+      renderAll();
+      // Die beiden Bilder werden bewusst erst nach Abschluss der Aufnahmefolge
+      // nacheinander ausgewertet. So bleibt Schritt 1 -> Schritt 2 ohne
+      // Zwischenbestätigung flüssig und die Erkennungsengine läuft nie parallel.
+      if (productFile) await loadFile("product", productFile);
+      if (vdaFile) await loadFile("vda", vdaFile);
+      return;
+    }
+
+    const singleKey = cameraSession.step;
+    closeCameraOverlay();
+    await loadFile(singleKey, file);
+  } catch (error) {
+    alert(`Foto konnte nicht übernommen werden: ${safeError(error)}`);
+    updateCameraOrientationState();
+  }
+}
+
+function flashCameraStep() {
+  const overlay = el("cameraOverlay");
+  overlay.classList.remove("camera-flash");
+  void overlay.offsetWidth;
+  overlay.classList.add("camera-flash");
+  setTimeout(() => overlay.classList.remove("camera-flash"), 180);
+}
+
+function closeCameraOverlay() {
+  if (cameraSession.stream) stopCameraStream(cameraSession.stream);
+  const video = el("cameraVideo");
+  if (video) video.srcObject = null;
+  cameraSession.active = false;
+  cameraSession.stream = null;
+  el("cameraOverlay").hidden = true;
+  el("cameraOverlay").classList.remove("portrait-warning", "camera-flash");
+  document.body.classList.remove("camera-open");
+}
 
 function isPortraitPhoto(orientationInfo, prepared) {
   if (orientationInfo?.portrait === true) return true;
@@ -556,8 +680,11 @@ function displayedComparison() {
 function renderAll() {
   renderSlot("product");
   renderSlot("vda");
-  renderComparison(el("comparison"), displayedComparison());
+  const visibleComparison = displayedComparison();
+  renderComparison(el("comparison"), visibleComparison);
+  el("resultCard")?.classList.toggle("rejected-state", visibleComparison?.status === "rejected");
   renderLog();
+  updateCaptureButtons();
   const saveButton = el("saveButton");
   const reviewButton = el("reviewButton");
   const reviewRequired = comparison?.status === "review";
@@ -617,6 +744,26 @@ function renderAll() {
   }
 }
 
+function updateCaptureButtons() {
+  const retakeDisabled = !photoFlowCompleted || cameraSession.active;
+  const startButton = el("startCaptureFlowButton");
+  if (startButton) {
+    startButton.disabled = cameraSession.active;
+    startButton.textContent = photoFlowCompleted
+      ? "▣  Beide Fotos neu aufnehmen"
+      : "▣  Labelprüfung starten";
+  }
+  for (const key of ["product", "vda"]) {
+    const label = key === "product" ? "Produktfoto" : "VDA-/TA-Foto";
+    for (const suffix of ["RetakeButton", "RetakeTopButton"]) {
+      const button = el(`${key}${suffix}`);
+      if (!button) continue;
+      button.disabled = retakeDisabled;
+      button.textContent = photoFlowCompleted ? `▣  ${label} neu aufnehmen` : "▣  Foto aufnehmen";
+    }
+  }
+}
+
 function renderSlot(key) {
   const slot = slots[key];
   const policy = getRuntimePolicy();
@@ -654,10 +801,9 @@ function resetScanCycleAfterSave() {
     const profileSelect = el(`${key}Profile`);
     if (profileSelect) profileSelect.value = "";
     const galleryInput = el(`${key}Input`);
-    const cameraInput = el(`${key}CameraInput`);
     if (galleryInput) galleryInput.value = "";
-    if (cameraInput) cameraInput.value = "";
   }
+  photoFlowCompleted = false;
   comparison = null;
   currentSaved = false;
   resetOperatorReview();
@@ -665,6 +811,12 @@ function resetScanCycleAfterSave() {
 
 async function storeCurrent() {
   if (!comparison || (comparison.status === "review" && !reviewConfirmed) || currentSaved || saveInProgress) return;
+  const beforeSave = displayedComparison();
+  const batchMismatch = Boolean(comparison.batchMismatch || comparison.rows?.find((row) => row.key === "batch")?.status === "mismatch");
+  if (batchMismatch && beforeSave?.status === "rejected") {
+    const confirmed = window.confirm("Achtung: Die Batchnummern stimmen nicht überein. Der Datensatz ist NICHT FREIGEGEBEN. Möchtest du ihn trotzdem übernehmen?");
+    if (!confirmed) return;
+  }
   saveInProgress = true;
   renderAll();
   const corrections = [

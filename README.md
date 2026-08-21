@@ -1,8 +1,8 @@
-# LabelCheck 1.0.2
+# LabelCheck 1.0.3
 
 LabelCheck prüft weiterhin immer **ein Produktlabel** gegen **ein VDA-/TA-Label**. Die Bedienoberfläche, Freigabelogik, Kamera, Bedienerprüfung, Scanprotokoll und CSV-Funktion bleiben wie in 0.16.22. Seit 0.17.0 ist die Profilarchitektur vollständig konfigurationsgesteuert: **alle labelabhängigen Erkennungsregeln liegen in `public/config/label-profiles.json` und können vollständig im erweiterten Profileditor gepflegt werden.**
 
-## Profileditor 1.0.2
+## Profileditor 1.0.3
 Der erweiterte Profileditor ist jetzt auf Deutsch und Englisch umschaltbar, logisch gruppiert und mit kontextbezogenen ?-Hilfen versehen. Technische Alt-Funktionen wurden aus der Oberfläche entfernt. Feldspezifische Bereinigung und Strategien werden nur dort angeboten, wo sie fachlich sinnvoll sind. Nachbarfelder können generisch relativ zu Batch, Fassnummer, IDH oder Gewicht mit den Richtungen links/rechts/oben/unten konfiguriert werden. Feldzonen erhalten beim Übernehmen fest 10 % Rand.
 
 ## Editor-Stabilität 0.17.1
@@ -94,7 +94,7 @@ Die Spalte `Manuell korrigiert` enthält die konkret bearbeiteten Felder, z. B. 
 
 ## Kamera und Erkennungslaufzeit
 
-Die native Kamera-App wird über `capture="environment"` angefordert. Nach der Aufnahme wird die tatsächliche Bildausrichtung einschließlich JPEG-EXIF-Rotation geprüft; Hochkantfotos werden vor der Analyse abgewiesen.
+Die Bediener-App verwendet einen geführten Vollbild-Kameramodus mit Rückkamera. Nach „Labelprüfung starten“ wird zuerst das Produktlabel und direkt danach ohne Zwischenbestätigung das VDA-/TA-Label fotografiert. Die Aufnahme ist nur im Querformat möglich; nach Abschluss können einzelne Fotos gezielt neu aufgenommen werden.
 
 Mobilgeräte verwenden standardmäßig den stabilen Erkennungsmodus, Desktop/Notebook den schnellen AUTO-Modus. Die Erkennungsmodelle werden beim Build in die Pages-Site kopiert und same-origin geladen.
 

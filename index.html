@@ -39,6 +39,7 @@
         <span><b>③</b> Ergebnis prüfen &amp; übernehmen</span><i>→</i>
         <span><b>④</b> CSV teilen / speichern</span>
       </div>
+      <button id="startCaptureFlowButton" class="solid-action start-capture-flow-action" type="button">▣&nbsp; Labelprüfung starten</button>
     </header>
 
     <main>
@@ -54,16 +55,15 @@
         <article class="scan-card">
           <div class="scan-card-head">
             <h2>Produktlabel (quer)</h2>
-            <label for="productCameraInput" class="mini-photo-action">▣&nbsp; Foto aufnehmen</label>
+            <button id="productRetakeTopButton" class="mini-photo-action" type="button" disabled>▣&nbsp; Foto aufnehmen</button>
           </div>
           <div class="scan-card-body">
             <input id="productInput" class="native-file-input" type="file" accept="image/*">
-            <input id="productCameraInput" class="native-file-input" type="file" accept="image/*" capture="environment">
             <div id="productPreview" class="preview"></div>
             <div id="productStatus" class="slot-status">Noch kein Bild</div>
             <div class="scan-actions">
               <label for="productInput" class="outline-action">▧&nbsp; Auswählen</label>
-              <label for="productCameraInput" class="solid-action">▣&nbsp; Foto aufnehmen</label>
+              <button id="productRetakeButton" class="solid-action" type="button" disabled>▣&nbsp; Foto aufnehmen</button>
             </div>
             <label class="profile-label technical-field">Layoutprofil<select id="productProfile"></select></label>
             <div id="productFields" class="field-grid"></div>
@@ -73,16 +73,15 @@
         <article class="scan-card">
           <div class="scan-card-head">
             <h2>VDA-Label / TA-Label (quer)</h2>
-            <label for="vdaCameraInput" class="mini-photo-action">▣&nbsp; Foto aufnehmen</label>
+            <button id="vdaRetakeTopButton" class="mini-photo-action" type="button" disabled>▣&nbsp; Foto aufnehmen</button>
           </div>
           <div class="scan-card-body">
             <input id="vdaInput" class="native-file-input" type="file" accept="image/*">
-            <input id="vdaCameraInput" class="native-file-input" type="file" accept="image/*" capture="environment">
             <div id="vdaPreview" class="preview"></div>
             <div id="vdaStatus" class="slot-status">Noch kein Bild</div>
             <div class="scan-actions">
               <label for="vdaInput" class="outline-action">▧&nbsp; Auswählen</label>
-              <label for="vdaCameraInput" class="solid-action">▣&nbsp; Foto aufnehmen</label>
+              <button id="vdaRetakeButton" class="solid-action" type="button" disabled>▣&nbsp; Foto aufnehmen</button>
             </div>
             <label class="profile-label technical-field">Layoutprofil<select id="vdaProfile"></select></label>
             <div id="vdaFields" class="field-grid"></div>
@@ -90,7 +89,7 @@
         </article>
       </section>
 
-      <section class="result-card">
+      <section id="resultCard" class="result-card">
         <div class="result-head">
           <div>
             <h2>Analyseergebnis</h2>
@@ -115,6 +114,22 @@
 
     <footer>© Henkel – Alle Rechte vorbehalten.</footer>
   </div>
+
+  <section id="cameraOverlay" class="camera-overlay" hidden aria-modal="true" role="dialog" aria-label="Label fotografieren">
+    <video id="cameraVideo" class="camera-video" autoplay playsinline muted></video>
+    <div class="camera-overlay-ui">
+      <div class="camera-topbar">
+        <span id="cameraStepBadge" class="camera-step-badge">1 / 2</span>
+        <strong id="cameraInstruction" class="camera-instruction">Produktlabel fotografieren</strong>
+      </div>
+      <div id="cameraLandscapeHint" class="camera-landscape-hint" hidden>↻ Bitte Gerät quer halten</div>
+      <div class="camera-bottom-bar">
+        <button id="cameraCancelButton" class="camera-cancel-button" type="button">Abbrechen</button>
+        <button id="cameraShutterButton" class="camera-shutter-button" type="button" aria-label="Foto aufnehmen"><span></span></button>
+      </div>
+    </div>
+  </section>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
